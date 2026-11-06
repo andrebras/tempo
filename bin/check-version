@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Check that plugin.json and pyproject.toml carry the same version, and print it.
 
-bin/ci runs this so a pull request cannot raise one file and forget the other. The release
-workflow uses the printed version to name the tag.
+bin/ci runs this so a pull request cannot raise one file and forget the other, or forget the
+version's CHANGELOG.md section. The release workflow uses the printed version to name the tag.
 """
 
 import json
@@ -26,4 +26,6 @@ if plugin != project:
         "Version mismatch: .claude-plugin/plugin.json says %s but pyproject.toml says %s. "
         "Set the same version in both." % (plugin, project)
     )
+if not re.search(r"^## \[%s\]" % re.escape(plugin), read("CHANGELOG.md"), re.M):
+    sys.exit("CHANGELOG.md has no '## [%s]' section. Add one for this version." % plugin)
 print(plugin)
