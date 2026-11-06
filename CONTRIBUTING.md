@@ -32,7 +32,7 @@ hand, so your real questions stay untouched.
 
 ```
 .claude-plugin/   plugin and marketplace manifests
-bin/              tempo (the command), oq (its old name) and ci
+bin/              tempo (the command), oq (its old name), ci and check-version
 docs/             reference, screenshots and the demo GIF
 hooks/            hook configuration
 tempo/            store (SQLite), cli (tempo), server and page
@@ -42,6 +42,18 @@ tests/
 
 ## Releasing
 
-Installed copies only update when the version changes. After merging changes users should
-get, raise `version` in both `.claude-plugin/plugin.json` and `pyproject.toml`. Users then run
+Installed copies only update when the version changes. To release changes users should get,
+do all of this in one pull request:
+
+1. Raise `version` in both `.claude-plugin/plugin.json` and `pyproject.toml`, following
+   [Semantic Versioning](https://semver.org).
+2. In `CHANGELOG.md`, rename the `Unreleased` section to the new version and today's date,
+   with one short line per change.
+
+`bin/check-version`, run by `bin/ci`, fails when the two versions differ or the changelog has
+no section for the version. When the pull request merges, the Release workflow creates the tag
+`vX.Y.Z` and a GitHub release whose notes are that changelog section. Users then run
 `claude plugin marketplace update tempo` and `claude plugin update tempo@tempo`.
+
+Dependabot opens grouped pull requests once a week for newer GitHub Actions and the tools in
+`requirements-dev.txt`.

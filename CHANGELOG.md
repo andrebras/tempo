@@ -11,6 +11,9 @@ All notable changes to Tempo are listed here. The format follows
 - This changelog, with entries for every earlier release.
 - CI fails when `plugin.json` and `pyproject.toml` carry different versions, or when this
   changelog has no section for the current version.
+- A Release workflow that tags each new version and publishes its changelog section as a
+  GitHub release.
+- Weekly Dependabot pull requests for GitHub Actions and the development tools.
 
 ## [0.3.1] - 2026-11-06
 
