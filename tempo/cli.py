@@ -139,7 +139,7 @@ def build_parser():
 
 def run_add(args):
     question = _store().add(
-        _project(args.project),
+        _project(args.project, record=True),
         args.title,
         args.context,
         args.options,
@@ -242,7 +242,7 @@ def run_hook(args):
     if args.event == "session-start":
         start_server(args.port)
         return 0
-    text = take_inbox(setting("PROJECT") or project_name(cwd))
+    text = take_inbox(setting("PROJECT") or project_name(cwd, record=True))
     if text:
         print(
             json.dumps(
@@ -379,8 +379,20 @@ def start_server(port):
     return True
 
 
-def project_name(cwd):
-    """The project is the git repo's top folder name (the main checkout, not a worktree)."""
+def project_name(cwd, record=False):
+    """The project for a folder: the one picked for it in Settings, else the folder name.
+
+    With record, the folder is remembered so Settings can list it.
+    """
+    folder = folder_name(cwd)
+    with Store(connect()) as store:
+        if record:
+            store.see_folder(folder)
+        return store.project_for(folder)
+
+
+def folder_name(cwd):
+    """The git repo's top folder name (the main checkout, not a worktree)."""
     try:
         # git is looked up on PATH on purpose; the arguments are fixed.
         common = subprocess.run(  # noqa: S603
@@ -395,8 +407,8 @@ def project_name(cwd):
         return os.path.basename(os.path.abspath(cwd))
 
 
-def _project(value):
-    return value or setting("PROJECT") or project_name(os.getcwd())
+def _project(value, record=False):
+    return value or setting("PROJECT") or project_name(os.getcwd(), record)
 
 
 def _number(value):
