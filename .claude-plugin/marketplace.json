@@ -1,0 +1,12 @@
+{
+  "name": "open-questions",
+  "description": "Open questions between you and Claude, kept in SQLite with a local page to answer them.",
+  "owner": { "name": "André Brás" },
+  "plugins": [
+    {
+      "name": "open-questions",
+      "source": "./",
+      "description": "Keeps the questions Claude asks you in SQLite, with a local page to read, follow up on and answer them."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "open-questions",
+  "version": "0.1.0",
+  "description": "Keeps the questions Claude asks you in SQLite, with a local page to read, follow up on and answer them. Answers reach Claude by themselves.",
+  "author": { "name": "André Brás" },
+  "repository": "https://github.com/andrebras/open-questions",
+  "license": "MIT",
+  "keywords": ["questions", "decisions", "inbox", "sqlite"]
+}
