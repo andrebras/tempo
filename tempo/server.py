@@ -45,9 +45,9 @@ def make_handler(port):
                 query = parse_qs(url.query)
                 status = query.get("status", ["open"])[0]
                 project = query.get("project", [None])[0]
-                self._json(
-                    200, {"questions": store.list(project, status), "projects": store.projects()}
-                )
+                # Projects whose folders have no questions yet are listed too.
+                projects = [summary["name"] for summary in store.project_summaries()]
+                self._json(200, {"questions": store.list(project, status), "projects": projects})
             elif len(parts) == 4 and parts[:2] == ["api", "questions"]:
                 self._handle(lambda: store.get(parts[2], _int(parts[3])))
             elif parts == ["api", "settings"]:
