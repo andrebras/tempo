@@ -1,7 +1,10 @@
 import os
 import sqlite3
+import tempfile
+import unittest
+from unittest import mock
 
-from tempo.store import SCHEMA, QuestionError, Store, connect
+from tempo.store import SCHEMA, QuestionError, Store, connect, db_path
 from tests.helpers import DatabaseTest
 
 
@@ -161,3 +164,39 @@ class ListTest(DatabaseTest):
         self.assertEqual(
             [q["status"] for q in self.store.list("demo", "all")], ["archived", "open"]
         )
+
+
+class DbPathTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = tmp.name
+        patcher = mock.patch.dict("os.environ", {"HOME": self.home})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for key in ("TEMPO_DB", "OQ_DB"):
+            os.environ.pop(key, None)
+
+    def create(self, folder):
+        path = os.path.join(self.home, ".claude", folder, "questions.db")
+        os.makedirs(os.path.dirname(path))
+        open(path, "w").close()
+        return path
+
+    def test_defaults_to_the_tempo_folder(self):
+        self.assertEqual(db_path(), os.path.join(self.home, ".claude", "tempo", "questions.db"))
+
+    def test_uses_the_old_database_where_it_is_when_there_is_no_new_one(self):
+        old = self.create("open-questions")
+        self.assertEqual(db_path(), old)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", "tempo")))
+
+    def test_prefers_the_new_database_when_both_exist(self):
+        self.create("open-questions")
+        new = self.create("tempo")
+        self.assertEqual(db_path(), new)
+
+    def test_an_explicit_path_wins(self):
+        self.create("open-questions")
+        with mock.patch.dict("os.environ", {"OQ_DB": "/elsewhere/questions.db"}):
+            self.assertEqual(db_path(), "/elsewhere/questions.db")

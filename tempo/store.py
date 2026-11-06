@@ -13,12 +13,26 @@ import sqlite3
 import string
 from datetime import datetime, timezone
 
-DEFAULT_DB = os.path.expanduser("~/.claude/open-questions/questions.db")
+DEFAULT_DB = "~/.claude/tempo/questions.db"
+# Where the database lived before the plugin was renamed to Tempo.
+OLD_DEFAULT_DB = "~/.claude/open-questions/questions.db"
 
 
 def setting(name):
     """Read TEMPO_<name> from the environment, or OQ_<name>, its name before the rename."""
     return os.environ.get("TEMPO_" + name) or os.environ.get("OQ_" + name)
+
+
+def db_path():
+    """The database file: TEMPO_DB if set, else the default, or the old default if only
+    that one exists. The old file is used where it is, never moved or copied."""
+    if setting("DB"):
+        return setting("DB")
+    path, old = os.path.expanduser(DEFAULT_DB), os.path.expanduser(OLD_DEFAULT_DB)
+    if not os.path.exists(path) and os.path.exists(old):
+        return old
+    return path
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -75,7 +89,7 @@ def now():
 
 
 def connect(path=None):
-    path = path or setting("DB") or DEFAULT_DB
+    path = path or db_path()
     if path != ":memory:":
         os.makedirs(os.path.dirname(path), exist_ok=True)
     db = sqlite3.connect(path, timeout=10, isolation_level=None)

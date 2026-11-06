@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from tempo.store import PRIORITIES, QuestionError, Store, connect, setting
+from tempo.store import PRIORITIES, QuestionError, Store, connect, db_path, setting
 
 DEFAULT_PORT = 2204
 
@@ -408,9 +408,7 @@ def _port():
 
 
 def _db_path():
-    from tempo.store import DEFAULT_DB
-
-    path = setting("DB") or DEFAULT_DB
+    path = db_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     return path
 
