@@ -39,8 +39,19 @@ class ServerTest(DatabaseTest):
         status, page = self.request("GET", "/")
         self.assertEqual(status, 200)
         self.assertIn(b"<title>Tempo</title>", page)
+        self.assertIn(b'<script src="/page.js"></script>', page)
         status, data = self.request("GET", "/api/questions?status=open")
         self.assertEqual(json.loads(data)["questions"][0]["label"], "Q1")
+
+    def test_serves_the_script(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port)
+        connection.request("GET", "/page.js", headers={"Host": "127.0.0.1:%d" % self.port})
+        response = connection.getresponse()
+        script = response.read()
+        connection.close()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Content-Type"), "text/javascript; charset=utf-8")
+        self.assertIn(b"function rich(", script)
 
     def test_the_list_names_projects_without_questions_yet(self):
         self.store.see_folder("onzehq")
@@ -98,8 +109,10 @@ class ServerTest(DatabaseTest):
         self.assertIn("already has questions", json.loads(data)["error"])
 
     def test_refuses_other_hosts(self):
-        status, _ = self.request("GET", "/api/questions", host="evil.example:%d" % self.port)
-        self.assertEqual(status, 403)
+        for path in ["/", "/page.js", "/api/questions"]:
+            with self.subTest(path=path):
+                status, _ = self.request("GET", path, host="evil.example:%d" % self.port)
+                self.assertEqual(status, 403)
 
     def test_refuses_writes_from_other_sites(self):
         for origin, content_type in [
