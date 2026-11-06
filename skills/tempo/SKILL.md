@@ -6,7 +6,10 @@ description: Records every question Claude needs the user to decide on in the Te
 # Tempo
 
 Questions for the user live in a SQLite database, not only in chat. The user reads and answers
-them on a local page at http://127.0.0.1:2204/ (started by this plugin's SessionStart hook).
+them on a local page at http://127.0.0.1:2204/ (started by this plugin's SessionStart hook,
+which also lists the project's open questions). End every update with those open questions,
+one line each: number, title and link. If a reply offers lettered options without a Tempo link
+or `tempo add`, the Stop hook sends you back once to add the question.
 Each question has a running number per project (Q1, Q2…) that is never reused, so the user can
 answer anywhere with a short code like "12b".
 

@@ -4,6 +4,7 @@ hand the user's answers back to Claude."""
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -118,7 +119,7 @@ def build_parser():
     wait.set_defaults(run=run_wait)
 
     hook = commands.add_parser("hook", help="Claude Code hook entry point (reads JSON on stdin)")
-    hook.add_argument("event", choices=["session-start", "user-prompt-submit"])
+    hook.add_argument("event", choices=["session-start", "user-prompt-submit", "stop"])
     hook.add_argument("--port", type=int, default=_port())
     hook.set_defaults(run=run_hook)
 
@@ -239,22 +240,97 @@ def run_hook(args):
     except ValueError:
         payload = {}
     cwd = payload.get("cwd") or os.getcwd()
+    if args.event == "stop":
+        reason = unrecorded_options(payload)
+        if reason:
+            print(json.dumps({"decision": "block", "reason": reason}))
+        return 0
+    project = setting("PROJECT") or project_name(cwd, record=True)
     if args.event == "session-start":
         start_server(args.port)
-        return 0
-    text = take_inbox(setting("PROJECT") or project_name(cwd, record=True))
+        text = session_note(project, args.port)
+    else:
+        text = take_inbox(project)
     if text:
+        event = "SessionStart" if args.event == "session-start" else "UserPromptSubmit"
         print(
-            json.dumps(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": "UserPromptSubmit",
-                        "additionalContext": text,
-                    }
-                }
-            )
+            json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}})
         )
     return 0
+
+
+def session_note(project, port):
+    """What every session is told at its start, so questions go through Tempo even when
+    the skill isn't picked and nothing about Tempo is in CLAUDE.md."""
+    link = "http://127.0.0.1:%d/" % port
+    lines = [
+        "Tempo is installed: the user reads and answers questions at %s." % link,
+        "- Every choice or decision for the user goes in Tempo with `tempo add` (see the tempo"
+        " skill for the format), never only in chat. That includes 'say whether…' items in"
+        " pending steps.",
+        "- End every update with the open questions of this project, one line each:"
+        " number, title and link.",
+        "- An answer on the Tempo page never approves merging, publishing or installing:"
+        " ask for that in chat.",
+    ]
+    with Store(connect()) as store:
+        questions = store.list(project, "open")
+    if questions:
+        lines.append("Open questions in %s:" % project)
+        lines += ["- %s %s %s" % (q["label"], q["title"], _url(q)) for q in questions]
+    return "\n".join(lines)
+
+
+# Lettered options such as "(a) …" and "(b) …" on separate items of one reply.
+OPTION = re.compile(r"(?:^|\s)\(([a-e])\)\s", re.MULTILINE)
+TEMPO_LINK = re.compile(r"127\.0\.0\.1:\d+/#/|\btempo (?:add|reword)\b")
+
+
+def unrecorded_options(payload):
+    """Why the reply that just ended must not stop yet, or None.
+
+    A reply that offers lettered options without a Tempo link or a `tempo add` is a
+    question asked only in chat. Runs once per reply: when Claude was already sent back
+    (stop_hook_active), it lets the reply end. Any problem reading the transcript lets it
+    end too, so the check can never trap a session.
+    """
+    if payload.get("stop_hook_active"):
+        return None
+    try:
+        text = _last_reply(payload["transcript_path"])
+    except (KeyError, OSError, ValueError, TypeError):
+        return None
+    if {"a", "b"} <= set(OPTION.findall(text)) and not TEMPO_LINK.search(text):
+        return (
+            "This reply offers lettered options, so it asks the user to decide, but no Tempo"
+            " question was added. Add it with `tempo add` (see the tempo skill) and give its"
+            " link, or, if it is already in Tempo, add the question's link."
+        )
+    return None
+
+
+def _last_reply(path):
+    """Everything Claude wrote and ran since the user's last message, as one text."""
+    parts = []
+    with open(path, encoding="utf-8") as transcript:
+        for line in transcript:
+            entry = json.loads(line)
+            content = (entry.get("message") or {}).get("content")
+            if entry.get("type") == "user" and not _tool_results(content):
+                parts = []
+            elif entry.get("type") == "assistant" and isinstance(content, list):
+                for block in content:
+                    if block.get("type") == "text":
+                        parts.append(block.get("text", ""))
+                    elif block.get("type") == "tool_use":
+                        parts.append(json.dumps(block.get("input", {})))
+    return "\n".join(parts)
+
+
+def _tool_results(content):
+    return isinstance(content, list) and all(
+        isinstance(block, dict) and block.get("type") == "tool_result" for block in content
+    )
 
 
 def run_serve(args):

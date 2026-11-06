@@ -64,7 +64,10 @@ works too.
    └──── tempo wait (running in background) ──┘
 ```
 
-Claude writes questions with the bundled `tempo` command, following the bundled skill.
+Claude writes questions with the bundled `tempo` command, following the bundled skill. At the
+start of every session a hook tells Claude that every decision goes through Tempo and lists the
+project's open questions; when a reply offers lettered options without a Tempo question, a
+second hook sends Claude back to add it.
 Your answers reach Claude in one of two ways: a hook adds them before Claude reads your next
 message, or a `tempo wait` that Claude keeps running in the background wakes it as soon as you
 answer. Each answer is delivered once, and only to sessions of its own project.
