@@ -16,6 +16,12 @@ plugin, Claude saves every decision it needs from you as a self-contained questi
 on a local web page whenever it suits you, and Claude picks the answer up without you having
 to go back to the chat.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshot-light.png">
+  <img alt="The Tempo page: a list of open questions on the left, and on the right the question &quot;Where should the new Export orders button go?&quot; with its context and three lettered options, the recommended one picked." src="docs/screenshot-light.png" width="1280">
+</picture>
+
 ## Contents
 
 - [Features](#features)
