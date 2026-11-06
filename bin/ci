@@ -1,5 +1,5 @@
 #!/bin/sh
-# Local CI: lint, format check, security scan, shell check, then every test.
+# Local CI: version check, lint, format check, security scan, shell check, then every test.
 # Installs the pinned development tools into .venv on first run.
 set -eu
 cd "$(dirname "$0")/.."
@@ -21,6 +21,7 @@ step() {
   "$@"
 }
 
+step "Versions match" bin/check-version
 step "Lint (ruff)" .venv/bin/ruff check .
 step "Format (ruff format)" .venv/bin/ruff format --check .
 step "Security (bandit)" .venv/bin/bandit --quiet -c pyproject.toml -r tempo
