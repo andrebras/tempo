@@ -396,12 +396,14 @@ def folder_name(cwd):
     try:
         # git is looked up on PATH on purpose; the arguments are fixed.
         common = subprocess.run(  # noqa: S603
-            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],  # noqa: S607
+            ["git", "rev-parse", "--git-common-dir"],  # noqa: S607
             cwd=cwd,
             capture_output=True,
             text=True,
             check=True,
         ).stdout.strip()
+        # Git answers relative to cwd (".git") or with a full path; join handles both.
+        common = os.path.normpath(os.path.join(os.path.abspath(cwd), common))
         return os.path.basename(os.path.dirname(common))
     except (OSError, subprocess.CalledProcessError):
         return os.path.basename(os.path.abspath(cwd))
