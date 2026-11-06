@@ -113,6 +113,7 @@
   .badge.wait { background: var(--accent-soft); color: var(--accent); }
 
   .empty { color: var(--muted); padding: 24px 8px; }
+  #list .empty { text-align: center; }
   .empty-state { margin: 10vh auto 0; max-width: 460px; text-align: center; }
   .empty-state svg { width: 64px; height: 64px; color: var(--accent); opacity: .85; }
   .empty-state h2 { margin: 12px 0 6px; font-size: 1.375rem; letter-spacing: -.01em; }
@@ -518,8 +519,8 @@ function renderEmpty(shown) {
     el("p", {}, state.status === "open"
       ? "Every question here is answered. New ones appear on their own."
       : "Questions move here once they are " + state.status + "."),
-    others.length && el("p", { class: "meta" }, "Still open elsewhere:"),
-    others.length && el("div", { class: "actions" }, others.map((name) => el("button", {
+    others.length > 0 && el("p", { class: "meta" }, "Still open elsewhere:"),
+    others.length > 0 && el("div", { class: "actions" }, others.map((name) => el("button", {
       onclick: () => { setStatus("open"); chooseProject(name); state.current = null; refresh(); },
     }, `${name} (${shown.counts[name]})`))));
 }
