@@ -22,7 +22,9 @@ Write it so someone with no context can answer it cold:
 
 - `--title`: the question itself, one sentence.
 - `--context`: what this is about, why it matters now, and what each option leads to. Explain
-  every acronym and technical term. Short sentences.
+  every acronym and technical term. Short sentences. Lay it out so it scans: a blank line
+  between short paragraphs, `- ` bullets for lists of facts, `**bold**` for the key point and
+  backticks for file names and commands. The page renders these; never one long paragraph.
 - `--option`: one per option, written out in full; they are lettered (a), (b)… in order.
 - `--recommended`: the letter you recommend, if any. Say why in the context.
 - `--priority`: how soon you need the answer. `now`: work is waiting on it. `soon` (the
@@ -70,15 +72,17 @@ again for a new answer.
 
 ## Handling a follow-up ("ask for more context")
 
-The user wants to understand the question better before answering. Either:
+The user wants to understand the question better before answering. Answer it in the
+question itself: `tempo reword <number> --note "Why it changed" --context "…"` (plus
+`--title`, `--option` and `--recommended` when those change; passing `--option` replaces all
+options, so pass `--recommended` again). The context box at the top is what the user reads;
+old versions stay in the thread.
 
-- add context: `tempo context <number> "…"`, for an extra explanation or a fact you looked up, or
-- reword it: `tempo reword <number> --note "Why it changed" [--title …] [--context …] [--option …]`,
-  when the question itself was unclear or the options need to change. Passing `--option`
-  replaces all options. Old versions stay in the thread.
+Use `tempo context <number> "…"` only for a small extra fact that doesn't change the
+question: it shows at the bottom of the thread, below the options, where it is easy to miss.
 
 When answering needs research (reading code, docs, past decisions), hand it to a subagent and
-have it run `tempo context` or `tempo reword` itself. Then tell the user in chat that the question
+have it run `tempo reword` itself. Then tell the user in chat that the question
 was updated, with its link.
 
 ## Other commands
