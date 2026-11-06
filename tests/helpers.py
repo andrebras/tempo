@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from open_questions.store import Store, connect
+from tempo.store import Store, connect
 
 
 class DatabaseTest(unittest.TestCase):

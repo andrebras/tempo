@@ -11,7 +11,7 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
-from open_questions.store import QuestionError, Store, connect
+from tempo.store import QuestionError, Store, connect
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 

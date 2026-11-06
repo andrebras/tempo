@@ -23,7 +23,7 @@ step() {
 
 step "Lint (ruff)" .venv/bin/ruff check .
 step "Format (ruff format)" .venv/bin/ruff format --check .
-step "Security (bandit)" .venv/bin/bandit --quiet -c pyproject.toml -r open_questions
+step "Security (bandit)" .venv/bin/bandit --quiet -c pyproject.toml -r tempo
 step "Shell scripts (shellcheck)" shellcheck bin/oq bin/ci
-step "Compile" python3 -m compileall -q open_questions tests
+step "Compile" python3 -m compileall -q tempo tests
 step "Tests" python3 -m unittest discover -s tests -t . "$@"

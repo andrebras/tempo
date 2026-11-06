@@ -1,7 +1,7 @@
 import os
 import sqlite3
 
-from open_questions.store import SCHEMA, QuestionError, Store, connect
+from tempo.store import SCHEMA, QuestionError, Store, connect
 from tests.helpers import DatabaseTest
 
 

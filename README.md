@@ -172,7 +172,7 @@ Layout:
 .claude-plugin/   plugin and marketplace manifests
 bin/              oq (the command) and ci
 hooks/            hook configuration
-open_questions/   store (SQLite), cli (oq), server and page
+tempo/            store (SQLite), cli (oq), server and page
 skills/           the skill that teaches Claude the workflow
 tests/
 ```

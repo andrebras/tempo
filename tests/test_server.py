@@ -3,7 +3,7 @@ import json
 import threading
 from http.server import ThreadingHTTPServer
 
-from open_questions.server import make_handler
+from tempo.server import make_handler
 from tests.helpers import DatabaseTest
 
 

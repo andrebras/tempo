@@ -4,7 +4,7 @@ import sys
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
-from open_questions import cli
+from tempo import cli
 from tests.helpers import DatabaseTest
 
 

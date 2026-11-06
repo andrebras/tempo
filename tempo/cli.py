@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from open_questions.store import PRIORITIES, QuestionError, Store, connect
+from tempo.store import PRIORITIES, QuestionError, Store, connect
 
 DEFAULT_PORT = 2204
 
@@ -265,7 +265,7 @@ def run_serve(args):
             % (args.port, "" if started else " (already running)")
         )
         return 0
-    from open_questions.server import serve
+    from tempo.server import serve
 
     serve(args.port)
 
@@ -369,7 +369,7 @@ def start_server(port):
     # argument list is fixed and there is no shell, so nothing outside reaches it.
     with open(os.path.join(os.path.dirname(_db_path()), "server.log"), "a") as log:
         subprocess.Popen(  # noqa: S603
-            [sys.executable, "-m", "open_questions", "serve", "--port", str(port)],
+            [sys.executable, "-m", "tempo", "serve", "--port", str(port)],
             cwd=root,
             stdout=log,
             stderr=log,
@@ -408,7 +408,7 @@ def _port():
 
 
 def _db_path():
-    from open_questions.store import DEFAULT_DB
+    from tempo.store import DEFAULT_DB
 
     path = os.environ.get("OQ_DB") or DEFAULT_DB
     os.makedirs(os.path.dirname(path), exist_ok=True)
