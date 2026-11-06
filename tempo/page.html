@@ -524,6 +524,9 @@ function renderEmpty(shown) {
     el("p", {}, state.status === "open"
       ? "Every question here is answered. New ones appear on their own."
       : "Questions move here once they are " + state.status + "."),
+    state.status === "open" && el("div", { class: "actions" }, el("button", {
+      onclick: () => { setStatus("answered"); state.current = null; refresh(); },
+    }, "See answered questions")),
     others.length > 0 && el("p", { class: "meta" }, "Still open elsewhere:"),
     others.length > 0 && el("div", { class: "actions" }, others.map((name) => el("button", {
       onclick: () => { setStatus("open"); chooseProject(name); state.current = null; refresh(); },
