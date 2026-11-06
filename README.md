@@ -16,8 +16,15 @@ plugin, Claude saves every decision it needs from you as a self-contained questi
 on a local web page whenever it suits you, and Claude picks the answer up without you having
 to go back to the chat.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshot-light.png">
+  <img alt="The Tempo page: a list of open questions on the left, and on the right the question &quot;Where should the new Export orders button go?&quot; with its context and three lettered options, the recommended one picked." src="docs/screenshot-light.png" width="1280">
+</picture>
+
 ## Contents
 
+- [See it in action](#see-it-in-action)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -29,6 +36,14 @@ to go back to the chat.
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
+
+## See it in action
+
+![Answering on the Tempo page: an option is picked and sent, and the page moves on to the next question. There, a note is typed and "Ask for more context" is pressed; Claude rewords the question and the thread shows both steps.](docs/demo.gif)
+
+You pick an option and send it, and the page moves on to the next question. On that one, you
+ask for more context; Claude rewords the question, and the thread shows what you asked and what
+changed.
 
 ## Features
 
