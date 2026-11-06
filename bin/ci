@@ -5,6 +5,10 @@
 set -eu
 cd "$(dirname "$0")/.."
 
+# Biome lints the page's script; npx fetches this exact version on first use. Keep it
+# in step with the $schema version in biome.json.
+biome_version=2.5.15
+
 if [ ! -x .venv/bin/ruff ] || ! cmp -s requirements-dev.txt .venv/requirements-dev.txt; then
   python3 -m venv .venv
   .venv/bin/pip install --quiet --disable-pip-version-check -r requirements-dev.txt
@@ -34,5 +38,6 @@ step "Security (bandit)" .venv/bin/bandit --quiet -c pyproject.toml -r tempo
 step "Types (mypy)" .venv/bin/mypy
 step "Shell scripts (shellcheck)" shellcheck bin/tempo bin/oq bin/ci
 step "Compile" python3 -m compileall -q tempo tests
+step "Lint page script (biome)" npx --yes "@biomejs/biome@$biome_version" lint --error-on-warnings
 step "Page tests (node --test)" node --test tests/page.test.js
 step "Tests" python3 -m unittest discover -s tests -t . "$@"
