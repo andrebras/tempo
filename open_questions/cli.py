@@ -200,7 +200,7 @@ def run_reword(args):
 
 def run_priority(args):
     question = _store().set_priority(_project(args.project), args.number, args.priority)
-    print("%s is now %s." % (question["label"], question["priority"]))
+    print("%s priority: %s." % (question["label"], question["priority"]))
 
 
 def run_archive(args):
