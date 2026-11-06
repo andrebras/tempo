@@ -191,6 +191,9 @@
   .row .error { flex-basis: 100%; margin: 0; }
   .card .empty { padding: 12px 0 16px; margin: 0; border-top: 1px solid var(--line); }
 
+  @media (min-width: 761px) {
+    #list .empty.repeat { display: none; }
+  }
   @media (max-width: 760px) {
     header { padding-left: 16px; padding-right: 16px; }
     .tools { width: 100%; }
@@ -306,7 +309,9 @@ async function loadList() {
   list.replaceChildren();
   const shown = { questions, counts, projects: data.projects };
   if (!questions.length) {
-    list.append(el("p", { class: "empty" }, data.projects.length
+    // The empty screen beside the list says the same, so wide screens hide this line;
+    // a search with no match is only explained here.
+    list.append(el("p", { class: words.length ? "empty" : "empty repeat" }, data.projects.length
       ? (words.length ? "No questions match your search." : "No " + state.status + " questions in " + state.project + ".")
       : "No questions yet."));
     return shown;
