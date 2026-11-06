@@ -1,8 +1,11 @@
-# Open questions
+# Tempo
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)
 ![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)
+
+You set the tempo; Claude follows. Like a conductor, you decide, and Claude picks up your
+decisions and keeps playing.
 
 A [Claude Code](https://code.claude.com) plugin that keeps the questions Claude asks you in one
 place, with the context you need to answer them, and brings your answers back to Claude by
@@ -21,6 +24,7 @@ to go back to the chat.
 - [Usage](#usage)
 - [How it works](#how-it-works)
 - [Configuration](#configuration)
+- [Upgrading from open-questions](#upgrading-from-open-questions)
 - [Security](#security)
 - [Development](#development)
 - [Contributing](#contributing)
@@ -29,7 +33,7 @@ to go back to the chat.
 ## Features
 
 - **Self-contained questions.** Each question has a title, the full context, options written
-  out and lettered (a), (b)… and, if Claude has one, a recommendation. The `oq` command refuses
+  out and lettered (a), (b)… and, if Claude has one, a recommendation. The `tempo` command refuses
   a question without context or with fewer than two options.
 - **Stable numbers.** Questions are numbered per project (Q1, Q2…) and numbers are never
   reused, so a short answer like "12b" always means one thing.
@@ -50,15 +54,15 @@ to go back to the chat.
 ## Installation
 
 ```bash
-claude plugin marketplace add andrebras/open-questions
-claude plugin install open-questions@open-questions
+claude plugin marketplace add andrebras/tempo
+claude plugin install tempo@tempo
 ```
 
 To try it from a local checkout for one session without installing it:
 
 ```bash
-git clone https://github.com/andrebras/open-questions.git
-claude --plugin-dir ./open-questions
+git clone https://github.com/andrebras/tempo.git
+claude --plugin-dir ./tempo
 ```
 
 ## Usage
@@ -80,31 +84,31 @@ Answering in chat ("12b") still works as before.
 
 ### Commands
 
-Claude uses these through the bundled skill. You can use them too, because `oq` is on Claude
+Claude uses these through the bundled skill. You can use them too, because `tempo` is on Claude
 Code's `PATH` while the plugin is enabled.
 
 | Command | What it does |
 | --- | --- |
-| `oq add --title … --context … --option … --option …` | Add a question (`--recommended b`, `--priority now`) |
-| `oq list`, `oq show <n>` | List questions, or show one with its thread |
-| `oq context <n> "…"` | Add context to a question |
-| `oq reword <n> --note "…"` | Save a new version of a question |
-| `oq priority <n> now\|soon\|later` | Change how soon an answer is needed |
-| `oq archive` | Archive the project's answered questions |
-| `oq set-next <n>` | Continue numbering from an older list |
-| `oq inbox` | Print answers and follow-ups Claude hasn't seen yet |
-| `oq wait --timeout 1800` | Wait until you answer or follow up, then print it |
-| `oq serve [--background]` | Run the page |
+| `tempo add --title … --context … --option … --option …` | Add a question (`--recommended b`, `--priority now`) |
+| `tempo list`, `tempo show <n>` | List questions, or show one with its thread |
+| `tempo context <n> "…"` | Add context to a question |
+| `tempo reword <n> --note "…"` | Save a new version of a question |
+| `tempo priority <n> now\|soon\|later` | Change how soon an answer is needed |
+| `tempo archive` | Archive the project's answered questions |
+| `tempo set-next <n>` | Continue numbering from an older list |
+| `tempo inbox` | Print answers and follow-ups Claude hasn't seen yet |
+| `tempo wait --timeout 1800` | Wait until you answer or follow up, then print it |
+| `tempo serve [--background]` | Run the page |
 
-Run `oq <command> --help` for every option.
+Run `tempo <command> --help` for every option.
 
 ## How it works
 
 ```
- Claude ──oq add / context / reword──▶  SQLite  ◀──answer / follow-up── Page (127.0.0.1:2204)
-   ▲                                       │
-   └──── hook on your next message ────────┤
-   └──── oq wait (running in background) ──┘
+ Claude ──tempo add / context / reword──▶  SQLite  ◀──answer / follow-up── Page (127.0.0.1:2204)
+   ▲                                          │
+   └──── hook on your next message ───────────┤
+   └──── tempo wait (running in background) ──┘
 ```
 
 - **Storage**: one SQLite file holds the questions, every version of their wording, and a
@@ -114,7 +118,7 @@ Run `oq <command> --help` for every option.
 - **Hooks**: scripts Claude Code runs at set moments. `SessionStart` starts the page if it
   isn't already running. `UserPromptSubmit` adds anything new from the page to Claude's
   context before it reads your message.
-- **`oq wait`**: Claude runs it in the background while it works. It exits as soon as you send
+- **`tempo wait`**: Claude runs it in the background while it works. It exits as soon as you send
   something, which wakes Claude up.
 
 Each answer or follow-up is delivered to Claude once. Questions belong to a project, so a
@@ -124,12 +128,27 @@ session only receives answers for its own project.
 
 | Setting | Default | Change it with |
 | --- | --- | --- |
-| Database | `~/.claude/open-questions/questions.db` | `OQ_DB` |
-| Port | `2204` | `OQ_PORT` |
-| Project | The folder name of the current git repository (worktrees count as the same project) | `OQ_PROJECT` or `--project` |
-| Page log | `~/.claude/open-questions/server.log` | Lives next to the database |
+| Database | `~/.claude/tempo/questions.db` | `TEMPO_DB` |
+| Port | `2204` | `TEMPO_PORT` |
+| Project | The folder name of the current git repository (worktrees count as the same project) | `TEMPO_PROJECT` or `--project` |
+| Page log | `~/.claude/tempo/server.log` | Lives next to the database |
 
 The database sits outside the plugin folder, so it survives plugin updates and reinstalls.
+
+## Upgrading from open-questions
+
+Tempo used to be called open-questions. Nothing breaks when you upgrade:
+
+- `oq`, the old command, still works as an alias for `tempo`.
+- The old `OQ_DB`, `OQ_PORT` and `OQ_PROJECT` variables still work. If both are set, the
+  `TEMPO_` one wins.
+- If `~/.claude/tempo/questions.db` doesn't exist but `~/.claude/open-questions/questions.db`
+  does, Tempo keeps using the old file where it is, and writes the page log next to it. To
+  move to the new folder, stop the page and move the folder:
+  `mv ~/.claude/open-questions ~/.claude/tempo`.
+- Reinstall the plugin under its new name: run
+  `claude plugin uninstall open-questions@open-questions`, then the
+  [installation](#installation) commands above.
 
 ## Security
 
@@ -142,14 +161,14 @@ The database sits outside the plugin folder, so it survives plugin updates and r
   answer your questions.
 
 Please report security issues privately through
-[GitHub security advisories](https://github.com/andrebras/open-questions/security/advisories/new),
+[GitHub security advisories](https://github.com/andrebras/tempo/security/advisories/new),
 not in public issues.
 
 ## Development
 
 ```bash
-bin/ci                                # every check below, then all tests
-OQ_DB=/tmp/questions.db bin/oq serve  # run the page on a scratch database
+bin/ci                                      # every check below, then all tests
+TEMPO_DB=/tmp/questions.db bin/tempo serve  # run the page on a scratch database
 ```
 
 `bin/ci` installs the pinned tools from `requirements-dev.txt` into `.venv` on its first run.
@@ -170,9 +189,9 @@ Layout:
 
 ```
 .claude-plugin/   plugin and marketplace manifests
-bin/              oq (the command) and ci
+bin/              tempo (the command), oq (its old name) and ci
 hooks/            hook configuration
-tempo/            store (SQLite), cli (oq), server and page
+tempo/            store (SQLite), cli (tempo), server and page
 skills/           the skill that teaches Claude the workflow
 tests/
 ```
