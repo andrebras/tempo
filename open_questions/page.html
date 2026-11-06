@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open questions</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --line: #e3e1db;
+    --accent: #2f5bd3; --accent-soft: #e8eefc; --urgent: #b4361f; --urgent-soft: #fbe9e5;
+    --done: #2d7a46; --done-soft: #e5f3ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --text: #ecebe7; --muted: #9a9993; --line: #33322f;
+      --accent: #7f9ef0; --accent-soft: #232c45; --urgent: #f0866f; --urgent-soft: #3a2420;
+      --done: #7cc596; --done-soft: #1e3326;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+           padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 17px; margin: 0 auto 0 0; }
+  .tabs button, select { font: inherit; padding: 5px 11px; border: 1px solid var(--line);
+                         background: var(--panel); color: var(--text); border-radius: 6px; cursor: pointer; }
+  .tabs button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  main { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; min-height: calc(100vh - 60px); }
+  #list { border-right: 1px solid var(--line); overflow-y: auto; }
+  #list h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+             margin: 0; padding: 14px 16px 6px; }
+  #list a { display: block; padding: 10px 16px; color: inherit; text-decoration: none;
+            border-left: 3px solid transparent; }
+  #list a:hover { background: var(--accent-soft); }
+  #list a.active { background: var(--accent-soft); border-left-color: var(--accent); }
+  #list .label { font-weight: 600; margin-right: 6px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px;
+           border-radius: 10px; margin-left: 4px; vertical-align: 1px; }
+  .badge.urgent { background: var(--urgent-soft); color: var(--urgent); }
+  .badge.rec { background: var(--done-soft); color: var(--done); }
+  .badge.wait { background: var(--accent-soft); color: var(--accent); }
+  .empty { color: var(--muted); padding: 24px 16px; }
+  #detail { padding: 24px; max-width: 820px; }
+  #detail h2 { margin: 4px 0 16px; font-size: 21px; line-height: 1.35; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .context { white-space: pre-wrap; background: var(--panel); border: 1px solid var(--line);
+             border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; }
+  .options label { display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px;
+                   margin-bottom: 8px; background: var(--panel); border: 1px solid var(--line);
+                   border-radius: 8px; cursor: pointer; }
+  .options label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+  .options input { margin-top: 4px; }
+  .options .letter { font-weight: 600; }
+  textarea { width: 100%; min-height: 90px; font: inherit; padding: 10px 12px; margin: 8px 0 10px;
+             border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .actions button { font: inherit; padding: 8px 16px; border-radius: 6px; cursor: pointer;
+                    border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+  .actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .error { color: var(--urgent); margin-top: 8px; }
+  .answered { background: var(--done-soft); color: var(--done); border-radius: 8px;
+              padding: 12px 14px; margin-bottom: 16px; }
+  .thread { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .thread h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .entry { padding: 8px 0 8px 12px; border-left: 2px solid var(--line); margin-bottom: 8px; }
+  .entry.user { border-left-color: var(--accent); }
+  .entry .body { white-space: pre-wrap; }
+  main > * { min-width: 0; }
+  .context, .entry .body { overflow-wrap: anywhere; }
+  @media (max-width: 720px) {
+    main { grid-template-columns: minmax(0, 1fr); }
+    #list:empty { display: none; }
+    #list { border-right: 0; border-bottom: 1px solid var(--line); max-height: 40vh; }
+    #detail { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Open questions</h1>
+  <div class="tabs" role="group" aria-label="Status">
+    <button data-status="open" aria-pressed="true">Open</button>
+    <button data-status="answered" aria-pressed="false">Answered</button>
+    <button data-status="archived" aria-pressed="false">Archived</button>
+  </div>
+  <select id="project" aria-label="Project"><option value="">All projects</option></select>
+</header>
+<main>
+  <nav id="list"></nav>
+  <section id="detail"><p class="empty">Pick a question on the left.</p></section>
+</main>
+<script>
+const state = { status: "open", project: "", current: null, shown: null };
+const $ = (selector) => document.querySelector(selector);
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === "class") node.className = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else if (value !== false && value != null) node.setAttribute(key, value === true ? "" : value);
+  }
+  for (const child of children.flat()) {
+    if (child != null && child !== false) node.append(child instanceof Node ? child : String(child));
+  }
+  return node;
+}
+
+async function api(path, body) {
+  const response = await fetch(path, body ? {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  } : {});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Something went wrong");
+  return data;
+}
+
+function route() {
+  const match = location.hash.match(/^#\/(.+)\/(\d+)$/);
+  return match ? { project: decodeURIComponent(match[1]), number: Number(match[2]) } : null;
+}
+
+function waitingOnClaude(question) {
+  const last = question.entries[question.entries.length - 1];
+  return last && last.kind === "followup";
+}
+
+async function loadList() {
+  const params = new URLSearchParams({ status: state.status });
+  if (state.project) params.set("project", state.project);
+  const data = await api("/api/questions?" + params);
+  const select = $("#project");
+  const known = [...select.options].map((option) => option.value);
+  for (const name of data.projects) {
+    if (!known.includes(name)) select.append(el("option", { value: name }, name));
+  }
+  const list = $("#list");
+  list.replaceChildren();
+  if (!data.questions.length) {
+    list.append(el("p", { class: "empty" }, "No " + state.status + " questions."));
+    return;
+  }
+  const current = route();
+  let project = null;
+  for (const question of data.questions) {
+    if (question.project !== project) {
+      project = question.project;
+      list.append(el("h2", {}, project));
+    }
+    const active = current && current.project === question.project && current.number === question.number;
+    list.append(el("a", { href: `#/${encodeURIComponent(question.project)}/${question.number}`,
+                          class: active ? "active" : "" },
+      el("span", { class: "label" }, question.label),
+      question.title,
+      question.urgent && el("span", { class: "badge urgent" }, "urgent")));
+  }
+}
+
+async function loadDetail(force) {
+  const current = route();
+  const detail = $("#detail");
+  if (!current) {
+    state.current = null;
+    detail.replaceChildren(el("p", { class: "empty" }, "Pick a question on the left."));
+    return;
+  }
+  let question;
+  try {
+    question = await api(`/api/questions/${encodeURIComponent(current.project)}/${current.number}`);
+  } catch (error) {
+    detail.replaceChildren(el("p", { class: "error" }, error.message));
+    return;
+  }
+  const key = JSON.stringify([question.project, question.number, question.version,
+                              question.status, question.entries.length]);
+  if (!force && key === state.current) return;
+  // Keep what the user is typing when the same question refreshes underneath them.
+  const id = `${question.project}/${question.number}`;
+  const draft = state.shown === id && $("#note")
+    ? { text: $("#note").value,
+        choice: (document.querySelector("input[name=choice]:checked") || {}).value }
+    : { text: "", choice: null };
+  state.current = key;
+  state.shown = id;
+  detail.replaceChildren(renderQuestion(question, draft));
+}
+
+function renderQuestion(question, draft) {
+  const reworded = question.version > 1 ? `, reworded (version ${question.version})` : "";
+  const parts = [
+    el("div", { class: "meta" }, `${question.project} · ${question.label} · ${question.status}${reworded}`,
+       question.urgent && el("span", { class: "badge urgent" }, "urgent"),
+       waitingOnClaude(question) && el("span", { class: "badge wait" }, "waiting on Claude")),
+    el("h2", {}, question.title),
+    el("div", { class: "context" }, question.context),
+  ];
+  if (question.answer) {
+    const chosen = question.options.find((option) => option.letter === question.answer.choice);
+    const answeredVersion = question.answer.version !== question.version
+      ? ` (on version ${question.answer.version})` : "";
+    parts.push(el("div", { class: "answered" },
+      el("strong", {}, "Your answer" + answeredVersion + ": "),
+      chosen ? `(${chosen.letter}) ${chosen.text}` : "",
+      question.answer.body ? (chosen ? " · " : "") + question.answer.body : ""));
+  }
+  if (question.status !== "archived") {
+    const choice = draft.choice || (question.answer && question.answer.version === question.version
+      ? question.answer.choice : null);
+    parts.push(el("div", { class: "options", role: "radiogroup" },
+      question.options.map((option) => el("label", {},
+        el("input", { type: "radio", name: "choice", value: option.letter,
+                      checked: option.letter === choice }),
+        el("span", {}, el("span", { class: "letter" }, `(${option.letter}) `), option.text,
+           option.letter === question.recommended && el("span", { class: "badge rec" }, "recommended"))))));
+    const note = el("textarea", { id: "note",
+      placeholder: "A note with your answer, your own answer, or what you need to know more about" });
+    note.value = draft.text;
+    const error = el("p", { class: "error", hidden: true });
+    const send = (path, body) => api(`/api/questions/${encodeURIComponent(question.project)}/${question.number}/${path}`, body)
+      .then(() => { state.current = null; state.shown = null; return Promise.all([loadDetail(true), loadList()]); })
+      .catch((problem) => { error.textContent = problem.message; error.hidden = false; });
+    parts.push(note, el("div", { class: "actions" },
+      el("button", { class: "primary", onclick: () => {
+        const picked = document.querySelector("input[name=choice]:checked");
+        send("answer", { choice: picked ? picked.value : null, body: note.value });
+      } }, question.answer ? "Change answer" : "Send answer"),
+      el("button", { onclick: () => send("followup", { body: note.value }) }, "Ask for more context")), error);
+  }
+  parts.push(renderThread(question));
+  return el("article", {}, parts);
+}
+
+function renderThread(question) {
+  const describe = {
+    context: "Claude added context",
+    reword: "Claude reworded the question",
+    followup: "You asked for more",
+    answer: "You answered",
+  };
+  const entries = question.entries.map((entry) => {
+    const option = entry.choice && question.versions[entry.version - 1].options
+      .find((candidate) => candidate.letter === entry.choice);
+    const body = [option && `(${option.letter}) ${option.text}`, entry.body].filter(Boolean).join("\n");
+    return el("div", { class: "entry " + entry.author },
+      el("div", { class: "meta" }, `${describe[entry.kind]} · version ${entry.version} · ${new Date(entry.created_at).toLocaleString()}`),
+      body && el("div", { class: "body" }, body));
+  });
+  return el("section", { class: "thread" }, el("h3", {}, "Thread"),
+    el("div", { class: "meta" }, `Asked ${new Date(question.versions[0].created_at).toLocaleString()}`),
+    entries.length ? entries : el("p", { class: "meta" }, "Nothing yet."));
+}
+
+document.querySelectorAll(".tabs button").forEach((button) => button.addEventListener("click", () => {
+  state.status = button.dataset.status;
+  document.querySelectorAll(".tabs button").forEach((other) =>
+    other.setAttribute("aria-pressed", String(other === button)));
+  loadList();
+}));
+$("#project").addEventListener("change", (event) => { state.project = event.target.value; loadList(); });
+window.addEventListener("hashchange", () => { loadList(); loadDetail(true); });
+
+loadList();
+loadDetail(true);
+setInterval(() => { loadList(); loadDetail(false); }, 4000);
+</script>
+</body>
+</html>
