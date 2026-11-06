@@ -137,6 +137,7 @@
   .elsewhere .count { padding: 2px 9px; border-radius: 999px; background: var(--accent-soft);
                       color: var(--accent); font-size: .8125rem; font-weight: 600; }
   .elsewhere .chevron { color: var(--muted); }
+  .elsewhere .more { width: fit-content; margin: 12px auto 0; display: block; border: 0; background: none; box-shadow: none; padding: 4px 2px; }
 
   #detail { padding: 32px 40px 48px; }
   #detail article { max-width: 760px; margin: 0 auto; }
@@ -533,7 +534,11 @@ function renderEmpty(shown) {
     return el("div", { class: "empty-state" }, mark(), el("h2", {}, "No questions yet"),
       el("p", {}, "When Claude needs a decision from you, it shows up here."));
   }
-  const others = shown.projects.filter((name) => name !== state.project && shown.counts[name]);
+  // The busiest few only; with many projects the rest stay in the header's project menu.
+  const others = shown.projects.filter((name) => name !== state.project && shown.counts[name])
+    .sort((a, b) => shown.counts[b] - shown.counts[a]);
+  const SHOWN = 3;
+  const more = others.length - SHOWN;
   const heading = state.status === "open"
     ? `Nothing is waiting on you in ${state.project}`
     : `No ${state.status} questions in ${state.project}`;
@@ -547,11 +552,19 @@ function renderEmpty(shown) {
     }, "See answered questions →"),
     others.length > 0 && el("section", { class: "elsewhere" },
       el("h3", {}, "Still open elsewhere"),
-      el("ul", {}, others.map((name) => el("li", {}, el("button", {
+      el("ul", {}, others.slice(0, SHOWN).map((name) => el("li", {}, el("button", {
         onclick: () => { setStatus("open"); chooseProject(name); state.current = null; refresh(); },
       }, el("span", { class: "name" }, name),
         el("span", { class: "count" }, `${shown.counts[name]} open`),
-        el("span", { class: "chevron", "aria-hidden": "true" }, "›")))))));
+        el("span", { class: "chevron", "aria-hidden": "true" }, "›"))))),
+      more > 0 && el("button", { class: "link more", onclick: openProjectMenu },
+        `${more} more ${more === 1 ? "project" : "projects"} in the project menu ↑`)));
+}
+
+function openProjectMenu() {
+  const select = $("#project");
+  select.focus();
+  try { select.showPicker(); } catch { /* older browsers: focus is enough */ }
 }
 
 async function loadDetail(force) {
