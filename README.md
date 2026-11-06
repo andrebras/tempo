@@ -64,7 +64,7 @@ changed.
 
 - [Claude Code](https://code.claude.com)
 - Python 3.9 or newer (macOS ships with one as `/usr/bin/python3`)
-- Git 2.31 or newer
+- Git
 
 ## Installation
 

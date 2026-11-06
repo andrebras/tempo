@@ -1,7 +1,10 @@
 import io
 import json
 import os
+import subprocess
 import sys
+import tempfile
+import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
@@ -130,3 +133,19 @@ class CliTest(DatabaseTest):
     def test_wait_gives_up_after_the_timeout(self):
         _, out, _ = run("wait", "--timeout", "1", "--interval", "0.2")
         self.assertIn("Nothing new", out)
+
+
+class ProjectNameTest(unittest.TestCase):
+    def test_uses_the_main_checkout_folder_from_subfolders_and_worktrees(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        repo = os.path.join(tmp.name, "shop")
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run([*git, "init", "-q", repo], check=True)
+        subprocess.run([*git, "-C", repo, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+        os.makedirs(os.path.join(repo, "sub"))
+        worktree = os.path.join(tmp.name, "shop-feature")
+        subprocess.run([*git, "-C", repo, "worktree", "add", "-q", worktree], check=True)
+        for folder in [repo, os.path.join(repo, "sub"), worktree]:
+            with self.subTest(folder=folder):
+                self.assertEqual(cli.project_name(folder), "shop")
