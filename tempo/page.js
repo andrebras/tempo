@@ -39,7 +39,7 @@ function route() {
 }
 
 function priorityBadge(question) {
-  return el("span", { class: "badge " + question.priority }, question.priority);
+  return el("span", { class: `badge ${question.priority}` }, question.priority);
 }
 
 function waitingOnClaude(question) {
@@ -48,7 +48,7 @@ function waitingOnClaude(question) {
 }
 
 async function loadList() {
-  const data = await api("/api/questions?" + new URLSearchParams({ status: state.status }));
+  const data = await api(`/api/questions?${new URLSearchParams({ status: state.status })}`);
   const open = state.status === "open" ? data : await api("/api/questions?status=open");
   const current = route();
   if (current) chooseProject(current.project);
@@ -78,7 +78,7 @@ async function loadList() {
     // The empty screen beside the list says the same, so wide screens hide this line;
     // a search with no match is only explained here.
     list.append(el("p", { class: words.length ? "empty" : "empty repeat" }, data.projects.length
-      ? (words.length ? "No questions match your search." : "No " + state.status + " questions in " + state.project + ".")
+      ? (words.length ? "No questions match your search." : `No ${state.status} questions in ${state.project}.`)
       : "No questions yet."));
     return shown;
   }
@@ -95,8 +95,9 @@ async function loadList() {
 
 function setStatus(status) {
   state.status = status;
-  document.querySelectorAll(".tabs button").forEach((button) =>
-    button.setAttribute("aria-pressed", String(button.dataset.status === status)));
+  document.querySelectorAll(".tabs button").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.status === status));
+  });
 }
 
 // Settings has its own address, #/settings, and replaces the list and the question while
@@ -155,8 +156,9 @@ function renderAppearance() {
         el("div", { class: "segmented", role: "group", "aria-label": label }, choices.map(([value, name]) =>
           el("button", { "aria-pressed": String(value === current), onclick: (event) => {
             setDisplay(key, value, value === standard);
-            event.currentTarget.parentNode.querySelectorAll("button").forEach((button) =>
-              button.setAttribute("aria-pressed", String(button === event.currentTarget)));
+            event.currentTarget.parentNode.querySelectorAll("button").forEach((button) => {
+              button.setAttribute("aria-pressed", String(button === event.currentTarget));
+            });
           } }, name))));
     }));
 }
@@ -293,7 +295,7 @@ function renderEmpty(shown) {
     el("h2", {}, heading),
     el("p", {}, state.status === "open"
       ? "Every question here is answered. New ones appear on their own."
-      : "Questions move here once they are " + state.status + "."),
+      : `Questions move here once they are ${state.status}.`),
     state.status === "open" && el("button", {
       class: "link", onclick: () => { setStatus("answered"); state.current = null; refresh(); },
     }, "See answered questions →"),
@@ -332,7 +334,7 @@ async function loadDetail(force) {
   const id = `${question.project}/${question.number}`;
   const draft = state.shown === id && $("#note")
     ? { text: $("#note").value,
-        choice: (document.querySelector("input[name=choice]:checked") || {}).value }
+        choice: document.querySelector("input[name=choice]:checked")?.value }
     : { text: "", choice: null };
   state.current = key;
   state.shown = id;
@@ -355,7 +357,7 @@ function renderQuestion(question, draft) {
     const answeredVersion = question.answer.version !== question.version
       ? ` (on version ${question.answer.version})` : "";
     parts.push(el("div", { class: "answered" },
-      el("strong", {}, (reopened ? "Your previous answer" : "Your answer") + answeredVersion + ": "),
+      el("strong", {}, `${reopened ? "Your previous answer" : "Your answer"}${answeredVersion}: `),
       chosen ? `(${chosen.letter}) ${chosen.text}` : "",
       question.answer.body ? (chosen ? " · " : "") + question.answer.body : ""));
   }
@@ -409,7 +411,7 @@ async function goToNextOpen(answered) {
   // After an answer, move on to the next open question in the same project.
   state.current = null;
   state.shown = null;
-  const data = await api("/api/questions?status=open&project=" + encodeURIComponent(answered.project));
+  const data = await api(`/api/questions?status=open&project=${encodeURIComponent(answered.project)}`);
   const next = data.questions.find((q) => q.number !== answered.number);
   if (next) {
     location.hash = `#/${encodeURIComponent(next.project)}/${next.number}`;
@@ -431,11 +433,18 @@ function rich(text) {
     for (const line of block.split("\n").filter((candidate) => candidate.trim())) {
       const kind = kinds.find(([, pattern]) => pattern.test(line));
       if (kind) {
-        if (!open || open.tagName.toLowerCase() !== kind[0]) holder.append(open = el(kind[0]));
+        if (open?.tagName.toLowerCase() !== kind[0]) {
+          open = el(kind[0]);
+          holder.append(open);
+        }
         open.append(el("li", {}, inline(line.replace(kind[1], ""))));
       } else {
-        if (!open || open.tagName !== "P") holder.append(open = el("p"));
-        else open.append(el("br"));
+        if (open?.tagName !== "P") {
+          open = el("p");
+          holder.append(open);
+        } else {
+          open.append(el("br"));
+        }
         open.append(...inline(line));
       }
     }
@@ -469,7 +478,7 @@ function renderThread(question) {
     const option = entry.choice && question.versions[entry.version - 1].options
       .find((candidate) => candidate.letter === entry.choice);
     const body = [option && `(${option.letter}) ${option.text}`, entry.body].filter(Boolean).join("\n");
-    return el("div", { class: "entry " + entry.author },
+    return el("div", { class: `entry ${entry.author}` },
       el("div", { class: "meta" }, `${describe[entry.kind]} · version ${entry.version} · ${new Date(entry.created_at).toLocaleString()}`),
       body && el("div", { class: "body" }, rich(body)));
   });
@@ -482,12 +491,14 @@ function renderThread(question) {
 // Wires up the page. Node loads this file only to test rich() and inline(), so it
 // exports them instead of starting.
 function start() {
-  document.querySelectorAll(".tabs button").forEach((button) => button.addEventListener("click", () => {
-    setStatus(button.dataset.status);
-    state.current = null;
-    if (settingsOpen()) history.replaceState(null, "", location.pathname);
-    refresh();
-  }));
+  for (const button of document.querySelectorAll(".tabs button")) {
+    button.addEventListener("click", () => {
+      setStatus(button.dataset.status);
+      state.current = null;
+      if (settingsOpen()) history.replaceState(null, "", location.pathname);
+      refresh();
+    });
+  }
   $("#gear").addEventListener("click", () => {
     if (settingsOpen()) return closeSettings();
     state.back = location.hash;
