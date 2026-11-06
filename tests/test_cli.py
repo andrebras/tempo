@@ -56,6 +56,13 @@ class CliTest(DatabaseTest):
             _, out, _ = run("hook", "user-prompt-submit", stdin="{}")
         self.assertEqual(out, "")
 
+    def test_user_prompt_hook_uses_the_project_override(self):
+        self.add(project="ONZE HQ")
+        self.store.follow_up("ONZE HQ", 1, "Why?")
+        with mock.patch.dict("os.environ", {"OQ_PROJECT": "ONZE HQ"}):
+            _, out, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/onzehq"}))
+        self.assertIn("ONZE HQ Q1", out)
+
     def test_follow_ups_come_with_instructions(self):
         self.add()
         self.store.follow_up("demo", 1, "What is left?")

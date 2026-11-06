@@ -237,7 +237,7 @@ def run_hook(args):
     if args.event == "session-start":
         start_server(args.port)
         return 0
-    text = take_inbox(project_name(cwd))
+    text = take_inbox(os.environ.get("OQ_PROJECT") or project_name(cwd))
     if text:
         print(
             json.dumps(
