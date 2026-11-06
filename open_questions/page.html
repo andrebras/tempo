@@ -26,7 +26,14 @@
   .tabs button, select { font: inherit; padding: 5px 11px; border: 1px solid var(--line);
                          background: var(--panel); color: var(--text); border-radius: 6px; cursor: pointer; }
   .tabs button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-  main { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; min-height: calc(100vh - 60px); }
+  #projects { display: flex; gap: 6px; overflow-x: auto; padding: 10px 16px;
+              border-bottom: 1px solid var(--line); background: var(--panel); }
+  #projects button { font: inherit; font-weight: 600; white-space: nowrap; padding: 6px 12px;
+                     border: 1px solid var(--line); border-radius: 18px; background: var(--bg);
+                     color: var(--text); cursor: pointer; }
+  #projects button[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #projects .count { font-weight: 400; opacity: .75; margin-left: 4px; }
+  main { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; min-height: calc(100vh - 110px); }
   #list { border-right: 1px solid var(--line); overflow-y: auto; }
   #list h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
              margin: 0; padding: 14px 16px 6px; }
@@ -59,6 +66,7 @@
   .actions { display: flex; flex-wrap: wrap; gap: 10px; }
   .actions button { font: inherit; padding: 8px 16px; border-radius: 6px; cursor: pointer;
                     border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+  .actions button:disabled { opacity: .5; cursor: progress; }
   .actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .error { color: var(--alert); margin-top: 8px; }
   .answered { background: var(--done-soft); color: var(--done); border-radius: 8px;
@@ -86,14 +94,24 @@
     <button data-status="answered" aria-pressed="false">Answered</button>
     <button data-status="archived" aria-pressed="false">Archived</button>
   </div>
-  <select id="project" aria-label="Project"><option value="">All projects</option></select>
 </header>
+<nav id="projects" aria-label="Projects"></nav>
 <main>
   <nav id="list"></nav>
   <section id="detail"><p class="empty">Pick a question on the left.</p></section>
 </main>
 <script>
-const state = { status: "open", project: "", current: null, shown: null };
+const state = { status: "open", project: storedProject(), current: null, shown: null };
+
+// The page shows one project at a time and remembers the last one per browser.
+function storedProject() {
+  try { return localStorage.getItem("project") || ""; } catch { return ""; }
+}
+
+function chooseProject(name) {
+  state.project = name;
+  try { localStorage.setItem("project", name); } catch { /* private window: just don't remember */ }
+}
 const $ = (selector) => document.querySelector(selector);
 
 function el(tag, attrs = {}, ...children) {
@@ -133,27 +151,37 @@ function waitingOnClaude(question) {
 }
 
 async function loadList() {
-  const params = new URLSearchParams({ status: state.status });
-  if (state.project) params.set("project", state.project);
-  const data = await api("/api/questions?" + params);
-  const select = $("#project");
-  const known = [...select.options].map((option) => option.value);
-  for (const name of data.projects) {
-    if (!known.includes(name)) select.append(el("option", { value: name }, name));
+  const data = await api("/api/questions?" + new URLSearchParams({ status: state.status }));
+  const open = state.status === "open" ? data : await api("/api/questions?status=open");
+  const current = route();
+  if (current) chooseProject(current.project);
+  if (!data.projects.includes(state.project)) {
+    // Start with a project that needs something now, else the first one.
+    const urgent = open.questions.find((q) => q.priority === "now");
+    chooseProject(urgent ? urgent.project : (data.projects[0] || ""));
   }
+  const counts = {};
+  for (const q of open.questions) counts[q.project] = (counts[q.project] || 0) + 1;
+  $("#projects").replaceChildren(...data.projects.map((name) => el("button", {
+    "aria-current": String(name === state.project),
+    onclick: () => {
+      if (name === state.project) return;
+      chooseProject(name);
+      history.replaceState(null, "", location.pathname);
+      state.current = null;
+      loadList();
+      loadDetail(true);
+    } }, name, el("span", { class: "count" }, counts[name] || 0))));
+  const questions = data.questions.filter((q) => q.project === state.project);
   const list = $("#list");
   list.replaceChildren();
-  if (!data.questions.length) {
-    list.append(el("p", { class: "empty" }, "No " + state.status + " questions."));
+  if (!questions.length) {
+    list.append(el("p", { class: "empty" }, data.projects.length
+      ? "No " + state.status + " questions in " + state.project + "."
+      : "No questions yet."));
     return;
   }
-  const current = route();
-  let project = null;
-  for (const question of data.questions) {
-    if (question.project !== project) {
-      project = question.project;
-      list.append(el("h2", {}, project));
-    }
+  for (const question of questions) {
     const active = current && current.project === question.project && current.number === question.number;
     list.append(el("a", { href: `#/${encodeURIComponent(question.project)}/${question.number}`,
                           class: active ? "active" : "" },
@@ -214,8 +242,18 @@ function renderQuestion(question, draft) {
       question.answer.body ? (chosen ? " · " : "") + question.answer.body : ""));
   }
   const error = el("p", { class: "error", hidden: true });
-  const post = (path, body) => api(`/api/questions/${encodeURIComponent(question.project)}/${question.number}/${path}`, body)
-    .catch((problem) => { error.textContent = problem.message; error.hidden = false; throw problem; });
+  // Buttons stay disabled while a request runs, so a double click can't send twice.
+  const post = (path, body) => {
+    const buttons = [...document.querySelectorAll("#detail .actions button")];
+    buttons.forEach((button) => { button.disabled = true; });
+    return api(`/api/questions/${encodeURIComponent(question.project)}/${question.number}/${path}`, body)
+      .catch((problem) => {
+        buttons.forEach((button) => { button.disabled = false; });
+        error.textContent = problem.message;
+        error.hidden = false;
+        throw problem;
+      });
+  };
   const refresh = () => { state.current = null; state.shown = null; return Promise.all([loadDetail(true), loadList()]); };
   if (question.status === "answered") {
     // Answered questions are read-only; reopening is a deliberate step, so an old tab
@@ -246,18 +284,17 @@ function renderQuestion(question, draft) {
 }
 
 async function goToNextOpen(answered) {
-  // After an answer, move on to the next open question: same project first, then any.
+  // After an answer, move on to the next open question in the same project.
   state.current = null;
   state.shown = null;
-  const data = await api("/api/questions?status=open");
-  const others = data.questions.filter((q) => !(q.project === answered.project && q.number === answered.number));
-  const next = others.find((q) => q.project === answered.project) || others[0];
+  const data = await api("/api/questions?status=open&project=" + encodeURIComponent(answered.project));
+  const next = data.questions.find((q) => q.number !== answered.number);
   if (next) {
     location.hash = `#/${encodeURIComponent(next.project)}/${next.number}`;
   } else {
     history.replaceState(null, "", location.pathname);
     await loadList();
-    $("#detail").replaceChildren(el("p", { class: "empty" }, "All questions answered. Nice work."));
+    $("#detail").replaceChildren(el("p", { class: "empty" }, "All questions in " + answered.project + " answered. Nice work."));
   }
 }
 
@@ -287,7 +324,6 @@ document.querySelectorAll(".tabs button").forEach((button) => button.addEventLis
     other.setAttribute("aria-pressed", String(other === button)));
   loadList();
 }));
-$("#project").addEventListener("change", (event) => { state.project = event.target.value; loadList(); });
 window.addEventListener("hashchange", () => { loadList(); loadDetail(true); });
 
 loadList();
