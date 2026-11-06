@@ -328,10 +328,17 @@ class Store:
         if status and status != "all":
             sql += " AND q.status = ?"
             params.append(status)
-        sql += (
-            " ORDER BY q.project,"
-            " CASE q.priority WHEN 'now' THEN 0 WHEN 'soon' THEN 1 ELSE 2 END, q.number"
-        )
+        if status in ("answered", "archived"):
+            # Newest decision first, so the latest answer is at the top of the list.
+            sql += (
+                " ORDER BY q.project, (SELECT MAX(created_at) FROM entries"
+                " WHERE question_id = q.id AND kind = 'answer') DESC, q.number DESC"
+            )
+        else:
+            sql += (
+                " ORDER BY q.project,"
+                " CASE q.priority WHEN 'now' THEN 0 WHEN 'soon' THEN 1 ELSE 2 END, q.number"
+            )
         rows = []
         for row in self.db.execute(sql, params):
             item = _question_dict(row)
