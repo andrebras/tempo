@@ -1,0 +1,6 @@
+#!/bin/sh
+# Local CI: check that every file compiles, then run every test.
+set -e
+cd "$(dirname "$0")/.."
+python3 -m compileall -q open_questions tests
+python3 -m unittest discover -s tests -t . "$@"
