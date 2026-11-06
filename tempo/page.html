@@ -710,7 +710,7 @@ function inline(text) {
   let last = 0;
   for (const match of text.matchAll(pattern)) {
     parts.push(text.slice(last, match.index));
-    if (match[1]) parts.push(el("strong", {}, match[1]));
+    if (match[1]) parts.push(el("strong", {}, inline(match[1])));
     else if (match[2]) parts.push(el("code", {}, match[2]));
     else parts.push(el("a", { href: match[3], target: "_blank", rel: "noopener noreferrer" }, match[3]));
     last = match.index + match[0].length;
