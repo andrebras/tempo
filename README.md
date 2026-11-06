@@ -79,6 +79,8 @@ On the page you can:
   an explanation or rewords the question, sending a subagent to research it if needed. The
   thread shows what changed.
 - **Change an answer** later, as long as the question isn't archived.
+- **Change settings** with the gear button: the page's look, project names, and which project
+  each folder belongs to. See [Settings](#settings).
 
 Answering in chat ("12b") still works as before.
 
@@ -130,10 +132,25 @@ session only receives answers for its own project.
 | --- | --- | --- |
 | Database | `~/.claude/tempo/questions.db` | `TEMPO_DB` |
 | Port | `2204` | `TEMPO_PORT` |
-| Project | The folder name of the current git repository (worktrees count as the same project) | `TEMPO_PROJECT` or `--project` |
+| Project | The project chosen for the current git repository's folder in Settings, else the folder name (worktrees count as the same folder) | `TEMPO_PROJECT` or `--project`, which win over Settings |
 | Page log | `~/.claude/tempo/server.log` | Lives next to the database |
 
 The database sits outside the plugin folder, so it survives plugin updates and reinstalls.
+
+### Settings
+
+The gear button at the top right of the page opens Settings:
+
+- **Appearance**: theme (System, Light or Dark), font (System sans, Serif or Monospace) and
+  text size. These are kept in your browser, not in the database.
+- **Projects**: give a project a readable name, for example `onzehq` → "ONZE HQ". Its
+  questions, their numbers and its folders move to the new name. A project can't take the
+  name of another project that already has questions, because both would have a Q1.
+- **Folders**: every git folder a Claude session ran in, and the project its questions go
+  to. Put several folders in one project to share its questions and numbering.
+
+Projects and folders are saved in the database, so every session, the hooks and the `tempo`
+command use them.
 
 ## Upgrading from open-questions
 
