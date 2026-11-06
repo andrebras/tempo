@@ -138,8 +138,8 @@ class Store:
     ):
         note = _required(note, "note (why it was reworded)")
         question = self._find(project, number)
-        if question["status"] != "open":
-            raise QuestionError("Only open questions can be reworded")
+        if question["status"] == "archived":
+            raise QuestionError("Archived questions cannot be reworded")
         current = self._current_version(question["id"])
         options = _letter(options) if options is not None else json.loads(current["options"])
         if recommended is None and options is not None:
@@ -157,6 +157,9 @@ class Store:
                 recommended,
             )
             self._insert_entry(question, "reword", "claude", note, version=version)
+            # A reword after an answer means the answer asked for more, so the question
+            # is open again until the user answers the new version.
+            self.db.execute("UPDATE questions SET status = 'open' WHERE id = ?", (question["id"],))
         return self.get(project, number)
 
     def set_urgent(self, project, number, urgent):

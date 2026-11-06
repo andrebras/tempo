@@ -70,9 +70,17 @@ class ThreadTest(DatabaseTest):
             self.store.answer("demo", 1, None, "  ")
         self.assertEqual(self.store.answer("demo", 1, None, "Neither")["status"], "answered")
 
-    def test_only_open_questions_can_be_reworded(self):
+    def test_rewording_an_answered_question_opens_it_again(self):
+        self.add()
+        self.store.answer("demo", 1, None, "Give me more options")
+        question = self.store.reword("demo", 1, "More options", options=["Up", "Down", "Left"])
+        self.assertEqual(question["status"], "open")
+        self.assertEqual(question["answer"]["version"], 1)
+
+    def test_archived_questions_cannot_be_reworded(self):
         self.add()
         self.store.answer("demo", 1, "a")
+        self.store.archive_answered("demo")
         with self.assertRaises(QuestionError):
             self.store.reword("demo", 1, "Too late", title="New")
 

@@ -53,7 +53,9 @@ Each item is delivered once. `oq inbox` prints anything not yet delivered.
 ## Handling an answer
 
 Act on it, and tell the user in chat what you did with it. If the answer is free text that
-doesn't match an option, follow it; ask again only if it is truly unclear.
+doesn't match an option, follow it; ask again only if it is truly unclear. If the answer asks
+for more instead of deciding ("give me more options"), reword the question: that opens it
+again for a new answer.
 
 ## Handling a follow-up ("ask for more context")
 
