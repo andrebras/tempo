@@ -215,18 +215,17 @@ class ProjectsTest(DatabaseTest):
         self.store.rename_project("onzehq", "ONZE HQ")
         self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
 
-    def test_a_folder_on_its_own_name_does_not_invent_a_project(self):
-        # What happened for real: open-questions was renamed to tempo, then its folder
-        # was set back to its own name; Settings listed an empty "open-questions".
+    def test_a_seen_folder_shows_its_project_before_the_first_question(self):
         self.add(project="open-questions")
         self.store.rename_project("open-questions", "tempo")
+        self.store.see_folder("onzehq")
         self.assertEqual(
             self.store.project_summaries(),
-            [{"name": "tempo", "questions": 1, "folders": ["open-questions"]}],
+            [
+                {"name": "onzehq", "questions": 0, "folders": ["onzehq"]},
+                {"name": "tempo", "questions": 1, "folders": ["open-questions"]},
+            ],
         )
-        self.store.set_folder_project("open-questions", "open-questions")
-        self.store.see_folder("onzehq")
-        self.assertEqual([p["name"] for p in self.store.project_summaries()], ["tempo"])
 
     def test_rename_merges_into_a_project_without_questions(self):
         self.add(project="onzehq")

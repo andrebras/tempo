@@ -42,6 +42,11 @@ class ServerTest(DatabaseTest):
         status, data = self.request("GET", "/api/questions?status=open")
         self.assertEqual(json.loads(data)["questions"][0]["label"], "Q1")
 
+    def test_the_list_names_projects_without_questions_yet(self):
+        self.store.see_folder("onzehq")
+        status, data = self.request("GET", "/api/questions?status=open")
+        self.assertEqual(json.loads(data)["projects"], ["demo", "onzehq"])
+
     def test_answers_a_question(self):
         status, data = self.request(
             "POST", "/api/questions/demo/1/answer", {"choice": "a", "body": ""}
