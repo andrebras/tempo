@@ -78,7 +78,7 @@ class CliTest(DatabaseTest):
         self.store.follow_up("demo", 1, "What is left?")
         _, out, _ = run("inbox")
         self.assertIn("asks for more: What is left?", out)
-        self.assertIn("oq reword", out)
+        self.assertIn("tempo reword", out)
 
     def test_wait_returns_as_soon_as_something_arrives(self):
         self.add()

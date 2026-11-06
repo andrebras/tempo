@@ -4,7 +4,7 @@ A question belongs to a project and has a running number that is never reused.
 Its wording lives in versions (a reword adds a version, old ones stay). Everything
 that happens to it afterwards (added context, rewords, follow-ups, answers) is an
 entry in its thread. Entries written by the user start undelivered; the hook and
-`oq wait` hand them to Claude and mark them delivered.
+`tempo wait` hand them to Claude and mark them delivered.
 """
 
 import json

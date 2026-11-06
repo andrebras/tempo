@@ -1,4 +1,4 @@
-"""The `oq` command: how Claude adds, rewords and reads questions, and how hooks
+"""The `tempo` command: how Claude adds, rewords and reads questions, and how hooks
 hand the user's answers back to Claude."""
 
 import argparse
@@ -22,7 +22,7 @@ def main(argv=None):
     try:
         return args.run(args) or 0
     except QuestionError as error:
-        print("oq: %s" % error, file=sys.stderr)
+        print("tempo: %s" % error, file=sys.stderr)
         return 2
     finally:
         while _opened:
@@ -31,7 +31,7 @@ def main(argv=None):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        prog="oq", description="Open questions between you and Claude, kept in SQLite."
+        prog="tempo", description="Open questions between you and Claude, kept in SQLite."
     )
     commands = parser.add_subparsers(dest="command")
 
@@ -301,8 +301,8 @@ def _take_inbox(store, project):
         lines.append(line)
     if any(entry["kind"] == "followup" for entry in entries):
         lines.append(
-            "For each follow-up, add context (`oq context`) or reword the question"
-            " (`oq reword`); use a subagent when it needs research."
+            "For each follow-up, add context (`tempo context`) or reword the question"
+            " (`tempo reword`); use a subagent when it needs research."
         )
     store.mark_delivered([entry["id"] for entry in entries])
     return "\n".join(lines)

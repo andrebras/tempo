@@ -1,4 +1,3 @@
 #!/bin/sh
-# Runs the oq command from this checkout with whichever python3 is installed.
-root="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m tempo "$@"
+# The command's old name, kept for sessions that still call oq. Runs bin/tempo.
+exec "$(dirname "$0")/tempo" "$@"
