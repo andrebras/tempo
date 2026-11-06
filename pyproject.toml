@@ -28,3 +28,13 @@ exclude_dirs = ["tests", ".venv"]
 # subprocess runs only fixed argument lists with no shell (git, and this package's
 # own server). Ruff's S603/S607 still flag each call, with a reason at the line.
 skips = ["B404", "B603", "B607"]
+
+[tool.mypy]
+# Checks the shipped code against the oldest Python Tempo supports; tests are not typed.
+files = ["tempo"]
+python_version = "3.9"
+disallow_untyped_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true

@@ -1,6 +1,8 @@
 """The `tempo` command: how Claude adds, rewords and reads questions, and how hooks
 hand the user's answers back to Claude."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -8,13 +10,23 @@ import re
 import subprocess
 import sys
 import time
+from typing import Any
 
-from tempo.store import PRIORITIES, QuestionError, Store, connect, db_path, setting
+from tempo.store import (
+    PRIORITIES,
+    Entry,
+    Question,
+    QuestionError,
+    Store,
+    connect,
+    db_path,
+    setting,
+)
 
 DEFAULT_PORT = 2204
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
@@ -30,7 +42,7 @@ def main(argv=None):
             _opened.pop().db.close()
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tempo", description="Open questions between you and Claude, kept in SQLite."
     )
@@ -138,7 +150,7 @@ def build_parser():
 # Commands
 
 
-def run_add(args):
+def run_add(args: argparse.Namespace) -> None:
     question = _store().add(
         _project(args.project, record=True),
         args.title,
@@ -154,12 +166,12 @@ def run_add(args):
         print("Added %s in %s: %s" % (question["label"], question["project"], _url(question)))
 
 
-def run_show(args):
+def run_show(args: argparse.Namespace) -> None:
     question = _store().get(_project(args.project), args.number)
     print(json.dumps(question, indent=2) if args.json else format_question(question))
 
 
-def run_list(args):
+def run_list(args: argparse.Namespace) -> None:
     project = None if args.all_projects else _project(args.project)
     questions = _store().list(project, args.status)
     if args.json:
@@ -181,12 +193,12 @@ def run_list(args):
         )
 
 
-def run_context(args):
+def run_context(args: argparse.Namespace) -> None:
     question = _store().add_context(_project(args.project), args.number, args.body)
     print("Added context to %s." % question["label"])
 
 
-def run_reword(args):
+def run_reword(args: argparse.Namespace) -> None:
     question = _store().reword(
         _project(args.project),
         args.number,
@@ -199,28 +211,28 @@ def run_reword(args):
     print("%s is now at version %d." % (question["label"], question["version"]))
 
 
-def run_priority(args):
+def run_priority(args: argparse.Namespace) -> None:
     question = _store().set_priority(_project(args.project), args.number, args.priority)
     print("%s priority: %s." % (question["label"], question["priority"]))
 
 
-def run_archive(args):
+def run_archive(args: argparse.Namespace) -> None:
     count = _store().archive_answered(_project(args.project))
     print("Archived %d answered question(s)." % count)
 
 
-def run_set_next(args):
+def run_set_next(args: argparse.Namespace) -> None:
     project = _project(args.project)
     _store().set_next(project, args.number)
     print("The next question in %s will be Q%d." % (project, args.number))
 
 
-def run_inbox(args):
+def run_inbox(args: argparse.Namespace) -> None:
     text = take_inbox(None if args.all_projects else _project(args.project))
     print(text or "Nothing new from the user.")
 
 
-def run_wait(args):
+def run_wait(args: argparse.Namespace) -> int:
     project = None if args.all_projects else _project(args.project)
     deadline = time.time() + args.timeout if args.timeout else None
     while True:
@@ -234,7 +246,7 @@ def run_wait(args):
         time.sleep(args.interval)
 
 
-def run_hook(args):
+def run_hook(args: argparse.Namespace) -> int:
     try:
         payload = json.load(sys.stdin)
     except ValueError:
@@ -259,7 +271,7 @@ def run_hook(args):
     return 0
 
 
-def session_note(project, port):
+def session_note(project: str, port: int) -> str:
     """What every session is told at its start, so questions go through Tempo even when
     the skill isn't picked and nothing about Tempo is in CLAUDE.md."""
     link = "http://127.0.0.1:%d/" % port
@@ -286,7 +298,7 @@ OPTION = re.compile(r"(?:^|\s)\(([a-e])\)\s", re.MULTILINE)
 TEMPO_LINK = re.compile(r"127\.0\.0\.1:\d+/#/|\btempo (?:add|reword)\b")
 
 
-def unrecorded_options(payload):
+def unrecorded_options(payload: dict[str, Any]) -> str | None:
     """Why the reply that just ended must not stop yet, or None.
 
     A reply that offers lettered options without a Tempo link or a `tempo add` is a
@@ -309,9 +321,9 @@ def unrecorded_options(payload):
     return None
 
 
-def _last_reply(path):
+def _last_reply(path: str) -> str:
     """Everything Claude wrote and ran since the user's last message, as one text."""
-    parts = []
+    parts: list[str] = []
     with open(path, encoding="utf-8") as transcript:
         for line in transcript:
             entry = json.loads(line)
@@ -327,13 +339,13 @@ def _last_reply(path):
     return "\n".join(parts)
 
 
-def _tool_results(content):
+def _tool_results(content: Any) -> bool:
     return isinstance(content, list) and all(
         isinstance(block, dict) and block.get("type") == "tool_result" for block in content
     )
 
 
-def run_serve(args):
+def run_serve(args: argparse.Namespace) -> int | None:
     if args.background:
         started = start_server(args.port)
         print(
@@ -344,18 +356,19 @@ def run_serve(args):
     from tempo.server import serve
 
     serve(args.port)
+    return None
 
 
 # Shared
 
 
-def take_inbox(project):
+def take_inbox(project: str | None) -> str:
     """Return the user's undelivered answers and follow-ups as text, marking them seen."""
     with Store(connect()) as store:
         return _take_inbox(store, project)
 
 
-def _take_inbox(store, project):
+def _take_inbox(store: Store, project: str | None) -> str:
     entries = store.undelivered(project)
     if not entries:
         return ""
@@ -384,8 +397,8 @@ def _take_inbox(store, project):
     return "\n".join(lines)
 
 
-def _describe_answer(question, entry):
-    parts = []
+def _describe_answer(question: Question, entry: Entry) -> str:
+    parts: list[str] = []
     if entry["choice"]:
         version = question["versions"][entry["version"] - 1]
         option = next(o for o in version["options"] if o["letter"] == entry["choice"])
@@ -395,7 +408,7 @@ def _describe_answer(question, entry):
     return " / ".join(parts)
 
 
-def format_question(question):
+def format_question(question: Question) -> str:
     lines = [
         "%s %s (%s, version %d)%s"
         % (
@@ -432,7 +445,7 @@ def format_question(question):
     return "\n".join(lines)
 
 
-def start_server(port):
+def start_server(port: int) -> bool:
     """Start the page in the background unless something already listens on the port."""
     import socket
 
@@ -455,7 +468,7 @@ def start_server(port):
     return True
 
 
-def project_name(cwd, record=False):
+def project_name(cwd: str, record: bool = False) -> str:
     """The project a folder is filed under, named after the folder until renamed.
 
     With record, the folder is remembered, so its project shows in Settings.
@@ -467,7 +480,7 @@ def project_name(cwd, record=False):
         return store.project_for(folder)
 
 
-def folder_name(cwd):
+def folder_name(cwd: str) -> str:
     """The git repo's top folder name (the main checkout, not a worktree)."""
     try:
         # git is looked up on PATH on purpose; the arguments are fixed.
@@ -485,35 +498,35 @@ def folder_name(cwd):
         return os.path.basename(os.path.abspath(cwd))
 
 
-def _project(value, record=False):
+def _project(value: str | None, record: bool = False) -> str:
     return value or setting("PROJECT") or project_name(os.getcwd(), record)
 
 
-def _number(value):
+def _number(value: str) -> int:
     return int(value.upper().lstrip("Q"))
 
 
-def _port():
+def _port() -> int:
     return int(setting("PORT") or DEFAULT_PORT)
 
 
-def _db_path():
+def _db_path() -> str:
     path = db_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     return path
 
 
-_opened = []
+_opened: list[Store] = []
 
 
-def _store():
+def _store() -> Store:
     """Open the store; main() closes every store opened while running a command."""
     store = Store(connect())
     _opened.append(store)
     return store
 
 
-def _url(question):
+def _url(question: Question) -> str:
     from urllib.parse import quote
 
     return "http://127.0.0.1:%d/#/%s/%d" % (_port(), quote(question["project"]), question["number"])

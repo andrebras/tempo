@@ -14,6 +14,7 @@ All notable changes to Tempo are listed here. The format follows
 - A Release workflow that tags each new version and publishes its changelog section as a
   GitHub release.
 - Weekly Dependabot pull requests for GitHub Actions and the development tools.
+- Type hints on every function in `tempo/`, checked by mypy in CI.
 
 ## [0.3.1] - 2026-11-06
 
