@@ -366,8 +366,9 @@ class Store:
         ]
 
     def project_summaries(self):
-        """Every project with its question count and folders, including projects that
-        only exist as a folder's choice so far."""
+        """Every project with its question count and folders: projects that have
+        questions or a numbering, and names a folder was explicitly put in. A folder that
+        only falls back to its own name doesn't make a project of its own."""
         counts = {
             row["name"]: row["questions"]
             for row in self.db.execute(
@@ -376,11 +377,14 @@ class Store:
             )
         }
         folders = {}
+        chosen = set()
         for folder in self.folders():
             folders.setdefault(folder["project"], []).append(folder["folder"])
+            if folder["chosen"]:
+                chosen.add(folder["project"])
         return [
             {"name": name, "questions": counts.get(name, 0), "folders": folders.get(name, [])}
-            for name in sorted(set(counts) | set(folders), key=str.lower)
+            for name in sorted(set(counts) | chosen, key=str.lower)
         ]
 
     def rename_project(self, old, new):
