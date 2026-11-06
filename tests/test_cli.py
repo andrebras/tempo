@@ -187,7 +187,8 @@ class ProjectNameTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         repo = os.path.join(tmp.name, "shop")
-        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+        # No signing: the test must not depend on how the developer signs commits.
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
         subprocess.run([*git, "init", "-q", repo], check=True)
         subprocess.run([*git, "-C", repo, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
         os.makedirs(os.path.join(repo, "sub"))
