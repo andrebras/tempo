@@ -37,6 +37,10 @@ The command prints the number and a link. In chat, give the question in full wit
 and the link, so the user can answer in either place. `tempo add` refuses incomplete questions
 and reused numbers: fix the question, don't work around the check.
 
+Every choice you leave to the user goes into Tempo, however small, including the ones that
+sneak into a list of next steps ("say whether you want X", "tell me if Y"). A question that
+lives only in chat is easy to miss and never reaches the page.
+
 To continue numbering from an older list, run `tempo set-next <number>` once before the first add.
 
 ## Getting answers back
