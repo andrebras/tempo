@@ -2,3 +2,5 @@
 ruff==0.8.4
 # The toml extra lets Bandit read pyproject.toml on Python versions before 3.11.
 bandit[toml]==1.8.0
+# Type checker; 1.19 is the last release that still installs on Python 3.9.
+mypy==1.19.1
