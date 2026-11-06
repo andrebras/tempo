@@ -1,0 +1,28 @@
+[project]
+name = "tempo"
+version = "0.1.0"
+description = "Claude Code plugin: the questions Claude asks you, in SQLite with a local page to answer them"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, bugbear, pyupgrade, simplify, flake8-bandit, ruff's own
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "S", "RUF"]
+# The code uses %-formatting throughout: Python 3.9 f-strings cannot reuse the
+# outer quote, which makes them awkward with question["key"] lookups.
+ignore = ["UP031"]
+
+[tool.ruff.lint.per-file-ignores]
+# The security rules are for the shipped code, not the tests.
+"tests/*" = ["S"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+# subprocess runs only fixed argument lists with no shell (git, and this package's
+# own server). Ruff's S603/S607 still flag each call, with a reason at the line.
+skips = ["B404", "B603", "B607"]

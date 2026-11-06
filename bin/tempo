@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs the tempo command from this checkout with whichever python3 is installed.
+root="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m tempo "$@"
