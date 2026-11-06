@@ -484,7 +484,7 @@ def folder_name(cwd: str) -> str:
     """The git repo's top folder name (the main checkout, not a worktree)."""
     try:
         # git is looked up on PATH on purpose; the arguments are fixed.
-        common = subprocess.run(  # noqa: S603
+        common = subprocess.run(
             ["git", "rev-parse", "--git-common-dir"],  # noqa: S607
             cwd=cwd,
             capture_output=True,
