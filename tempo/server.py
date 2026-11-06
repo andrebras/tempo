@@ -1,4 +1,4 @@
-"""The open questions page and its small JSON API, on 127.0.0.1 only.
+"""The Tempo page and its small JSON API, on 127.0.0.1 only.
 
 Any website open in the browser could send requests to a localhost port, so
 every request must name this server as its Host, and writes must be JSON from
@@ -21,7 +21,7 @@ def make_handler(port):
     allowed_origins = {"http://" + host for host in allowed_hosts}
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "open-questions"
+        server_version = "tempo"
 
         def do_GET(self):
             if not self._trusted(write=False):
@@ -115,7 +115,7 @@ def make_handler(port):
 
 def serve(port):
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(port))
-    print("Open questions on http://127.0.0.1:%d/" % port, flush=True)
+    print("Tempo on http://127.0.0.1:%d/" % port, flush=True)
     with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()
 

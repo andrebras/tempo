@@ -283,7 +283,7 @@ def _take_inbox(store, project):
     entries = store.undelivered(project)
     if not entries:
         return ""
-    lines = ["New from the user on the open questions page (http://127.0.0.1:%d/):" % _port()]
+    lines = ["New from the user on the Tempo page (http://127.0.0.1:%d/):" % _port()]
     for entry in entries:
         question = store.get(entry["project"], entry["number"])
         version = question["versions"][entry["version"] - 1]

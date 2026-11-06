@@ -38,7 +38,7 @@ class ServerTest(DatabaseTest):
     def test_serves_the_page_and_the_list(self):
         status, page = self.request("GET", "/")
         self.assertEqual(status, 200)
-        self.assertIn(b"<title>Open questions</title>", page)
+        self.assertIn(b"<title>Tempo</title>", page)
         status, data = self.request("GET", "/api/questions?status=open")
         self.assertEqual(json.loads(data)["questions"][0]["label"], "Q1")
 
