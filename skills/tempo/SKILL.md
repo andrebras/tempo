@@ -11,7 +11,10 @@ Each question has a running number per project (Q1, Q2…) that is never reused,
 answer anywhere with a short code like "12b".
 
 The `tempo` command is on your PATH (`oq`, its old name, still works as an alias). The project
-defaults to the current git repo's name.
+defaults to the one the user chose for the current git repo's folder in the page's Settings,
+else the folder name. Use the name `tempo add` prints, which may differ from the folder name
+(for example "ONZE HQ" for `onzehq`). Don't pass `--project` unless asked: the user can rename
+projects at any time.
 
 ## Asking a question
 
