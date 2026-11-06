@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from open_questions.store import QuestionError, Store, connect
+from open_questions.store import PRIORITIES, QuestionError, Store, connect
 
 DEFAULT_PORT = 2204
 
@@ -47,7 +47,12 @@ def build_parser():
         help="One option, written out; repeat for each (lettered a, b, c...)",
     )
     add.add_argument("--recommended", help="Letter of the option Claude recommends")
-    add.add_argument("--urgent", action="store_true")
+    add.add_argument(
+        "--priority",
+        default="soon",
+        choices=PRIORITIES,
+        help="now: work waits on it; soon: needed this week (default); later: no rush",
+    )
     add.add_argument("--number", type=int, help="Use this number (must be the next free or higher)")
     add.add_argument("--json", action="store_true")
     add.set_defaults(run=run_add)
@@ -83,11 +88,11 @@ def build_parser():
     reword.add_argument("--project")
     reword.set_defaults(run=run_reword)
 
-    urgent = commands.add_parser("urgent", help="Mark a question urgent (or not)")
-    urgent.add_argument("number", type=_number)
-    urgent.add_argument("--off", action="store_true")
-    urgent.add_argument("--project")
-    urgent.set_defaults(run=run_urgent)
+    priority = commands.add_parser("priority", help="Change how soon an answer is needed")
+    priority.add_argument("number", type=_number)
+    priority.add_argument("priority", choices=PRIORITIES)
+    priority.add_argument("--project")
+    priority.set_defaults(run=run_priority)
 
     archive = commands.add_parser("archive", help="Archive a project's answered questions")
     archive.add_argument("--project")
@@ -139,7 +144,7 @@ def run_add(args):
         args.context,
         args.options,
         recommended=args.recommended,
-        urgent=args.urgent,
+        priority=args.priority,
         number=args.number,
     )
     if args.json:
@@ -163,13 +168,13 @@ def run_list(args):
         print("No %s questions." % args.status)
     for question in questions:
         print(
-            "%s%s %s [%s]%s %s"
+            "%s%s %s [%s] %s %s"
             % (
                 "" if project else question["project"] + " ",
                 question["label"],
                 question["status"],
                 "v%d" % question["version"],
-                " URGENT" if question["urgent"] else "",
+                question["priority"],
                 question["title"],
             )
         )
@@ -193,9 +198,9 @@ def run_reword(args):
     print("%s is now at version %d." % (question["label"], question["version"]))
 
 
-def run_urgent(args):
-    question = _store().set_urgent(_project(args.project), args.number, not args.off)
-    print("%s is %surgent." % (question["label"], "" if question["urgent"] else "not "))
+def run_priority(args):
+    question = _store().set_priority(_project(args.project), args.number, args.priority)
+    print("%s is now %s." % (question["label"], question["priority"]))
 
 
 def run_archive(args):
@@ -311,7 +316,7 @@ def format_question(question):
             question["label"],
             question["status"],
             question["version"],
-            ", urgent" if question["urgent"] else "",
+            ", " + question["priority"],
         ),
         question["title"],
         "",

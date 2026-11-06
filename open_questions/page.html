@@ -7,13 +7,13 @@
 <style>
   :root {
     --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --line: #e3e1db;
-    --accent: #2f5bd3; --accent-soft: #e8eefc; --urgent: #b4361f; --urgent-soft: #fbe9e5;
+    --accent: #2f5bd3; --accent-soft: #e8eefc; --alert: #b4361f; --alert-soft: #fbe9e5;
     --done: #2d7a46; --done-soft: #e5f3ea;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #161615; --panel: #1f1f1d; --text: #ecebe7; --muted: #9a9993; --line: #33322f;
-      --accent: #7f9ef0; --accent-soft: #232c45; --urgent: #f0866f; --urgent-soft: #3a2420;
+      --accent: #7f9ef0; --accent-soft: #232c45; --alert: #f0866f; --alert-soft: #3a2420;
       --done: #7cc596; --done-soft: #1e3326;
     }
   }
@@ -37,7 +37,9 @@
   #list .label { font-weight: 600; margin-right: 6px; }
   .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px;
            border-radius: 10px; margin-left: 4px; vertical-align: 1px; }
-  .badge.urgent { background: var(--urgent-soft); color: var(--urgent); }
+  .badge.now { background: var(--alert-soft); color: var(--alert); }
+  .badge.soon { background: var(--accent-soft); color: var(--accent); }
+  .badge.later { background: var(--line); color: var(--muted); }
   .badge.rec { background: var(--done-soft); color: var(--done); }
   .badge.wait { background: var(--accent-soft); color: var(--accent); }
   .empty { color: var(--muted); padding: 24px 16px; }
@@ -58,7 +60,7 @@
   .actions button { font: inherit; padding: 8px 16px; border-radius: 6px; cursor: pointer;
                     border: 1px solid var(--line); background: var(--panel); color: var(--text); }
   .actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .error { color: var(--urgent); margin-top: 8px; }
+  .error { color: var(--alert); margin-top: 8px; }
   .answered { background: var(--done-soft); color: var(--done); border-radius: 8px;
               padding: 12px 14px; margin-bottom: 16px; }
   .thread { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 12px; }
@@ -121,6 +123,10 @@ function route() {
   return match ? { project: decodeURIComponent(match[1]), number: Number(match[2]) } : null;
 }
 
+function priorityBadge(question) {
+  return el("span", { class: "badge " + question.priority }, question.priority);
+}
+
 function waitingOnClaude(question) {
   const last = question.entries[question.entries.length - 1];
   return last && last.kind === "followup";
@@ -153,7 +159,7 @@ async function loadList() {
                           class: active ? "active" : "" },
       el("span", { class: "label" }, question.label),
       question.title,
-      question.urgent && el("span", { class: "badge urgent" }, "urgent")));
+      priorityBadge(question)));
   }
 }
 
@@ -190,7 +196,7 @@ function renderQuestion(question, draft) {
   const reworded = question.version > 1 ? `, reworded (version ${question.version})` : "";
   const parts = [
     el("div", { class: "meta" }, `${question.project} · ${question.label} · ${question.status}${reworded}`,
-       question.urgent && el("span", { class: "badge urgent" }, "urgent"),
+       priorityBadge(question),
        waitingOnClaude(question) && el("span", { class: "badge wait" }, "waiting on Claude")),
     el("h2", {}, question.title),
     el("div", { class: "context" }, question.context),

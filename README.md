@@ -85,11 +85,11 @@ Code's `PATH` while the plugin is enabled.
 
 | Command | What it does |
 | --- | --- |
-| `oq add --title … --context … --option … --option …` | Add a question (`--recommended b`, `--urgent`) |
+| `oq add --title … --context … --option … --option …` | Add a question (`--recommended b`, `--priority now`) |
 | `oq list`, `oq show <n>` | List questions, or show one with its thread |
 | `oq context <n> "…"` | Add context to a question |
 | `oq reword <n> --note "…"` | Save a new version of a question |
-| `oq urgent <n>` | Mark a question urgent (`--off` to undo) |
+| `oq priority <n> now\|soon\|later` | Change how soon an answer is needed |
 | `oq archive` | Archive the project's answered questions |
 | `oq set-next <n>` | Continue numbering from an older list |
 | `oq inbox` | Print answers and follow-ups Claude hasn't seen yet |

@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS questions (
   project TEXT NOT NULL REFERENCES projects(name),
   number INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'answered', 'archived')),
-  urgent INTEGER NOT NULL DEFAULT 0,
+  priority TEXT NOT NULL DEFAULT 'soon' CHECK (priority IN ('now', 'soon', 'later')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (project, number)
@@ -56,6 +56,11 @@ CREATE INDEX IF NOT EXISTS entries_undelivered ON entries (delivered_at) WHERE d
 """
 
 
+# How soon Claude needs the answer, in sort order: work is waiting on it, needed this
+# week, no rush.
+PRIORITIES = ("now", "soon", "later")
+
+
 class QuestionError(ValueError):
     """Raised when a request breaks the question format or rules."""
 
@@ -73,7 +78,20 @@ def connect(path=None):
     db.execute("PRAGMA journal_mode = WAL")
     db.execute("PRAGMA foreign_keys = ON")
     db.executescript(SCHEMA)
+    _migrate(db)
     return db
+
+
+def _migrate(db):
+    """Bring databases created by older versions up to the current schema."""
+    columns = [row["name"] for row in db.execute("PRAGMA table_info(questions)")]
+    if "priority" not in columns:
+        # The first version had an urgent flag; it became the 'now' priority.
+        db.execute(
+            "ALTER TABLE questions ADD COLUMN priority TEXT NOT NULL DEFAULT 'soon'"
+            " CHECK (priority IN ('now', 'soon', 'later'))"
+        )
+        db.execute("UPDATE questions SET priority = 'now' WHERE urgent = 1")
 
 
 class Store:
@@ -88,12 +106,13 @@ class Store:
 
     # Writing, by Claude
 
-    def add(self, project, title, context, options, recommended=None, urgent=False, number=None):
+    def add(self, project, title, context, options, recommended=None, priority="soon", number=None):
         project = _required(project, "project")
         title = _required(title, "title")
         context = _required(context, "context")
         options = _letter(options)
         recommended = _recommended(recommended, options)
+        priority = _priority(priority)
         with self._transaction():
             self.db.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", (project,))
             next_number = self._next_number(project)
@@ -106,9 +125,9 @@ class Store:
                 )
             stamp = now()
             cursor = self.db.execute(
-                "INSERT INTO questions (project, number, urgent, created_at, updated_at)"
+                "INSERT INTO questions (project, number, priority, created_at, updated_at)"
                 " VALUES (?, ?, ?, ?, ?)",
-                (project, number, int(bool(urgent)), stamp, stamp),
+                (project, number, priority, stamp, stamp),
             )
             self._insert_version(cursor.lastrowid, 1, title, context, options, recommended)
             self.db.execute(
@@ -162,11 +181,12 @@ class Store:
             self.db.execute("UPDATE questions SET status = 'open' WHERE id = ?", (question["id"],))
         return self.get(project, number)
 
-    def set_urgent(self, project, number, urgent):
+    def set_priority(self, project, number, priority):
+        priority = _priority(priority)
         question = self._find(project, number)
         self.db.execute(
-            "UPDATE questions SET urgent = ?, updated_at = ? WHERE id = ?",
-            (int(bool(urgent)), now(), question["id"]),
+            "UPDATE questions SET priority = ?, updated_at = ? WHERE id = ?",
+            (priority, now(), question["id"]),
         )
         return self.get(project, number)
 
@@ -247,7 +267,10 @@ class Store:
         if status and status != "all":
             sql += " AND q.status = ?"
             params.append(status)
-        sql += " ORDER BY q.project, q.urgent DESC, q.number"
+        sql += (
+            " ORDER BY q.project,"
+            " CASE q.priority WHEN 'now' THEN 0 WHEN 'soon' THEN 1 ELSE 2 END, q.number"
+        )
         rows = []
         for row in self.db.execute(sql, params):
             item = _question_dict(row)
@@ -369,6 +392,13 @@ def _letter(options):
     ]
 
 
+def _priority(priority):
+    priority = (priority or "").strip().lower()
+    if priority not in PRIORITIES:
+        raise QuestionError("Priority must be one of: %s" % ", ".join(PRIORITIES))
+    return priority
+
+
 def _recommended(recommended, options):
     if not recommended:
         return None
@@ -384,7 +414,7 @@ def _question_dict(row):
         "number": row["number"],
         "label": "Q%d" % row["number"],
         "status": row["status"],
-        "urgent": bool(row["urgent"]),
+        "priority": row["priority"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

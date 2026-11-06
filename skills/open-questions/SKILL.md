@@ -21,7 +21,8 @@ Write it so someone with no context can answer it cold:
   every acronym and technical term. Short sentences.
 - `--option`: one per option, written out in full; they are lettered (a), (b)… in order.
 - `--recommended`: the letter you recommend, if any. Say why in the context.
-- `--urgent`: only when it blocks work right now.
+- `--priority`: how soon you need the answer. `now`: work is waiting on it. `soon` (the
+  default): needed this week. `later`: no rush. The page sorts by it, then by number.
 
 ```bash
 oq add --title "Where should the export button go?" \
@@ -73,5 +74,5 @@ was updated, with its link.
 ## Other commands
 
 - `oq list` (`--status answered|archived|all`, `--all-projects`) and `oq show <number>`.
-- `oq urgent <number>` / `oq urgent <number> --off`.
+- `oq priority <number> now|soon|later` when the need changes.
 - `oq archive`: archive the project's answered questions once nothing is open.

@@ -1,4 +1,7 @@
-from open_questions.store import QuestionError
+import os
+import sqlite3
+
+from open_questions.store import SCHEMA, QuestionError, Store, connect
 from tests.helpers import DatabaseTest
 
 
@@ -102,10 +105,38 @@ class ThreadTest(DatabaseTest):
 
 
 class ListTest(DatabaseTest):
-    def test_lists_urgent_first_within_a_project(self):
-        self.add(title="Calm")
-        self.add(title="Hurry", urgent=True)
-        self.assertEqual([q["title"] for q in self.store.list("demo")], ["Hurry", "Calm"])
+    def test_lists_by_priority_then_number_within_a_project(self):
+        self.add(title="Calm", priority="later")
+        self.add(title="Normal")
+        self.add(title="Hurry", priority="now")
+        self.assertEqual([q["title"] for q in self.store.list("demo")], ["Hurry", "Normal", "Calm"])
+
+    def test_priority_must_be_a_known_level(self):
+        with self.assertRaises(QuestionError):
+            self.add(priority="urgent")
+        self.add()
+        self.assertEqual(self.store.set_priority("demo", 1, "LATER")["priority"], "later")
+
+    def test_upgrades_a_database_that_still_has_the_urgent_flag(self):
+        path = os.path.join(self.tmp.name, "old.db")
+        old = sqlite3.connect(path)
+        old.executescript(
+            SCHEMA.replace(
+                "priority TEXT NOT NULL DEFAULT 'soon'"
+                " CHECK (priority IN ('now', 'soon', 'later'))",
+                "urgent INTEGER NOT NULL DEFAULT 0",
+            )
+        )
+        old.execute("INSERT INTO projects (name) VALUES ('demo')")
+        old.execute(
+            "INSERT INTO questions (project, number, urgent, created_at, updated_at)"
+            " VALUES ('demo', 1, 1, 'x', 'x'), ('demo', 2, 0, 'x', 'x')"
+        )
+        old.commit()
+        old.close()
+        with Store(connect(path)) as store:
+            rows = store.db.execute("SELECT number, priority FROM questions ORDER BY number")
+            self.assertEqual([tuple(row) for row in rows], [(1, "now"), (2, "soon")])
 
     def test_archive_moves_only_answered_questions(self):
         self.add()
