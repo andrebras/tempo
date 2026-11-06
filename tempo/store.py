@@ -290,7 +290,7 @@ class Store:
 
     def list(self, project=None, status="open"):
         sql = (
-            "SELECT q.*, v.title, v.version FROM questions q"
+            "SELECT q.*, v.title, v.context, v.version FROM questions q"
             " JOIN versions v ON v.question_id = q.id"
             " AND v.version = (SELECT MAX(version) FROM versions WHERE question_id = q.id)"
             " WHERE 1 = 1"
@@ -310,6 +310,7 @@ class Store:
         for row in self.db.execute(sql, params):
             item = _question_dict(row)
             item["title"] = row["title"]
+            item["context"] = row["context"]
             item["version"] = row["version"]
             rows.append(item)
         return rows

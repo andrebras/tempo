@@ -58,8 +58,10 @@ Each item is delivered once. `tempo inbox` prints anything not yet delivered.
 
 ## Handling an answer
 
-Act on it, and tell the user in chat what you did with it. If the answer is free text that
-doesn't match an option, follow it; ask again only if it is truly unclear. If the answer asks
+Act on it, and tell the user in chat what you did with it. On the page an answer always
+picks an option (a note may come with it); a note on its own arrives as a follow-up. Answers
+given with `tempo` or in chat can still be free text: follow them, and ask again only if
+truly unclear. If the answer asks
 for more instead of deciding ("give me more options"), reword the question: that opens it
 again for a new answer.
 

@@ -35,7 +35,10 @@
   #projects button[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   #projects .count { font-weight: 400; opacity: .75; margin-left: 4px; }
   main { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; min-height: calc(100vh - 110px); }
-  #list { border-right: 1px solid var(--line); overflow-y: auto; }
+  #side { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
+  #search { font: inherit; margin: 12px 16px 4px; padding: 7px 10px; border: 1px solid var(--line);
+            border-radius: 6px; background: var(--panel); color: var(--text); }
+  #list { overflow-y: auto; }
   #list h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
              margin: 0; padding: 14px 16px 6px; }
   #list a { display: block; padding: 10px 16px; color: inherit; text-decoration: none;
@@ -51,6 +54,9 @@
   .badge.rec { background: var(--done-soft); color: var(--done); }
   .badge.wait { background: var(--accent-soft); color: var(--accent); }
   .empty { color: var(--muted); padding: 24px 16px; }
+  .empty-state { padding: 48px 8px; max-width: 520px; }
+  .empty-state h2 { margin: 0 0 8px; }
+  .empty-state p { color: var(--muted); }
   #detail { padding: 24px; max-width: 820px; }
   #detail h2 { margin: 4px 0 16px; font-size: 21px; line-height: 1.35; }
   .meta { color: var(--muted); font-size: 13px; }
@@ -81,8 +87,8 @@
   .context, .entry .body { overflow-wrap: anywhere; }
   @media (max-width: 720px) {
     main { grid-template-columns: minmax(0, 1fr); }
-    #list:empty { display: none; }
-    #list { border-right: 0; border-bottom: 1px solid var(--line); max-height: 40vh; }
+    #side { border-right: 0; border-bottom: 1px solid var(--line); }
+    #list { max-height: 40vh; }
     #detail { padding: 16px; }
   }
 </style>
@@ -98,7 +104,10 @@
 </header>
 <nav id="projects" aria-label="Projects"></nav>
 <main>
-  <nav id="list"></nav>
+  <div id="side">
+    <input id="search" type="search" placeholder="Search questions" aria-label="Search questions">
+    <nav id="list"></nav>
+  </div>
   <section id="detail"><p class="empty">Pick a question on the left.</p></section>
 </main>
 <script>
@@ -170,17 +179,20 @@ async function loadList() {
       chooseProject(name);
       history.replaceState(null, "", location.pathname);
       state.current = null;
-      loadList();
-      loadDetail(true);
+      refresh();
     } }, name, el("span", { class: "count" }, counts[name] || 0))));
-  const questions = data.questions.filter((q) => q.project === state.project);
+  const words = $("#search").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = (q) => words.every((word) =>
+    `${q.label} ${q.title} ${q.context}`.toLowerCase().includes(word));
+  const questions = data.questions.filter((q) => q.project === state.project && matches(q));
   const list = $("#list");
   list.replaceChildren();
+  const shown = { questions, counts, projects: data.projects };
   if (!questions.length) {
     list.append(el("p", { class: "empty" }, data.projects.length
-      ? "No " + state.status + " questions in " + state.project + "."
+      ? (words.length ? "No questions match your search." : "No " + state.status + " questions in " + state.project + ".")
       : "No questions yet."));
-    return;
+    return shown;
   }
   for (const question of questions) {
     const active = current && current.project === question.project && current.number === question.number;
@@ -190,17 +202,74 @@ async function loadList() {
       question.title,
       priorityBadge(question)));
   }
+  return shown;
+}
+
+function setStatus(status) {
+  state.status = status;
+  document.querySelectorAll(".tabs button").forEach((button) =>
+    button.setAttribute("aria-pressed", String(button.dataset.status === status)));
+}
+
+// Draws the list and the question on the right. The question shown must belong to the
+// selected project and tab: otherwise the first one in the list opens, or, when the list
+// is empty, an empty screen. 'follow' means the address changed on purpose (a link or a
+// click), so the tab switches to match the question instead of dropping it.
+async function refresh(follow = false) {
+  let current = route();
+  if (current && follow) {
+    try {
+      const question = await api(`/api/questions/${encodeURIComponent(current.project)}/${current.number}`);
+      if (question.status !== state.status) setStatus(question.status);
+    } catch { /* a missing question is reported by loadDetail */ }
+  }
+  const shown = await loadList();
+  current = route();
+  const visible = (q) => current && q.project === current.project && q.number === current.number;
+  if (current && !shown.questions.some(visible)) {
+    history.replaceState(null, "", location.pathname);
+    current = null;
+  }
+  if (!current && shown.questions.length) {
+    const first = shown.questions[0];
+    history.replaceState(null, "", `#/${encodeURIComponent(first.project)}/${first.number}`);
+    state.current = null;
+    await loadList();
+    current = route();
+  }
+  if (!current) {
+    state.current = null;
+    state.shown = null;
+    $("#detail").replaceChildren(renderEmpty(shown));
+    return;
+  }
+  await loadDetail(follow);
+}
+
+function renderEmpty(shown) {
+  if (!shown.projects.length) {
+    return el("div", { class: "empty-state" }, el("h2", {}, "No questions yet"),
+      el("p", {}, "When Claude needs a decision from you, it shows up here."));
+  }
+  const others = shown.projects.filter((name) => name !== state.project && shown.counts[name]);
+  const heading = state.status === "open"
+    ? `Nothing is waiting on you in ${state.project}`
+    : `No ${state.status} questions in ${state.project}`;
+  return el("div", { class: "empty-state" },
+    el("h2", {}, heading),
+    el("p", {}, state.status === "open"
+      ? "Every question here is answered. New ones appear on their own."
+      : "Questions move here once they are " + state.status + "."),
+    others.length && el("p", { class: "meta" }, "Still open elsewhere:"),
+    others.length && el("div", { class: "actions" }, others.map((name) => el("button", {
+      onclick: () => { setStatus("open"); chooseProject(name); state.current = null; refresh(); },
+    }, `${name} (${shown.counts[name]})`))));
 }
 
 async function loadDetail(force) {
   const current = route();
   const detail = $("#detail");
-  if (!current) {
-    if (!force) return;
-    state.current = null;
-    detail.replaceChildren(el("p", { class: "empty" }, "Pick a question on the left."));
-    return;
-  }
+  if (!current) return;
   let question;
   try {
     question = await api(`/api/questions/${encodeURIComponent(current.project)}/${current.number}`);
@@ -250,6 +319,7 @@ function renderQuestion(question, draft) {
     return api(`/api/questions/${encodeURIComponent(question.project)}/${question.number}/${path}`, body)
       .catch((problem) => {
         buttons.forEach((button) => { button.disabled = false; });
+        if ($("#send")) $("#send").disabled = !document.querySelector("input[name=choice]:checked");
         error.textContent = problem.message;
         error.hidden = false;
         throw problem;
@@ -269,16 +339,18 @@ function renderQuestion(question, draft) {
         el("span", {}, el("span", { class: "letter" }, `(${option.letter}) `), option.text,
            option.letter === question.recommended && el("span", { class: "badge rec" }, "recommended"))))));
     const note = el("textarea", { id: "note",
-      placeholder: "A note with your answer, your own answer, or what you need to know more about" });
+      placeholder: "A note with your answer, or what you need to know more about" });
     note.value = draft.text;
     parts.push(note, el("div", { class: "actions" },
-      el("button", { class: "primary", onclick: () => {
+      el("button", { class: "primary", id: "send", disabled: !draft.choice, onclick: () => {
         const picked = document.querySelector("input[name=choice]:checked");
         post("answer", { choice: picked ? picked.value : null, body: note.value })
           .then(() => goToNextOpen(question), () => {});
       } }, reopened ? "Send new answer" : "Send answer"),
       el("button", { onclick: () => post("followup", { body: note.value }).then(refresh, () => {}) },
-        "Ask for more context")), error);
+        "Ask for more context")),
+      el("p", { class: "meta" }, "Pick an option to answer. To send only a note, use Ask for more context: the question stays open."),
+      error);
   }
   parts.push(renderThread(question));
   return el("article", {}, parts);
@@ -294,8 +366,7 @@ async function goToNextOpen(answered) {
     location.hash = `#/${encodeURIComponent(next.project)}/${next.number}`;
   } else {
     history.replaceState(null, "", location.pathname);
-    await loadList();
-    $("#detail").replaceChildren(el("p", { class: "empty" }, "All questions in " + answered.project + " answered. Nice work."));
+    await refresh();
   }
 }
 
@@ -320,16 +391,19 @@ function renderThread(question) {
 }
 
 document.querySelectorAll(".tabs button").forEach((button) => button.addEventListener("click", () => {
-  state.status = button.dataset.status;
-  document.querySelectorAll(".tabs button").forEach((other) =>
-    other.setAttribute("aria-pressed", String(other === button)));
-  loadList();
+  setStatus(button.dataset.status);
+  state.current = null;
+  refresh();
 }));
-window.addEventListener("hashchange", () => { loadList(); loadDetail(true); });
+window.addEventListener("hashchange", () => refresh(true));
+// Answering needs a picked option; a note alone goes through "Ask for more context".
+$("#detail").addEventListener("change", (event) => {
+  if (event.target.name === "choice" && $("#send")) $("#send").disabled = false;
+});
+$("#search").addEventListener("input", () => refresh());
 
-loadList();
-loadDetail(true);
-setInterval(() => { loadList(); loadDetail(false); }, 4000);
+refresh(true);
+setInterval(() => refresh(false), 4000);
 </script>
 </body>
 </html>
