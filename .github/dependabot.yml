@@ -1,0 +1,19 @@
+# Checks once a week for newer GitHub Actions and development tools, and groups each kind
+# into a single pull request so updates arrive as few PRs as possible.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      dev-tools:
+        patterns: ["*"]
