@@ -119,6 +119,24 @@
   .empty-state h2 { margin: 12px 0 6px; font-size: 1.375rem; letter-spacing: -.01em; }
   .empty-state p { color: var(--muted); margin: 0 0 16px; }
   .empty-state .actions { justify-content: center; }
+  .empty-state .link { border: 0; background: none; padding: 4px 2px; color: var(--accent);
+                       font-weight: 600; }
+  .empty-state .link:hover { color: var(--accent-strong); text-decoration: underline;
+                             text-underline-offset: 3px; }
+  .elsewhere { margin: 32px auto 0; padding-top: 22px; border-top: 1px solid var(--line);
+               max-width: 360px; text-align: left; }
+  .elsewhere h3 { margin: 0 0 10px; font-size: .75rem; font-weight: 600; letter-spacing: .08em;
+                  text-transform: uppercase; color: var(--muted); text-align: center; }
+  .elsewhere ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .elsewhere button { width: 100%; display: flex; align-items: center; gap: 10px;
+                      padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px;
+                      background: var(--panel); box-shadow: var(--shadow); text-align: left; }
+  .elsewhere button:hover { border-color: var(--accent); }
+  .elsewhere .name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden;
+                     text-overflow: ellipsis; white-space: nowrap; }
+  .elsewhere .count { padding: 2px 9px; border-radius: 999px; background: var(--accent-soft);
+                      color: var(--accent); font-size: .8125rem; font-weight: 600; }
+  .elsewhere .chevron { color: var(--muted); }
 
   #detail { padding: 32px 40px 48px; }
   #detail article { max-width: 760px; margin: 0 auto; }
@@ -524,13 +542,16 @@ function renderEmpty(shown) {
     el("p", {}, state.status === "open"
       ? "Every question here is answered. New ones appear on their own."
       : "Questions move here once they are " + state.status + "."),
-    state.status === "open" && el("div", { class: "actions" }, el("button", {
-      onclick: () => { setStatus("answered"); state.current = null; refresh(); },
-    }, "See answered questions")),
-    others.length > 0 && el("p", { class: "meta" }, "Still open elsewhere:"),
-    others.length > 0 && el("div", { class: "actions" }, others.map((name) => el("button", {
-      onclick: () => { setStatus("open"); chooseProject(name); state.current = null; refresh(); },
-    }, `${name} (${shown.counts[name]})`))));
+    state.status === "open" && el("button", {
+      class: "link", onclick: () => { setStatus("answered"); state.current = null; refresh(); },
+    }, "See answered questions →"),
+    others.length > 0 && el("section", { class: "elsewhere" },
+      el("h3", {}, "Still open elsewhere"),
+      el("ul", {}, others.map((name) => el("li", {}, el("button", {
+        onclick: () => { setStatus("open"); chooseProject(name); state.current = null; refresh(); },
+      }, el("span", { class: "name" }, name),
+        el("span", { class: "count" }, `${shown.counts[name]} open`),
+        el("span", { class: "chevron", "aria-hidden": "true" }, "›")))))));
 }
 
 async function loadDetail(force) {
