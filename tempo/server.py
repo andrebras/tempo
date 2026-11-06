@@ -50,21 +50,31 @@ def make_handler(port):
                 )
             elif len(parts) == 4 and parts[:2] == ["api", "questions"]:
                 self._handle(lambda: store.get(parts[2], _int(parts[3])))
+            elif parts == ["api", "settings"]:
+                self._json(200, _settings(store))
             else:
                 self._json(404, {"error": "Not found"})
 
         def _post(self, store):
             parts = _parts(urlparse(self.path).path)
-            if len(parts) != 5 or parts[:2] != ["api", "questions"]:
-                self._json(404, {"error": "Not found"})
-                return
             try:
                 length = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(length) or b"{}")
             except ValueError:
                 self._json(400, {"error": "Invalid JSON"})
                 return
-            project, number, action = parts[2], parts[3], parts[4]
+            if len(parts) == 5 and parts[:2] == ["api", "questions"]:
+                self._question_action(store, parts[2], parts[3], parts[4], body)
+            elif len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "rename":
+                self._save_setting(store, lambda: store.rename_project(parts[2], body.get("name")))
+            elif len(parts) == 3 and parts[:2] == ["api", "folders"]:
+                self._save_setting(
+                    store, lambda: store.set_folder_project(parts[2], body.get("project"))
+                )
+            else:
+                self._json(404, {"error": "Not found"})
+
+        def _question_action(self, store, project, number, action, body):
             if action == "answer":
                 self._handle(
                     lambda: store.answer(
@@ -77,6 +87,15 @@ def make_handler(port):
                 self._handle(lambda: store.reopen(project, _int(number)))
             else:
                 self._json(404, {"error": "Not found"})
+
+        def _save_setting(self, store, change):
+            """Make a change from Settings and answer with the new Settings state."""
+
+            def run():
+                change()
+                return _settings(store)
+
+            self._handle(run)
 
         def log_message(self, format, *args):
             pass
@@ -118,6 +137,11 @@ def serve(port):
     print("Tempo on http://127.0.0.1:%d/" % port, flush=True)
     with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()
+
+
+def _settings(store):
+    """What the Settings screen shows: projects with their folders, and every folder seen."""
+    return {"projects": store.project_summaries(), "folders": store.folders()}
 
 
 def _parts(path):

@@ -64,6 +64,31 @@ class ServerTest(DatabaseTest):
         status, _ = self.request("POST", "/api/questions/demo/abc/answer", {"choice": "a"})
         self.assertEqual(status, 400)
 
+    def test_reads_and_saves_settings(self):
+        self.store.see_folder("onzehq")
+        status, data = self.request("GET", "/api/settings")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)["folders"][0]["project"], "onzehq")
+        status, data = self.request("POST", "/api/folders/onzehq", {"project": "demo"})
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            json.loads(data)["projects"],
+            [{"name": "demo", "questions": 1, "folders": ["onzehq"]}],
+        )
+        status, data = self.request("POST", "/api/projects/demo/rename", {"name": "ONZE HQ"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)["projects"][0]["name"], "ONZE HQ")
+        self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
+        self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
+
+    def test_reports_settings_errors(self):
+        self.add(project="other")
+        status, data = self.request("POST", "/api/projects/demo/rename", {"name": "other"})
+        self.assertEqual(status, 400)
+        self.assertIn("already has questions", json.loads(data)["error"])
+        status, _ = self.request("POST", "/api/folders/unknown", {"project": "demo"})
+        self.assertEqual(status, 400)
+
     def test_refuses_other_hosts(self):
         status, _ = self.request("GET", "/api/questions", host="evil.example:%d" % self.port)
         self.assertEqual(status, 403)
@@ -84,3 +109,15 @@ class ServerTest(DatabaseTest):
                 )
                 self.assertEqual(status, 403)
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
+    def test_refuses_settings_writes_from_other_sites(self):
+        self.store.see_folder("onzehq")
+        for path, body in [
+            ("/api/projects/demo/rename", {"name": "Hijacked"}),
+            ("/api/folders/onzehq", {"project": "Hijacked"}),
+        ]:
+            with self.subTest(path=path):
+                status, _ = self.request("POST", path, body, origin="https://evil.example")
+                self.assertEqual(status, 403)
+        self.assertEqual(self.store.projects(), ["demo"])
+        self.assertEqual(self.store.project_for("onzehq"), "onzehq")
