@@ -479,29 +479,36 @@ function renderThread(question) {
       entries));
 }
 
-document.querySelectorAll(".tabs button").forEach((button) => button.addEventListener("click", () => {
-  setStatus(button.dataset.status);
-  state.current = null;
-  if (settingsOpen()) history.replaceState(null, "", location.pathname);
-  refresh();
-}));
-$("#gear").addEventListener("click", () => {
-  if (settingsOpen()) return closeSettings();
-  state.back = location.hash;
-  location.hash = "#/settings";
-});
-window.addEventListener("hashchange", () => refresh(true));
-// Answering needs a picked option; a note alone goes through "Ask for more context".
-$("#detail").addEventListener("change", (event) => {
-  if (event.target.name === "choice" && $("#send")) $("#send").disabled = false;
-});
-$("#search").addEventListener("input", () => refresh());
-$("#project").addEventListener("change", (event) => {
-  chooseProject(event.target.value);
-  history.replaceState(null, "", location.pathname);
-  state.current = null;
-  refresh();
-});
+// Wires up the page. Node loads this file only to test rich() and inline(), so it
+// exports them instead of starting.
+function start() {
+  document.querySelectorAll(".tabs button").forEach((button) => button.addEventListener("click", () => {
+    setStatus(button.dataset.status);
+    state.current = null;
+    if (settingsOpen()) history.replaceState(null, "", location.pathname);
+    refresh();
+  }));
+  $("#gear").addEventListener("click", () => {
+    if (settingsOpen()) return closeSettings();
+    state.back = location.hash;
+    location.hash = "#/settings";
+  });
+  window.addEventListener("hashchange", () => refresh(true));
+  // Answering needs a picked option; a note alone goes through "Ask for more context".
+  $("#detail").addEventListener("change", (event) => {
+    if (event.target.name === "choice" && $("#send")) $("#send").disabled = false;
+  });
+  $("#search").addEventListener("input", () => refresh());
+  $("#project").addEventListener("change", (event) => {
+    chooseProject(event.target.value);
+    history.replaceState(null, "", location.pathname);
+    state.current = null;
+    refresh();
+  });
 
-refresh(true);
-setInterval(() => refresh(false), 4000);
+  refresh(true);
+  setInterval(() => refresh(false), 4000);
+}
+
+if (typeof module === "object") module.exports = { rich, inline };
+else start();
