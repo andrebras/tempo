@@ -454,7 +454,7 @@ function renderFolders(data) {
         .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
       const select = el("select", { "aria-label": `Project for ${folder.folder}` },
         names.map((name) => el("option", { value: name, selected: name === folder.project },
-          name === folder.folder ? `${name} (folder name)` : name)),
+          name === folder.folder ? `Its own name (${name})` : name)),
         el("option", { value: NEW }, "New project…"));
       const input = el("input", { placeholder: "New project name", hidden: true,
                                   "aria-label": `New project for ${folder.folder}` });
@@ -469,7 +469,8 @@ function renderFolders(data) {
       return saveRow(
         el("div", {}, el("strong", { class: "folder" }, folder.folder),
           el("span", { class: "meta" }, folder.seen_at
-            ? `Last seen ${new Date(folder.seen_at).toLocaleString()}` : "Not seen yet")),
+            ? `Last seen ${new Date(folder.seen_at).toLocaleString()}`
+            : "Linked when its project was renamed")),
         [select, input], read,
         (project) => api(`/api/folders/${encodeURIComponent(folder.folder)}`, { project }));
     }) : el("p", { class: "empty" }, "No folders yet. A folder appears here once a Claude session in it gets a message from you."));
