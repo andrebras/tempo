@@ -63,6 +63,53 @@ class CliTest(DatabaseTest):
         self.assertIn("changed the answer to Neither, go up", out)
         self.assertIn("Before: (a) Left", out)
 
+    def test_session_start_tells_claude_to_use_tempo_and_lists_open_questions(self):
+        self.add()
+        with mock.patch.object(cli, "start_server") as start:
+            _, out, _ = run("hook", "session-start", stdin="{}")
+        start.assert_called_once()
+        context = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual(context["hookEventName"], "SessionStart")
+        self.assertIn("goes in Tempo with `tempo add`", context["additionalContext"])
+        self.assertIn("Q1 Which way? http://127.0.0.1:2204/#/demo/1", context["additionalContext"])
+
+    def stop(self, *replies, active=False):
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as transcript:
+            self.addCleanup(os.remove, transcript.name)
+            for kind, content in replies:
+                transcript.write(json.dumps({"type": kind, "message": {"content": content}}))
+                transcript.write("\n")
+        payload = {"transcript_path": transcript.name, "stop_hook_active": active}
+        return run("hook", "stop", stdin=json.dumps(payload))[1]
+
+    def test_stop_sends_back_options_asked_only_in_chat(self):
+        out = self.stop(
+            ("user", "Which one?"),
+            ("assistant", [{"type": "text", "text": "Pick one:\n- (a) Left\n- (b) Right"}]),
+        )
+        self.assertEqual(json.loads(out)["decision"], "block")
+
+    def test_stop_lets_tempo_questions_and_old_replies_through(self):
+        options = [{"type": "text", "text": "(a) Left (b) Right"}]
+        linked = [{"type": "text", "text": "(a) Left (b) Right http://127.0.0.1:2204/#/demo/1"}]
+        added = [{"type": "tool_use", "input": {"command": "tempo add --title T"}}]
+        cases = {
+            "linked": [("user", "Q?"), ("assistant", linked)],
+            "added": [("user", "Q?"), ("assistant", added), ("assistant", options)],
+            "earlier reply": [("assistant", options), ("user", "Thanks"), ("assistant", [])],
+            "after a tool result": [
+                ("user", "Q?"),
+                ("assistant", added),
+                ("user", [{"type": "tool_result", "content": "Added Q1"}]),
+                ("assistant", options),
+            ],
+        }
+        for name, replies in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.stop(*replies), "")
+        self.assertEqual(self.stop(("user", "Q?"), ("assistant", options), active=True), "")
+        self.assertEqual(run("hook", "stop", stdin="{}")[1], "")
+
     def test_user_prompt_hook_ignores_other_projects(self):
         self.add(project="other")
         self.store.follow_up("other", 1, "Why?")
