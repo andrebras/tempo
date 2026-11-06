@@ -42,10 +42,11 @@ To continue numbering from an older list, run `oq set-next <number>` once before
 Answers and follow-ups from the page reach you two ways:
 
 1. **On the user's next message**: the UserPromptSubmit hook adds them to your context.
-2. **While you keep working**: after asking, start `oq wait` with the Bash tool's
-   `run_in_background` option. It exits as soon as the user answers or follows up, which
-   wakes you with what they wrote. Start it again after handling the result while questions
-   are still open. Run only one wait per session.
+2. **While you keep working**: after asking, start `oq wait --timeout 1800` with the Bash
+   tool's `run_in_background` option. It exits as soon as the user answers or follows up,
+   which wakes you with what they wrote, or after 30 minutes with "Nothing new from the
+   user." Start it again after either, while questions are still open, so no wait outlives
+   the session by long. Run only one wait per session.
 
 Each item is delivered once. `oq inbox` prints anything not yet delivered.
 
