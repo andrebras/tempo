@@ -1,3 +1,4 @@
 # Development tools only; the plugin itself uses nothing outside the standard library.
 ruff==0.8.4
-bandit==1.8.0
+# The toml extra lets Bandit read pyproject.toml on Python versions before 3.11.
+bandit[toml]==1.8.0

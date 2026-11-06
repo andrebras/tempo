@@ -1,0 +1,25 @@
+# Runs the same checks as bin/ci on every pull request and on main, on the oldest and
+# newest Python versions Tempo supports.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run bin/ci
+        run: bin/ci
