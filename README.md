@@ -50,8 +50,7 @@ chat. On the page you can:
 - **Ask for more context**: say what's unclear. Claude adds an explanation or rewords the
   question, and the question's thread shows what changed.
 - **Reopen** an answered question to change your answer.
-- **Adjust Settings** with the gear button: theme, font and text size, readable project names,
-  and which repo folders share a project.
+- **Adjust Settings** with the gear button: theme, font and text size, and project names.
 
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too.

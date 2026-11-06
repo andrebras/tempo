@@ -79,13 +79,13 @@ class CliTest(DatabaseTest):
 
     def test_user_prompt_hook_uses_the_folder_project_and_remembers_the_folder(self):
         del os.environ["TEMPO_PROJECT"]
-        self.add(project="ONZE HQ")
-        self.store.follow_up("ONZE HQ", 1, "Why?")
+        self.add(project="onzehq")
         hook = json.dumps({"cwd": "/x/onzehq"})
         _, out, _ = run("hook", "user-prompt-submit", stdin=hook)
         self.assertEqual(out, "")
-        self.assertEqual([f["folder"] for f in self.store.folders()], ["onzehq"])
-        self.store.set_folder_project("onzehq", "ONZE HQ")
+        self.assertEqual(self.store.folders()[0]["project"], "onzehq")
+        self.store.rename_project("onzehq", "ONZE HQ")
+        self.store.follow_up("ONZE HQ", 1, "Why?")
         _, out, _ = run("hook", "user-prompt-submit", stdin=hook)
         self.assertIn("ONZE HQ Q1", out)
 
@@ -99,9 +99,9 @@ class CliTest(DatabaseTest):
         with mock.patch.object(cli, "folder_name", return_value="tempo-settings"):
             _, out, _ = run(*add)
             self.assertIn("Added Q1 in tempo-settings", out)
-            self.store.set_folder_project("tempo-settings", "Tempo")
+            self.store.rename_project("tempo-settings", "Tempo")
             _, out, _ = run(*add)
-        self.assertIn("Added Q1 in Tempo", out)
+        self.assertIn("Added Q2 in Tempo", out)
 
     def test_still_reads_the_old_oq_settings(self):
         self.add(project="ONZE HQ")

@@ -36,14 +36,14 @@ The gear button at the top right of the page opens Settings.
 
 - **Appearance**: theme (System, Light or Dark), font (System sans, Serif or Monospace) and
   text size. These are kept in your browser, not in the database.
-- **Projects**: give a project a readable name, for example `onzehq` → "ONZE HQ". Its
-  questions, their numbers and its folders move to the new name. A project can't take the
-  name of another project that already has questions, because both would have a Q1.
-- **Folders**: every git folder a Claude session ran in, and the project its questions go
-  to. Put several folders in one project to share its questions and numbering.
+- **Projects**: a project's name is what the page shows everywhere. A new git folder starts
+  as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
+  its questions, their numbers and its folders along. To join two projects, rename one to
+  the other's name. That works while only one of them has questions; otherwise both would
+  have a Q1.
 
-Projects and folders are saved in the database, so every session, the hooks and the `tempo`
-command use them.
+Projects are saved in the database, so every session, the hooks and the `tempo` command use
+them.
 
 ## Environment variables
 
@@ -51,7 +51,7 @@ command use them.
 | --- | --- | --- |
 | Database | `~/.claude/tempo/questions.db` | `TEMPO_DB` |
 | Port | `2204` | `TEMPO_PORT` |
-| Project | The project chosen for the current git repository's folder in Settings, else the folder name (worktrees count as the same folder) | `TEMPO_PROJECT`, or `--project` on a command; both win over Settings |
+| Project | The project the current git repository's folder is filed under, named after the folder until renamed (worktrees count as the same folder) | `TEMPO_PROJECT`, or `--project` on a command; both win over Settings |
 
 The page log is written next to the database. The database sits outside the plugin folder, so
 it survives plugin updates and reinstalls. The variables' old names (`OQ_DB`, `OQ_PORT`,

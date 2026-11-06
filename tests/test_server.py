@@ -73,16 +73,21 @@ class ServerTest(DatabaseTest):
         self.store.see_folder("onzehq")
         status, data = self.request("GET", "/api/settings")
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(data)["folders"][0]["project"], "onzehq")
-        status, data = self.request("POST", "/api/folders/onzehq", {"project": "demo"})
+        self.assertEqual(
+            json.loads(data)["projects"],
+            [
+                {"name": "demo", "questions": 1, "folders": []},
+                {"name": "onzehq", "questions": 0, "folders": ["onzehq"]},
+            ],
+        )
+        status, data = self.request("POST", "/api/projects/onzehq/rename", {"name": "demo"})
+        self.assertEqual(status, 200)
+        status, data = self.request("POST", "/api/projects/demo/rename", {"name": "ONZE HQ"})
         self.assertEqual(status, 200)
         self.assertEqual(
             json.loads(data)["projects"],
-            [{"name": "demo", "questions": 1, "folders": ["onzehq"]}],
+            [{"name": "ONZE HQ", "questions": 1, "folders": ["onzehq"]}],
         )
-        status, data = self.request("POST", "/api/projects/demo/rename", {"name": "ONZE HQ"})
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(data)["projects"][0]["name"], "ONZE HQ")
         self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
         self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
 
@@ -91,8 +96,6 @@ class ServerTest(DatabaseTest):
         status, data = self.request("POST", "/api/projects/demo/rename", {"name": "other"})
         self.assertEqual(status, 400)
         self.assertIn("already has questions", json.loads(data)["error"])
-        status, _ = self.request("POST", "/api/folders/unknown", {"project": "demo"})
-        self.assertEqual(status, 400)
 
     def test_refuses_other_hosts(self):
         status, _ = self.request("GET", "/api/questions", host="evil.example:%d" % self.port)
@@ -119,7 +122,6 @@ class ServerTest(DatabaseTest):
         self.store.see_folder("onzehq")
         for path, body in [
             ("/api/projects/demo/rename", {"name": "Hijacked"}),
-            ("/api/folders/onzehq", {"project": "Hijacked"}),
         ]:
             with self.subTest(path=path):
                 status, _ = self.request("POST", path, body, origin="https://evil.example")

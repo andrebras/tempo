@@ -380,9 +380,9 @@ def start_server(port):
 
 
 def project_name(cwd, record=False):
-    """The project for a folder: the one picked for it in Settings, else the folder name.
+    """The project a folder is filed under, named after the folder until renamed.
 
-    With record, the folder is remembered so Settings can list it.
+    With record, the folder is remembered, so its project shows in Settings.
     """
     folder = folder_name(cwd)
     with Store(connect()) as store:
