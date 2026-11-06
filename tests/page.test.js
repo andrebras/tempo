@@ -1,0 +1,122 @@
+// Tests for the page's text renderer, rich() and inline(), run with `node --test`.
+// They turn a little Markdown into DOM nodes; a tiny fake document stands in for the
+// browser's, and refuses innerHTML so any attempt to inject markup fails loudly.
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
+
+class Node {}
+
+class Text extends Node {
+  constructor(text) {
+    super();
+    this.textContent = text;
+  }
+}
+
+class Element extends Node {
+  constructor(tag) {
+    super();
+    this.tagName = tag.toUpperCase();
+    this.className = "";
+    this.attributes = {};
+    this.childNodes = [];
+  }
+
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+  }
+
+  addEventListener() {}
+
+  append(...children) {
+    for (const child of children) {
+      this.childNodes.push(child instanceof Node ? child : new Text(String(child)));
+    }
+  }
+
+  get textContent() {
+    return this.childNodes.map((child) => child.textContent).join("");
+  }
+
+  set innerHTML(_html) {
+    throw new Error("innerHTML must not be used");
+  }
+}
+
+globalThis.Node = Node;
+globalThis.document = { createElement: (tag) => new Element(tag) };
+
+const { rich, inline } = require("../tempo/page.js");
+
+// A compact picture of a node tree: text as strings, elements as [TAG, ...children].
+// inline() returns plain strings for its text parts; inside elements they are Text nodes.
+function shape(node) {
+  if (typeof node === "string") return node;
+  if (node instanceof Text) return node.textContent;
+  return [node.tagName, ...node.childNodes.map(shape)];
+}
+
+function render(text) {
+  return rich(text).childNodes.map(shape);
+}
+
+function all(node, tag) {
+  if (!(node instanceof Element)) return [];
+  const found = node.tagName === tag ? [node] : [];
+  return found.concat(...node.childNodes.map((child) => all(child, tag)));
+}
+
+test("blank lines separate paragraphs, single newlines become line breaks", () => {
+  assert.deepEqual(render("First line\nsame paragraph\n\nSecond paragraph"), [
+    ["P", "First line", ["BR"], "same paragraph"],
+    ["P", "Second paragraph"],
+  ]);
+});
+
+test("dash and star lines become a bullet list", () => {
+  assert.deepEqual(render("- one\n* two"), [["UL", ["LI", "one"], ["LI", "two"]]]);
+});
+
+test("numbered lines become a numbered list", () => {
+  assert.deepEqual(render("1. one\n2) two"), [["OL", ["LI", "one"], ["LI", "two"]]]);
+});
+
+test("a lead line followed by a list keeps both, in order", () => {
+  assert.deepEqual(render("Pick one:\n- left\n- right"), [
+    ["P", "Pick one:"],
+    ["UL", ["LI", "left"], ["LI", "right"]],
+  ]);
+});
+
+test("bold, and code inside bold", () => {
+  assert.deepEqual(inline("a **bold** word").map(shape), ["a ", ["STRONG", "bold"], " word"]);
+  assert.deepEqual(inline("**run `bin/ci` first**").map(shape), [
+    ["STRONG", "run ", ["CODE", "bin/ci"], " first"],
+  ]);
+});
+
+test("http and https links become links that open in a new tab", () => {
+  for (const url of ["http://example.com/a", "https://example.com/b?c=1"]) {
+    const [, link, after] = inline(`see ${url}.`);
+    assert.equal(link.tagName, "A");
+    assert.equal(link.attributes.href, url);
+    assert.equal(link.attributes.target, "_blank");
+    assert.equal(link.attributes.rel, "noopener noreferrer");
+    assert.equal(link.textContent, url);
+    assert.equal(after, ".");
+  }
+});
+
+test("javascript: links stay text", () => {
+  const holder = rich("click javascript:alert(1)");
+  assert.deepEqual(all(holder, "A"), []);
+  assert.equal(holder.textContent, "click javascript:alert(1)");
+});
+
+test("HTML stays text", () => {
+  const text = '<script>alert("hi")</script> and <b onclick="x()">bold</b>';
+  const holder = rich(text);
+  assert.deepEqual(all(holder, "SCRIPT"), []);
+  assert.deepEqual(all(holder, "B"), []);
+  assert.deepEqual(shape(holder), ["DIV", ["P", text]]);
+});

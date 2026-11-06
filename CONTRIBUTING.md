@@ -12,7 +12,9 @@ TEMPO_DB=/tmp/questions.db bin/tempo serve  # run the page on a scratch database
 ```
 
 `bin/ci` installs the pinned tools from `requirements-dev.txt` into `.venv` on its first run.
-It needs [ShellCheck](https://www.shellcheck.net) (`brew install shellcheck`).
+It needs [ShellCheck](https://www.shellcheck.net) (`brew install shellcheck`) and
+[Node.js](https://nodejs.org) 18 or newer (`brew install node`), which runs the checks for
+the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on first use.
 
 | Check | Tool |
 | --- | --- |
@@ -22,8 +24,10 @@ It needs [ShellCheck](https://www.shellcheck.net) (`brew install shellcheck`).
 | Types: every function in `tempo/` has type hints, checked against Python 3.9 | [mypy](https://mypy.readthedocs.io) |
 | Shell scripts | [ShellCheck](https://www.shellcheck.net) |
 | Tests | `unittest`, from the standard library |
+| Lint the page's script (`tempo/page.js`) and its tests | [Biome](https://biomejs.dev), recommended rules |
+| Tests for the page's text renderer | `node --test`, built into Node.js |
 
-The tools are configured in `pyproject.toml`. When a rule has to be silenced on one line, the
+The Python tools are configured in `pyproject.toml`, Biome in `biome.json`. When a rule has to be silenced on one line, the
 line says why.
 
 Use a scratch database (`TEMPO_DB`) and another port (`TEMPO_PORT`) when you try changes by
@@ -36,9 +40,10 @@ hand, so your real questions stay untouched.
 bin/              tempo (the command), oq (its old name), ci and check-version
 docs/             reference, screenshots and the demo GIF
 hooks/            hook configuration
-tempo/            store (SQLite), cli (tempo), server and page
+tempo/            store (SQLite), cli (tempo), server, and the page (page.html and its
+                  script, page.js)
 skills/           the skill that teaches Claude the workflow
-tests/
+tests/            Python tests, and page.test.js for the page's script
 ```
 
 ## Releasing

@@ -1,8 +1,13 @@
 #!/bin/sh
-# Local CI: version check, lint, format check, security scan, shell check, then every test.
+# Local CI: version check, lint, format check, security scan, shell check, then every
+# test, for the Python code and for the page's script.
 # Installs the pinned development tools into .venv on first run.
 set -eu
 cd "$(dirname "$0")/.."
+
+# Biome lints the page's script; npx fetches this exact version on first use. Keep it
+# in step with the $schema version in biome.json.
+biome_version=2.5.15
 
 if [ ! -x .venv/bin/ruff ] || ! cmp -s requirements-dev.txt .venv/requirements-dev.txt; then
   python3 -m venv .venv
@@ -12,6 +17,11 @@ fi
 
 if ! command -v shellcheck >/dev/null 2>&1; then
   echo "shellcheck is missing: install it with 'brew install shellcheck'" >&2
+  exit 1
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "node is missing: install it with 'brew install node'" >&2
   exit 1
 fi
 
@@ -28,4 +38,6 @@ step "Security (bandit)" .venv/bin/bandit --quiet -c pyproject.toml -r tempo
 step "Types (mypy)" .venv/bin/mypy
 step "Shell scripts (shellcheck)" shellcheck bin/tempo bin/oq bin/ci
 step "Compile" python3 -m compileall -q tempo tests
+step "Lint page script (biome)" npx --yes "@biomejs/biome@$biome_version" lint --error-on-warnings
+step "Page tests (node --test)" node --test tests/page.test.js
 step "Tests" python3 -m unittest discover -s tests -t . "$@"

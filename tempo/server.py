@@ -17,7 +17,9 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from tempo.store import QuestionError, Store, connect
 
-PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
+HERE = os.path.dirname(os.path.abspath(__file__))
+PAGE = os.path.join(HERE, "page.html")
+SCRIPT = os.path.join(HERE, "page.js")
 
 
 def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
@@ -45,6 +47,9 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
             if parts == []:
                 with open(PAGE, "rb") as page:
                     self._send(200, page.read(), "text/html; charset=utf-8")
+            elif parts == ["page.js"]:
+                with open(SCRIPT, "rb") as script:
+                    self._send(200, script.read(), "text/javascript; charset=utf-8")
             elif parts == ["api", "questions"]:
                 query = parse_qs(url.query)
                 status = query.get("status", ["open"])[0]
