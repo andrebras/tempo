@@ -18,7 +18,9 @@ class ServerTest(DatabaseTest):
         self.addCleanup(self.server.shutdown)
         self.add()
 
-    def request(self, method, path, body=None, host=None, origin="same", content_type="application/json"):
+    def request(
+        self, method, path, body=None, host=None, origin="same", content_type="application/json"
+    ):
         connection = http.client.HTTPConnection("127.0.0.1", self.port)
         headers = {"Host": host or "127.0.0.1:%d" % self.port}
         if origin == "same":
@@ -41,7 +43,9 @@ class ServerTest(DatabaseTest):
         self.assertEqual(json.loads(data)["questions"][0]["label"], "Q1")
 
     def test_answers_a_question(self):
-        status, data = self.request("POST", "/api/questions/demo/1/answer", {"choice": "a", "body": ""})
+        status, data = self.request(
+            "POST", "/api/questions/demo/1/answer", {"choice": "a", "body": ""}
+        )
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(data)["status"], "answered")
         self.assertEqual(len(self.store.undelivered("demo")), 1)
@@ -58,11 +62,18 @@ class ServerTest(DatabaseTest):
         self.assertEqual(status, 403)
 
     def test_refuses_writes_from_other_sites(self):
-        for origin, content_type in [("https://evil.example", "application/json"),
-                                     (None, "application/json"),
-                                     ("same", "text/plain")]:
+        for origin, content_type in [
+            ("https://evil.example", "application/json"),
+            (None, "application/json"),
+            ("same", "text/plain"),
+        ]:
             with self.subTest(origin=origin, content_type=content_type):
-                status, _ = self.request("POST", "/api/questions/demo/1/answer", {"choice": "a"},
-                                         origin=origin, content_type=content_type)
+                status, _ = self.request(
+                    "POST",
+                    "/api/questions/demo/1/answer",
+                    {"choice": "a"},
+                    origin=origin,
+                    content_type=content_type,
+                )
                 self.assertEqual(status, 403)
         self.assertEqual(self.store.get("demo", 1)["status"], "open")

@@ -39,8 +39,13 @@ def build_parser():
     add.add_argument("--project", default=None, help="Defaults to the current git repo's name")
     add.add_argument("--title", required=True, help="The question itself, one sentence")
     add.add_argument("--context", required=True, help="Everything needed to answer it cold")
-    add.add_argument("--option", action="append", dest="options", required=True,
-                     help="One option, written out; repeat for each (lettered a, b, c...)")
+    add.add_argument(
+        "--option",
+        action="append",
+        dest="options",
+        required=True,
+        help="One option, written out; repeat for each (lettered a, b, c...)",
+    )
     add.add_argument("--recommended", help="Letter of the option Claude recommends")
     add.add_argument("--urgent", action="store_true")
     add.add_argument("--number", type=int, help="Use this number (must be the next free or higher)")
@@ -56,8 +61,7 @@ def build_parser():
     list_ = commands.add_parser("list", help="List questions (open by default)")
     list_.add_argument("--project")
     list_.add_argument("--all-projects", action="store_true")
-    list_.add_argument("--status", default="open",
-                       choices=["open", "answered", "archived", "all"])
+    list_.add_argument("--status", default="open", choices=["open", "answered", "archived", "all"])
     list_.add_argument("--json", action="store_true")
     list_.set_defaults(run=run_list)
 
@@ -72,8 +76,9 @@ def build_parser():
     reword.add_argument("--note", required=True, help="Why it was reworded, shown in the thread")
     reword.add_argument("--title")
     reword.add_argument("--context")
-    reword.add_argument("--option", action="append", dest="options",
-                        help="Replace all options; repeat for each")
+    reword.add_argument(
+        "--option", action="append", dest="options", help="Replace all options; repeat for each"
+    )
     reword.add_argument("--recommended")
     reword.add_argument("--project")
     reword.set_defaults(run=run_reword)
@@ -114,8 +119,11 @@ def build_parser():
 
     serve = commands.add_parser("serve", help="Run the web page")
     serve.add_argument("--port", type=int, default=_port())
-    serve.add_argument("--background", action="store_true",
-                       help="Start detached; does nothing if the port is already serving")
+    serve.add_argument(
+        "--background",
+        action="store_true",
+        help="Start detached; does nothing if the port is already serving",
+    )
     serve.set_defaults(run=run_serve)
 
     return parser
@@ -126,8 +134,13 @@ def build_parser():
 
 def run_add(args):
     question = _store().add(
-        _project(args.project), args.title, args.context, args.options,
-        recommended=args.recommended, urgent=args.urgent, number=args.number,
+        _project(args.project),
+        args.title,
+        args.context,
+        args.options,
+        recommended=args.recommended,
+        urgent=args.urgent,
+        number=args.number,
     )
     if args.json:
         print(json.dumps(question, indent=2))
@@ -149,12 +162,17 @@ def run_list(args):
     if not questions:
         print("No %s questions." % args.status)
     for question in questions:
-        print("%s%s %s [%s]%s %s" % (
-            "" if project else question["project"] + " ",
-            question["label"], question["status"],
-            "v%d" % question["version"], " URGENT" if question["urgent"] else "",
-            question["title"],
-        ))
+        print(
+            "%s%s %s [%s]%s %s"
+            % (
+                "" if project else question["project"] + " ",
+                question["label"],
+                question["status"],
+                "v%d" % question["version"],
+                " URGENT" if question["urgent"] else "",
+                question["title"],
+            )
+        )
 
 
 def run_context(args):
@@ -164,8 +182,13 @@ def run_context(args):
 
 def run_reword(args):
     question = _store().reword(
-        _project(args.project), args.number, args.note, title=args.title,
-        context=args.context, options=args.options, recommended=args.recommended,
+        _project(args.project),
+        args.number,
+        args.note,
+        title=args.title,
+        context=args.context,
+        options=args.options,
+        recommended=args.recommended,
     )
     print("%s is now at version %d." % (question["label"], question["version"]))
 
@@ -216,20 +239,29 @@ def run_hook(args):
         return 0
     text = take_inbox(project_name(cwd))
     if text:
-        print(json.dumps({"hookSpecificOutput": {
-            "hookEventName": "UserPromptSubmit",
-            "additionalContext": text,
-        }}))
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "UserPromptSubmit",
+                        "additionalContext": text,
+                    }
+                }
+            )
+        )
     return 0
 
 
 def run_serve(args):
     if args.background:
         started = start_server(args.port)
-        print("Serving on http://127.0.0.1:%d/%s" % (
-            args.port, "" if started else " (already running)"))
+        print(
+            "Serving on http://127.0.0.1:%d/%s"
+            % (args.port, "" if started else " (already running)")
+        )
         return 0
     from open_questions.server import serve
+
     serve(args.port)
 
 
@@ -273,26 +305,38 @@ def _take_inbox(store, project):
 
 def format_question(question):
     lines = [
-        "%s %s (%s, version %d)%s" % (
-            question["project"], question["label"], question["status"], question["version"],
-            ", urgent" if question["urgent"] else ""),
+        "%s %s (%s, version %d)%s"
+        % (
+            question["project"],
+            question["label"],
+            question["status"],
+            question["version"],
+            ", urgent" if question["urgent"] else "",
+        ),
         question["title"],
         "",
         question["context"],
         "",
     ]
     for option in question["options"]:
-        lines.append("(%s) %s%s" % (
-            option["letter"], option["text"],
-            "  [recommended]" if option["letter"] == question["recommended"] else ""))
+        lines.append(
+            "(%s) %s%s"
+            % (
+                option["letter"],
+                option["text"],
+                "  [recommended]" if option["letter"] == question["recommended"] else "",
+            )
+        )
     if question["entries"]:
         lines += ["", "Thread:"]
         for entry in question["entries"]:
             text = entry["body"]
             if entry["choice"]:
                 text = "(%s) %s" % (entry["choice"], text)
-            lines.append("- %s %s %s (v%d): %s" % (
-                entry["created_at"], entry["author"], entry["kind"], entry["version"], text))
+            lines.append(
+                "- %s %s %s (v%d): %s"
+                % (entry["created_at"], entry["author"], entry["kind"], entry["version"], text)
+            )
     return "\n".join(lines)
 
 
@@ -305,20 +349,30 @@ def start_server(port):
         if probe.connect_ex(("127.0.0.1", port)) == 0:
             return False
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    log = open(os.path.join(os.path.dirname(_db_path()), "server.log"), "a")
-    subprocess.Popen(
-        [sys.executable, "-m", "open_questions", "serve", "--port", str(port)],
-        cwd=root, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True,
-    )
+    # The child gets its own copy of the log file handle, so ours can close. The
+    # argument list is fixed and there is no shell, so nothing outside reaches it.
+    with open(os.path.join(os.path.dirname(_db_path()), "server.log"), "a") as log:
+        subprocess.Popen(  # noqa: S603
+            [sys.executable, "-m", "open_questions", "serve", "--port", str(port)],
+            cwd=root,
+            stdout=log,
+            stderr=log,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     return True
 
 
 def project_name(cwd):
     """The project is the git repo's top folder name (the main checkout, not a worktree)."""
     try:
-        common = subprocess.run(
-            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-            cwd=cwd, capture_output=True, text=True, check=True,
+        # git is looked up on PATH on purpose; the arguments are fixed.
+        common = subprocess.run(  # noqa: S603
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],  # noqa: S607
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
         return os.path.basename(os.path.dirname(common))
     except (OSError, subprocess.CalledProcessError):
@@ -339,6 +393,7 @@ def _port():
 
 def _db_path():
     from open_questions.store import DEFAULT_DB
+
     path = os.environ.get("OQ_DB") or DEFAULT_DB
     os.makedirs(os.path.dirname(path), exist_ok=True)
     return path
@@ -356,4 +411,5 @@ def _store():
 
 def _url(question):
     from urllib.parse import quote
+
     return "http://127.0.0.1:%d/#/%s/%d" % (_port(), quote(question["project"]), question["number"])

@@ -14,9 +14,14 @@ class AddTest(DatabaseTest):
         self.assertEqual(question["recommended"], "b")
 
     def test_refuses_incomplete_questions(self):
-        for overrides in [dict(project=" "), dict(title=""), dict(context=""),
-                          dict(options=["Only one"]), dict(options=["Left", " "]),
-                          dict(recommended="z")]:
+        for overrides in [
+            dict(project=" "),
+            dict(title=""),
+            dict(context=""),
+            dict(options=["Only one"]),
+            dict(options=["Left", " "]),
+            dict(recommended="z"),
+        ]:
             with self.subTest(overrides=overrides), self.assertRaises(QuestionError):
                 self.add(**overrides)
 
@@ -99,4 +104,6 @@ class ListTest(DatabaseTest):
         self.add()
         self.store.answer("demo", 1, "a")
         self.assertEqual(self.store.archive_answered("demo"), 1)
-        self.assertEqual([q["status"] for q in self.store.list("demo", "all")], ["archived", "open"])
+        self.assertEqual(
+            [q["status"] for q in self.store.list("demo", "all")], ["archived", "open"]
+        )

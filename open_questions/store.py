@@ -125,9 +125,7 @@ class Store:
                 raise QuestionError(
                     "Numbers are never reused: %s is already at Q%d" % (project, current)
                 )
-            self.db.execute(
-                "UPDATE projects SET next_number = ? WHERE name = ?", (number, project)
-            )
+            self.db.execute("UPDATE projects SET next_number = ? WHERE name = ?", (number, project))
 
     def add_context(self, project, number, body):
         body = _required(body, "context")
@@ -135,7 +133,9 @@ class Store:
         self._insert_entry(question, "context", "claude", body)
         return self.get(project, number)
 
-    def reword(self, project, number, note, title=None, context=None, options=None, recommended=None):
+    def reword(
+        self, project, number, note, title=None, context=None, options=None, recommended=None
+    ):
         note = _required(note, "note (why it was reworded)")
         question = self._find(project, number)
         if question["status"] != "open":
@@ -267,16 +267,19 @@ class Store:
             sql += " AND q.project = ?"
             params.append(project)
         sql += " ORDER BY e.id"
-        return [dict(_entry_dict(row), project=row["project"], number=row["number"])
-                for row in self.db.execute(sql, params)]
+        return [
+            dict(_entry_dict(row), project=row["project"], number=row["number"])
+            for row in self.db.execute(sql, params)
+        ]
 
     def mark_delivered(self, entry_ids):
         if not entry_ids:
             return
+        # Only "?" placeholders are joined into the SQL; the ids are bound as parameters.
+        placeholders = ",".join("?" * len(entry_ids))
         self.db.execute(
-            "UPDATE entries SET delivered_at = ? WHERE id IN (%s)"
-            % ",".join("?" * len(entry_ids)),
-            [now()] + list(entry_ids),
+            "UPDATE entries SET delivered_at = ? WHERE id IN (%s)" % placeholders,  # noqa: S608  # nosec B608
+            [now(), *entry_ids],
         )
 
     # Helpers
@@ -320,8 +323,16 @@ class Store:
             "INSERT INTO entries"
             " (question_id, kind, author, body, choice, version, created_at, delivered_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (question["id"], kind, author, body, choice, version, stamp,
-             stamp if author == "claude" else None),
+            (
+                question["id"],
+                kind,
+                author,
+                body,
+                choice,
+                version,
+                stamp,
+                stamp if author == "claude" else None,
+            ),
         )
         self.db.execute("UPDATE questions SET updated_at = ? WHERE id = ?", (stamp, question["id"]))
 
@@ -350,8 +361,9 @@ def _letter(options):
         raise QuestionError("A question needs at least two options, each written out")
     if len(options) > 26:
         raise QuestionError("A question can have at most 26 options")
-    return [{"letter": letter, "text": text}
-            for letter, text in zip(string.ascii_lowercase, options)]
+    return [
+        {"letter": letter, "text": text} for letter, text in zip(string.ascii_lowercase, options)
+    ]
 
 
 def _recommended(recommended, options):

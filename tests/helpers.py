@@ -27,7 +27,11 @@ class DatabaseTest(unittest.TestCase):
                 os.environ[key] = value
 
     def add(self, **overrides):
-        fields = dict(project="demo", title="Which way?", context="We need to pick one.",
-                      options=["Left", "Right"])
+        fields = dict(
+            project="demo",
+            title="Which way?",
+            context="We need to pick one.",
+            options=["Left", "Right"],
+        )
         fields.update(overrides)
         return self.store.add(**fields)

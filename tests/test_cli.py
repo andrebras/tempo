@@ -10,14 +10,20 @@ from tests.helpers import DatabaseTest
 
 def run(*argv, stdin=""):
     out, err = io.StringIO(), io.StringIO()
-    with redirect_stdout(out), redirect_stderr(err), mock.patch.object(sys, "stdin", io.StringIO(stdin)):
+    with (
+        redirect_stdout(out),
+        redirect_stderr(err),
+        mock.patch.object(sys, "stdin", io.StringIO(stdin)),
+    ):
         code = cli.main(list(argv))
     return code, out.getvalue(), err.getvalue()
 
 
 class CliTest(DatabaseTest):
     def test_add_prints_the_number_and_link(self):
-        code, out, _ = run("add", "--title", "T", "--context", "C", "--option", "x", "--option", "y")
+        code, out, _ = run(
+            "add", "--title", "T", "--context", "C", "--option", "x", "--option", "y"
+        )
         self.assertEqual(code, 0)
         self.assertIn("Added Q1 in demo: http://127.0.0.1:2204/#/demo/1", out)
 

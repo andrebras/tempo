@@ -5,6 +5,7 @@ every request must name this server as its Host, and writes must be JSON from
 this page's own origin.
 """
 
+import contextlib
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -44,8 +45,9 @@ def make_handler(port):
                 query = parse_qs(url.query)
                 status = query.get("status", ["open"])[0]
                 project = query.get("project", [None])[0]
-                self._json(200, {"questions": store.list(project, status),
-                                 "projects": store.projects()})
+                self._json(
+                    200, {"questions": store.list(project, status), "projects": store.projects()}
+                )
             elif len(parts) == 4 and parts[:2] == ["api", "questions"]:
                 self._handle(lambda: store.get(parts[2], _int(parts[3])))
             else:
@@ -64,11 +66,13 @@ def make_handler(port):
                 return
             project, number, action = parts[2], parts[3], parts[4]
             if action == "answer":
-                self._handle(lambda: store.answer(
-                    project, _int(number), body.get("choice"), body.get("body", "")))
+                self._handle(
+                    lambda: store.answer(
+                        project, _int(number), body.get("choice"), body.get("body", "")
+                    )
+                )
             elif action == "followup":
-                self._handle(lambda: store.follow_up(
-                    project, _int(number), body.get("body", "")))
+                self._handle(lambda: store.follow_up(project, _int(number), body.get("body", "")))
             else:
                 self._json(404, {"error": "Not found"})
 
@@ -110,10 +114,8 @@ def make_handler(port):
 def serve(port):
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(port))
     print("Open questions on http://127.0.0.1:%d/" % port, flush=True)
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()
-    except KeyboardInterrupt:
-        pass
 
 
 def _parts(path):
@@ -124,4 +126,4 @@ def _int(value):
     try:
         return int(value)
     except ValueError:
-        raise QuestionError("%s is not a question number" % value)
+        raise QuestionError("%s is not a question number" % value) from None
