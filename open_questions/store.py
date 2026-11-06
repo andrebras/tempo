@@ -331,12 +331,6 @@ class _Transaction:
         self.db = db
 
     def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self.db.close()
-
-    def __enter__(self):
         self.db.execute("BEGIN IMMEDIATE")
 
     def __exit__(self, kind, value, traceback):
