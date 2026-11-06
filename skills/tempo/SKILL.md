@@ -85,4 +85,5 @@ was updated, with its link.
 
 - `tempo list` (`--status answered|archived|all`, `--all-projects`) and `tempo show <number>`.
 - `tempo priority <number> now|soon|later` when the need changes.
-- `tempo archive`: archive the project's answered questions once nothing is open.
+- Answered questions move to Archived by themselves 7 days after their latest answer.
+  `tempo archive` archives all of the project's answered questions at once.
