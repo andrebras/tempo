@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from tempo.store import PRIORITIES, QuestionError, Store, connect
+from tempo.store import PRIORITIES, QuestionError, Store, connect, setting
 
 DEFAULT_PORT = 2204
 
@@ -242,7 +242,7 @@ def run_hook(args):
     if args.event == "session-start":
         start_server(args.port)
         return 0
-    text = take_inbox(os.environ.get("OQ_PROJECT") or project_name(cwd))
+    text = take_inbox(setting("PROJECT") or project_name(cwd))
     if text:
         print(
             json.dumps(
@@ -396,7 +396,7 @@ def project_name(cwd):
 
 
 def _project(value):
-    return value or os.environ.get("OQ_PROJECT") or project_name(os.getcwd())
+    return value or setting("PROJECT") or project_name(os.getcwd())
 
 
 def _number(value):
@@ -404,13 +404,13 @@ def _number(value):
 
 
 def _port():
-    return int(os.environ.get("OQ_PORT", DEFAULT_PORT))
+    return int(setting("PORT") or DEFAULT_PORT)
 
 
 def _db_path():
     from tempo.store import DEFAULT_DB
 
-    path = os.environ.get("OQ_DB") or DEFAULT_DB
+    path = setting("DB") or DEFAULT_DB
     os.makedirs(os.path.dirname(path), exist_ok=True)
     return path
 

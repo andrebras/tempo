@@ -6,13 +6,13 @@ from tempo.store import Store, connect
 
 
 class DatabaseTest(unittest.TestCase):
-    """Points OQ_DB at a fresh temporary database for each test."""
+    """Points TEMPO_DB at a fresh temporary database for each test."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         path = os.path.join(self.tmp.name, "questions.db")
-        self.env = {"OQ_DB": path, "OQ_PROJECT": "demo"}
+        self.env = {"TEMPO_DB": path, "TEMPO_PROJECT": "demo"}
         self.saved = {key: os.environ.get(key) for key in self.env}
         os.environ.update(self.env)
         self.addCleanup(self.restore_env)

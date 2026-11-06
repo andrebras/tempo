@@ -15,6 +15,11 @@ from datetime import datetime, timezone
 
 DEFAULT_DB = os.path.expanduser("~/.claude/open-questions/questions.db")
 
+
+def setting(name):
+    """Read TEMPO_<name> from the environment, or OQ_<name>, its name before the rename."""
+    return os.environ.get("TEMPO_" + name) or os.environ.get("OQ_" + name)
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
   name TEXT PRIMARY KEY,
@@ -70,7 +75,7 @@ def now():
 
 
 def connect(path=None):
-    path = path or os.environ.get("OQ_DB") or DEFAULT_DB
+    path = path or setting("DB") or DEFAULT_DB
     if path != ":memory:":
         os.makedirs(os.path.dirname(path), exist_ok=True)
     db = sqlite3.connect(path, timeout=10, isolation_level=None)

@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import sys
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
@@ -69,9 +70,22 @@ class CliTest(DatabaseTest):
     def test_user_prompt_hook_uses_the_project_override(self):
         self.add(project="ONZE HQ")
         self.store.follow_up("ONZE HQ", 1, "Why?")
-        with mock.patch.dict("os.environ", {"OQ_PROJECT": "ONZE HQ"}):
+        with mock.patch.dict("os.environ", {"TEMPO_PROJECT": "ONZE HQ"}):
             _, out, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/onzehq"}))
         self.assertIn("ONZE HQ Q1", out)
+
+    def test_still_reads_the_old_oq_settings(self):
+        self.add(project="ONZE HQ")
+        self.store.follow_up("ONZE HQ", 1, "Why?")
+        with mock.patch.dict("os.environ", {"OQ_PROJECT": "ONZE HQ", "OQ_PORT": "2299"}):
+            del os.environ["TEMPO_PROJECT"]
+            _, out, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/onzehq"}))
+        self.assertIn("ONZE HQ Q1", out)
+        self.assertIn("http://127.0.0.1:2299/", out)
+
+    def test_the_new_settings_win_over_the_old_ones(self):
+        with mock.patch.dict("os.environ", {"OQ_PROJECT": "old", "TEMPO_PROJECT": "new"}):
+            self.assertEqual(cli._project(None), "new")
 
     def test_follow_ups_come_with_instructions(self):
         self.add()
