@@ -1,0 +1,54 @@
+# Tags and publishes a GitHub release when a push to main raises the version in plugin.json.
+# The notes are that version's section of CHANGELOG.md. Nothing happens if the tag exists.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .claude-plugin/plugin.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create the tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          version=$(bin/check-version)
+          tag="v$version"
+          previous=$(git show "$BEFORE:.claude-plugin/plugin.json" 2>/dev/null \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])' 2>/dev/null \
+            || true)
+          if [ "$previous" = "$version" ]; then
+            echo "The version is still $version, nothing to release."
+            exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "$tag already exists, nothing to release."
+            exit 0
+          fi
+          awk -v heading="## [$version]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md has no notes for $version." >&2
+            exit 1
+          fi
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file notes.md
