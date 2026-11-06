@@ -39,3 +39,9 @@ tempo/            store (SQLite), cli (tempo), server and page
 skills/           the skill that teaches Claude the workflow
 tests/
 ```
+
+## Releasing
+
+Installed copies only update when the version changes. After merging changes users should
+get, raise `version` in both `.claude-plugin/plugin.json` and `pyproject.toml`. Users then run
+`claude plugin marketplace update tempo` and `claude plugin update tempo@tempo`.
