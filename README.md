@@ -24,6 +24,7 @@ to go back to the chat.
 
 ## Contents
 
+- [See it in action](#see-it-in-action)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -35,6 +36,14 @@ to go back to the chat.
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
+
+## See it in action
+
+![Answering on the Tempo page: an option is picked and sent, and the page moves on to the next question. There, a note is typed and "Ask for more context" is pressed; Claude rewords the question and the thread shows both steps.](docs/demo.gif)
+
+You pick an option and send it, and the page moves on to the next question. On that one, you
+ask for more context; Claude rewords the question, and the thread shows what you asked and what
+changed.
 
 ## Features
 
