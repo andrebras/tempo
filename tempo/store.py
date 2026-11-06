@@ -15,7 +15,7 @@ import json
 import os
 import sqlite3
 import string
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 DEFAULT_DB = "~/.claude/tempo/questions.db"
 # Where the database lived before the plugin was renamed to Tempo.
@@ -83,6 +83,9 @@ CREATE TABLE IF NOT EXISTS folders (
 CREATE INDEX IF NOT EXISTS entries_undelivered ON entries (delivered_at) WHERE delivered_at IS NULL;
 """
 
+
+# Answered questions move to Archived this long after their latest answer.
+ARCHIVE_AFTER = timedelta(days=7)
 
 # How soon Claude needs the answer, in sort order: work is waiting on it, needed this
 # week, no rush.
@@ -220,6 +223,16 @@ class Store:
         )
         return self.get(project, number)
 
+    def archive_old(self):
+        """Archive every answered question whose latest answer is ARCHIVE_AFTER old."""
+        cutoff = (datetime.now(timezone.utc) - ARCHIVE_AFTER).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return self.db.execute(
+            "UPDATE questions SET status = 'archived', updated_at = ?"
+            " WHERE status = 'answered' AND (SELECT MAX(created_at) FROM entries"
+            " WHERE question_id = questions.id AND kind = 'answer') <= ?",
+            (now(), cutoff),
+        ).rowcount
+
     def archive_answered(self, project):
         cursor = self.db.execute(
             "UPDATE questions SET status = 'archived', updated_at = ?"
@@ -300,6 +313,8 @@ class Store:
         return result
 
     def list(self, project=None, status="open"):
+        # Every list, on the page or from the command, first moves old answers to Archived.
+        self.archive_old()
         sql = (
             "SELECT q.*, v.title, v.context, v.version FROM questions q"
             " JOIN versions v ON v.question_id = q.id"

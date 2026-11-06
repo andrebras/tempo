@@ -156,6 +156,19 @@ class ListTest(DatabaseTest):
             rows = store.db.execute("SELECT number, priority FROM questions ORDER BY number")
             self.assertEqual([tuple(row) for row in rows], [(1, "now"), (2, "soon")])
 
+    def test_answers_older_than_a_week_are_archived_when_listing(self):
+        for _ in range(3):
+            self.add()
+        self.store.answer("demo", 1, "a")
+        self.store.answer("demo", 2, "a")
+        self.store.db.execute(
+            "UPDATE entries SET created_at = '2020-01-01T00:00:00Z' WHERE question_id ="
+            " (SELECT id FROM questions WHERE number = 1)"
+        )
+        self.assertEqual(
+            [q["status"] for q in self.store.list("demo", "all")], ["archived", "answered", "open"]
+        )
+
     def test_archive_moves_only_answered_questions(self):
         self.add()
         self.add()
