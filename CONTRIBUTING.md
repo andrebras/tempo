@@ -19,6 +19,7 @@ It needs [ShellCheck](https://www.shellcheck.net) (`brew install shellcheck`).
 | Lint: errors, bugs, import order, simpler forms, security rules | [Ruff](https://docs.astral.sh/ruff/) |
 | Formatting | `ruff format` |
 | Security scan | [Bandit](https://bandit.readthedocs.io) |
+| Types: every function in `tempo/` has type hints, checked against Python 3.9 | [mypy](https://mypy.readthedocs.io) |
 | Shell scripts | [ShellCheck](https://www.shellcheck.net) |
 | Tests | `unittest`, from the standard library |
 
