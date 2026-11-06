@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tempo</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M5 22a11 11 0 0 1 22 0' stroke='%234f46e5' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='22' r='3' fill='%234f46e5'/%3E%3C/svg%3E">
+<script>
+  // Theme, font and text size are kept per browser and applied before the page draws,
+  // so it doesn't flash in the wrong colours.
+  try {
+    for (const key of ["theme", "font", "size"]) {
+      const value = localStorage.getItem(key);
+      if (value) document.documentElement.dataset[key] = value;
+    }
+  } catch { /* storage blocked: keep the defaults */ }
+</script>
 <style>
   :root {
     color-scheme: light;
@@ -14,9 +24,11 @@
     --later: #8b857b; --later-soft: #efece6; --done: #15803d; --done-soft: #e7f5ec;
     --shadow: 0 1px 2px rgba(35, 33, 28, .05), 0 4px 16px rgba(35, 33, 28, .05);
     --radius: 14px;
+    --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
+  /* Dark colours follow the system unless Settings forces a theme; the two blocks must match. */
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       color-scheme: dark;
       --bg: #15141a; --panel: #1d1c24; --sunken: #18171e; --text: #ecebf2; --muted: #9b98a8;
       --line: #2d2b36; --accent: #8b85ff; --accent-strong: #a5a0ff; --accent-soft: #26244a;
@@ -25,11 +37,25 @@
       --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
     }
   }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #15141a; --panel: #1d1c24; --sunken: #18171e; --text: #ecebf2; --muted: #9b98a8;
+    --line: #2d2b36; --accent: #8b85ff; --accent-strong: #a5a0ff; --accent-soft: #26244a;
+    --now: #fb923c; --now-soft: #3a2418; --soon: #8b85ff; --soon-soft: #26244a;
+    --later: #8d8a98; --later-soft: #24232c; --done: #4ade80; --done-soft: #17301f;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+  }
+  html { font-size: 16px; }
+  :root[data-size="small"] { font-size: 14px; }
+  :root[data-size="large"] { font-size: 18px; }
+  :root[data-font="serif"] { --font: ui-serif, "New York", Georgia, "Times New Roman", serif; }
+  :root[data-font="mono"] { --font: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
-         font: 15px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         font: .9375rem/1.6 var(--font);
          -webkit-font-smoothing: antialiased; }
-  button, input, textarea { font: inherit; color: inherit; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  [hidden] { display: none !important; }
   button { cursor: pointer; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -37,13 +63,20 @@
            padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
   .brand svg { width: 30px; height: 30px; color: var(--accent); }
-  .brand h1 { font-size: 19px; letter-spacing: -.01em; margin: 0; line-height: 1.1; }
-  .brand small { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted); }
-  .tabs { display: inline-flex; padding: 3px; background: var(--sunken); border-radius: 10px;
-          border: 1px solid var(--line); }
-  .tabs button { border: 0; background: transparent; padding: 5px 14px; border-radius: 7px;
-                 color: var(--muted); font-weight: 500; }
-  .tabs button[aria-pressed="true"] { background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+  .brand h1 { font-size: 1.1875rem; letter-spacing: -.01em; margin: 0; line-height: 1.1; }
+  .brand small { display: block; font-size: .78125rem; font-weight: 400; color: var(--muted); }
+  .tools { display: flex; gap: 10px; align-items: center; }
+  .tabs, .segmented { display: inline-flex; padding: 3px; background: var(--sunken); border-radius: 10px;
+                      border: 1px solid var(--line); }
+  .tabs button, .segmented button { border: 0; background: transparent; padding: 5px 14px; border-radius: 7px;
+                                    color: var(--muted); font-weight: 500; }
+  .tabs button[aria-pressed="true"], .segmented button[aria-pressed="true"] {
+    background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+  #gear { display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border-radius: 10px;
+          border: 1px solid var(--line); background: var(--sunken); color: var(--muted); }
+  #gear svg { width: 19px; height: 19px; }
+  #gear:hover { color: var(--text); }
+  #gear[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
   main { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; min-height: calc(100vh - 66px); }
   main > * { min-width: 0; }
@@ -65,10 +98,10 @@
   #list a.prio-soon::before { background: var(--soon); }
   #list a:hover { background: var(--panel); }
   #list a.active { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); }
-  #list .label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+  #list .label { display: block; font-size: .75rem; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
   #list .title { display: block; font-weight: 500; line-height: 1.4; }
 
-  .badge { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 9px;
+  .badge { display: inline-block; font-size: .71875rem; font-weight: 600; padding: 2px 9px;
            border-radius: 999px; vertical-align: 1px; }
   .badge.now { background: var(--now-soft); color: var(--now); }
   .badge.soon { background: var(--soon-soft); color: var(--soon); }
@@ -79,15 +112,15 @@
   .empty { color: var(--muted); padding: 24px 8px; }
   .empty-state { margin: 10vh auto 0; max-width: 460px; text-align: center; }
   .empty-state svg { width: 64px; height: 64px; color: var(--accent); opacity: .85; }
-  .empty-state h2 { margin: 12px 0 6px; font-size: 22px; letter-spacing: -.01em; }
+  .empty-state h2 { margin: 12px 0 6px; font-size: 1.375rem; letter-spacing: -.01em; }
   .empty-state p { color: var(--muted); margin: 0 0 16px; }
   .empty-state .actions { justify-content: center; }
 
   #detail { padding: 32px 40px 48px; }
   #detail article { max-width: 760px; }
-  .eyebrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
-  #detail h2 { margin: 10px 0 18px; font-size: 26px; line-height: 1.3; letter-spacing: -.015em; }
-  .meta { color: var(--muted); font-size: 13px; }
+  .eyebrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: .8125rem; }
+  #detail h2 { margin: 10px 0 18px; font-size: 1.625rem; line-height: 1.3; letter-spacing: -.015em; }
+  .meta { color: var(--muted); font-size: .8125rem; }
   .context { white-space: pre-wrap; background: var(--panel); border: 1px solid var(--line);
              border-radius: var(--radius); padding: 18px 20px; margin-bottom: 24px; line-height: 1.65;
              box-shadow: var(--shadow); }
@@ -98,7 +131,7 @@
   .options label:hover { border-color: var(--accent); }
   .options input { position: absolute; opacity: 0; pointer-events: none; }
   .options .letter { flex: none; display: grid; place-items: center; width: 28px; height: 28px;
-                     border-radius: 50%; border: 1.5px solid var(--line); font-weight: 700; font-size: 13px;
+                     border-radius: 50%; border: 1.5px solid var(--line); font-weight: 700; font-size: .8125rem;
                      color: var(--muted); transition: all .15s; }
   .options .text { padding-top: 2px; }
   .options label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
@@ -113,13 +146,13 @@
   .actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .actions button.primary:hover:not(:disabled) { background: var(--accent-strong); }
   .actions button:disabled { opacity: .45; cursor: not-allowed; }
-  .hint { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+  .hint { color: var(--muted); font-size: .8125rem; margin: 10px 0 0; }
   .error { color: var(--now); margin-top: 8px; }
   .answered { background: var(--done-soft); color: var(--done);
               border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
 
   .thread { margin-top: 40px; }
-  .thread h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 14px; }
+  .thread h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 14px; }
   .timeline { position: relative; padding-left: 22px; }
   .timeline::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
   .entry, .asked { position: relative; margin-bottom: 14px; }
@@ -130,23 +163,42 @@
   .entry .body { white-space: pre-wrap; margin-top: 2px; }
   .context, .entry .body { overflow-wrap: anywhere; }
 
+  #settings { padding: 32px 40px 48px; }
+  .settings { max-width: 760px; margin: 0 auto; }
+  .back { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 600; }
+  .back:hover { color: var(--accent-strong); }
+  .settings > h2 { margin: 10px 0 24px; font-size: 1.625rem; letter-spacing: -.015em; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+          box-shadow: var(--shadow); padding: 20px 22px 8px; margin-bottom: 20px; }
+  .card h3 { display: flex; gap: 10px; align-items: center; margin: 0; font-size: 1.0625rem; }
+  .card > p { color: var(--muted); margin: 4px 0 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+         padding: 14px 0; border-top: 1px solid var(--line); }
+  .row > div:first-child { min-width: 0; }
+  .row strong { display: block; font-weight: 600; overflow-wrap: anywhere; }
+
   @media (max-width: 760px) {
     header { padding-left: 16px; padding-right: 16px; }
     main { grid-template-columns: minmax(0, 1fr); }
     #side { border-right: 0; border-bottom: 1px solid var(--line); }
     #list { max-height: 38vh; }
     #detail { padding: 20px 16px 40px; }
-    #detail h2 { font-size: 22px; }
+    #detail h2 { font-size: 1.375rem; }
+    #settings { padding: 20px 16px 40px; }
+    .card { padding: 16px 16px 4px; }
   }
 </style>
 </head>
 <body>
 <header>
   <div class="brand"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M5 22a11 11 0 0 1 22 0" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="22" r="2.8" fill="currentColor"/></svg><h1>Tempo <small>Questions waiting on you</small></h1></div>
-  <div class="tabs" role="group" aria-label="Status">
-    <button data-status="open" aria-pressed="true">Open</button>
-    <button data-status="answered" aria-pressed="false">Answered</button>
-    <button data-status="archived" aria-pressed="false">Archived</button>
+  <div class="tools">
+    <div class="tabs" role="group" aria-label="Status">
+      <button data-status="open" aria-pressed="true">Open</button>
+      <button data-status="answered" aria-pressed="false">Answered</button>
+      <button data-status="archived" aria-pressed="false">Archived</button>
+    </div>
+    <button id="gear" aria-pressed="false" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   </div>
 </header>
 <main>
@@ -159,8 +211,9 @@
   </div>
   <section id="detail"><p class="empty">Pick a question on the left.</p></section>
 </main>
+<section id="settings" hidden></section>
 <script>
-const state = { status: "open", project: storedProject(), current: null, shown: null };
+const state = { status: "open", project: storedProject(), current: null, shown: null, back: null };
 
 // The page shows one project at a time and remembers the last one per browser.
 function storedProject() {
@@ -259,11 +312,85 @@ function setStatus(status) {
     button.setAttribute("aria-pressed", String(button.dataset.status === status)));
 }
 
+// Settings has its own address, #/settings, and replaces the list and the question while
+// open. It is drawn when it opens and after each save, never by the timed refresh, so
+// it doesn't wipe what the user is typing.
+function settingsOpen() {
+  return location.hash === "#/settings";
+}
+
+function showSettings(open) {
+  $("main").hidden = open;
+  $("#settings").hidden = !open;
+  $("#gear").setAttribute("aria-pressed", String(open));
+}
+
+async function openSettings() {
+  showSettings(true);
+  renderSettings(await api("/api/settings"));
+}
+
+function closeSettings() {
+  history.replaceState(null, "", state.back || location.pathname);
+  state.back = null;
+  state.current = null;
+  refresh(true);
+}
+
+// Theme, font and text size belong to this browser, not the database: the head script
+// applies them on load. The default is stored as no choice at all.
+const display = [
+  { key: "theme", label: "Theme", hint: "System follows your computer's light or dark mode.", standard: "system",
+    choices: [["system", "System"], ["light", "Light"], ["dark", "Dark"]] },
+  { key: "font", label: "Font", standard: "sans",
+    choices: [["sans", "System sans"], ["serif", "Serif"], ["mono", "Monospace"]] },
+  { key: "size", label: "Text size", standard: "medium",
+    choices: [["small", "Small"], ["medium", "Medium"], ["large", "Large"]] },
+];
+
+function setDisplay(key, value, isDefault) {
+  if (isDefault) delete document.documentElement.dataset[key];
+  else document.documentElement.dataset[key] = value;
+  try {
+    if (isDefault) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch { /* private window: applies until the page reloads */ }
+}
+
+function renderAppearance() {
+  return el("section", { class: "card" },
+    el("h3", {}, "Appearance"),
+    el("p", {}, "Saved in this browser only."),
+    display.map(({ key, label, hint, standard, choices }) => {
+      const current = document.documentElement.dataset[key] || standard;
+      return el("div", { class: "row" },
+        el("div", {}, el("strong", {}, label), hint && el("span", { class: "meta" }, hint)),
+        el("div", { class: "segmented", role: "group", "aria-label": label }, choices.map(([value, name]) =>
+          el("button", { "aria-pressed": String(value === current), onclick: (event) => {
+            setDisplay(key, value, value === standard);
+            event.currentTarget.parentNode.querySelectorAll("button").forEach((button) =>
+              button.setAttribute("aria-pressed", String(button === event.currentTarget)));
+          } }, name))));
+    }));
+}
+
+function renderSettings(data) {
+  $("#settings").replaceChildren(el("div", { class: "settings" },
+    el("button", { class: "back", onclick: closeSettings }, "← Back to questions"),
+    el("h2", {}, "Settings"),
+    renderAppearance()));
+}
+
 // Draws the list and the question on the right. The question shown must belong to the
 // selected project and tab: otherwise the first one in the list opens, or, when the list
 // is empty, an empty screen. 'follow' means the address changed on purpose (a link or a
 // click), so the tab switches to match the question instead of dropping it.
 async function refresh(follow = false) {
+  if (settingsOpen()) {
+    if ($("#settings").hidden) await openSettings();
+    return;
+  }
+  showSettings(false);
   let current = route();
   if (current && follow) {
     try {
@@ -450,8 +577,14 @@ function renderThread(question) {
 document.querySelectorAll(".tabs button").forEach((button) => button.addEventListener("click", () => {
   setStatus(button.dataset.status);
   state.current = null;
+  if (settingsOpen()) history.replaceState(null, "", location.pathname);
   refresh();
 }));
+$("#gear").addEventListener("click", () => {
+  if (settingsOpen()) return closeSettings();
+  state.back = location.hash;
+  location.hash = "#/settings";
+});
 window.addEventListener("hashchange", () => refresh(true));
 // Answering needs a picked option; a note alone goes through "Ask for more context".
 $("#detail").addEventListener("change", (event) => {
