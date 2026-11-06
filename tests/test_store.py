@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tempo.store import SCHEMA, QuestionError, Store, _migrate, connect, db_path
+from tempo.store import MIGRATIONS, SCHEMA, QuestionError, Store, _migrate, connect, db_path
 from tests.helpers import DatabaseTest
 
 
@@ -163,11 +163,20 @@ class ListTest(DatabaseTest):
             "INSERT INTO questions (project, number, urgent, created_at, updated_at)"
             " VALUES ('demo', 1, 1, 'x', 'x'), ('demo', 2, 0, 'x', 'x')"
         )
+        old.execute(
+            "INSERT INTO versions (question_id, version, title, context, options, created_at)"
+            " VALUES (1, 1, 'Which way?', 'We need to pick one.', '[]', 'x')"
+        )
+        old.execute("INSERT INTO folders (folder) VALUES ('dataforge')")
         old.commit()
         old.close()
         with Store(connect(path)) as store:
             rows = store.db.execute("SELECT number, priority FROM questions ORDER BY number")
             self.assertEqual([tuple(row) for row in rows], [(1, "now"), (2, "soon")])
+            title = store.db.execute("SELECT title FROM versions").fetchone()[0]
+            self.assertEqual(title, "Which way?")
+            self.assertEqual(store.folders()[0]["project"], "dataforge")
+            self.assertEqual(_user_version(store.db), len(MIGRATIONS))
 
     def test_answers_older_than_a_week_are_archived_when_listing(self):
         for _ in range(3):
@@ -266,8 +275,35 @@ class ProjectsTest(DatabaseTest):
 
     def test_old_folders_without_a_project_are_filed_under_their_name(self):
         self.store.db.execute("INSERT INTO folders (folder) VALUES ('dataforge')")
+        self.store.db.execute("PRAGMA user_version = 0")
         _migrate(self.store.db)
         self.assertEqual(self.store.folders()[0]["project"], "dataforge")
+
+
+class MigrateTest(DatabaseTest):
+    def test_a_fresh_database_ends_at_the_latest_version(self):
+        self.assertEqual(_user_version(self.store.db), len(MIGRATIONS))
+
+    def test_an_unversioned_database_that_already_has_the_changes_upgrades(self):
+        # Databases from before user_version: current shape, but at version 0.
+        self.add(priority="later")
+        self.store.db.execute("INSERT INTO folders (folder, project) VALUES ('web', 'demo')")
+        self.store.db.execute("PRAGMA user_version = 0")
+        with Store(connect(os.environ["TEMPO_DB"])) as store:
+            self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+            self.assertEqual(store.get("demo", 1)["priority"], "later")
+            self.assertEqual(store.folders()[0]["project"], "demo")
+
+    def test_connecting_again_does_not_redo_the_steps(self):
+        # Filling folder projects is a step; a second connect must leave this one alone.
+        self.store.db.execute("INSERT INTO folders (folder) VALUES ('dataforge')")
+        with Store(connect(os.environ["TEMPO_DB"])) as store:
+            self.assertIsNone(store.folders()[0]["project"])
+            self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+
+
+def _user_version(db):
+    return db.execute("PRAGMA user_version").fetchone()[0]
 
 
 class DbPathTest(unittest.TestCase):

@@ -113,18 +113,43 @@ def connect(path=None):
     return db
 
 
-def _migrate(db):
-    """Bring databases created by older versions up to the current schema."""
+def _add_priority(db):
+    """The first version had an urgent flag; it became the 'now' priority."""
     columns = [row["name"] for row in db.execute("PRAGMA table_info(questions)")]
     if "priority" not in columns:
-        # The first version had an urgent flag; it became the 'now' priority.
         db.execute(
             "ALTER TABLE questions ADD COLUMN priority TEXT NOT NULL DEFAULT 'soon'"
             " CHECK (priority IN ('now', 'soon', 'later'))"
         )
         db.execute("UPDATE questions SET priority = 'now' WHERE urgent = 1")
-    # Folders used to fall back to their own name when no project was picked.
+
+
+def _fill_folder_projects(db):
+    """Folders used to fall back to their own name when no project was picked."""
     db.execute("UPDATE folders SET project = folder WHERE project IS NULL")
+
+
+# Steps that bring older databases up to SCHEMA, in order. The database's user_version
+# says how many have run; never reorder or remove one, only add new ones at the end.
+# Databases made before user_version was used are at 0 whatever their shape, so each
+# step must also be safe on a database that already has its change.
+MIGRATIONS = [_add_priority, _fill_folder_projects]
+
+
+def _version(db):
+    return db.execute("PRAGMA user_version").fetchone()[0]
+
+
+def _migrate(db):
+    """Run each step this database has not had yet, once, in its own transaction."""
+    for number, step in enumerate(MIGRATIONS, start=1):
+        if _version(db) >= number:
+            continue
+        with _Transaction(db):
+            # Another process may have run the step while this one waited for the lock.
+            if _version(db) < number:
+                step(db)
+                db.execute("PRAGMA user_version = %d" % number)
 
 
 class Store:
