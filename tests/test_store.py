@@ -129,6 +129,19 @@ class ListTest(DatabaseTest):
         self.add(title="Hurry", priority="now")
         self.assertEqual([q["title"] for q in self.store.list("demo")], ["Hurry", "Normal", "Calm"])
 
+    def test_lists_answered_questions_newest_answer_first(self):
+        for _ in range(3):
+            self.add()
+        # Answered in the order Q2, Q3, Q1, an hour apart.
+        for hours_ago, number in ((3, 2), (2, 3), (1, 1)):
+            self.store.answer("demo", number, "a")
+            self.store.db.execute(
+                "UPDATE entries SET created_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?)"
+                " WHERE question_id = (SELECT id FROM questions WHERE number = ?)",
+                ("-%d hours" % hours_ago, number),
+            )
+        self.assertEqual([q["number"] for q in self.store.list("demo", "answered")], [1, 3, 2])
+
     def test_priority_must_be_a_known_level(self):
         with self.assertRaises(QuestionError):
             self.add(priority="urgent")
