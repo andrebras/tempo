@@ -1,7 +1,7 @@
 [project]
-name = "open-questions"
+name = "tempo"
 version = "0.1.0"
-description = "Claude Code plugin: open questions in SQLite with a local page to answer them"
+description = "Claude Code plugin: the questions Claude asks you, in SQLite with a local page to answer them"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"

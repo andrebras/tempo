@@ -1,16 +1,17 @@
 ---
-name: open-questions
-description: Records every question Claude needs the user to decide on in the open questions database, with full context and lettered options, and picks up the user's answers and follow-ups from its local page. Use whenever you are about to ask the user to choose or decide something that blocks or shapes the work, when the user asks about an open question or a Q number (like "Q12" or "12b"), or when hook output says the user answered or asked for more on the open questions page. Do not use for quick yes/no confirmations inside a single reply.
+name: tempo
+description: Records every question Claude needs the user to decide on in the Tempo database, with full context and lettered options, and picks up the user's answers and follow-ups from its local page. Use whenever you are about to ask the user to choose or decide something that blocks or shapes the work, when the user asks about an open question or a Q number (like "Q12" or "12b"), or when hook output says the user answered or asked for more on the Tempo page. Do not use for quick yes/no confirmations inside a single reply.
 ---
 
-# Open questions
+# Tempo
 
 Questions for the user live in a SQLite database, not only in chat. The user reads and answers
 them on a local page at http://127.0.0.1:2204/ (started by this plugin's SessionStart hook).
 Each question has a running number per project (Q1, Q2…) that is never reused, so the user can
 answer anywhere with a short code like "12b".
 
-The `oq` command is on your PATH. The project defaults to the current git repo's name.
+The `tempo` command is on your PATH (`oq`, its old name, still works as an alias). The project
+defaults to the current git repo's name.
 
 ## Asking a question
 
@@ -25,7 +26,7 @@ Write it so someone with no context can answer it cold:
   default): needed this week. `later`: no rush. The page sorts by it, then by number.
 
 ```bash
-oq add --title "Where should the export button go?" \
+tempo add --title "Where should the export button go?" \
   --context "The export feature is built and needs a place in the UI. ..." \
   --option "In the toolbar, next to Share" \
   --option "In the ⋯ menu" \
@@ -33,23 +34,23 @@ oq add --title "Where should the export button go?" \
 ```
 
 The command prints the number and a link. In chat, give the question in full with its options
-and the link, so the user can answer in either place. `oq add` refuses incomplete questions
+and the link, so the user can answer in either place. `tempo add` refuses incomplete questions
 and reused numbers: fix the question, don't work around the check.
 
-To continue numbering from an older list, run `oq set-next <number>` once before the first add.
+To continue numbering from an older list, run `tempo set-next <number>` once before the first add.
 
 ## Getting answers back
 
 Answers and follow-ups from the page reach you two ways:
 
 1. **On the user's next message**: the UserPromptSubmit hook adds them to your context.
-2. **While you keep working**: after asking, start `oq wait --timeout 1800` with the Bash
+2. **While you keep working**: after asking, start `tempo wait --timeout 1800` with the Bash
    tool's `run_in_background` option. It exits as soon as the user answers or follows up,
    which wakes you with what they wrote, or after 30 minutes with "Nothing new from the
    user." Start it again after either, while questions are still open, so no wait outlives
    the session by long. Run only one wait per session.
 
-Each item is delivered once. `oq inbox` prints anything not yet delivered.
+Each item is delivered once. `tempo inbox` prints anything not yet delivered.
 
 ## Handling an answer
 
@@ -62,17 +63,17 @@ again for a new answer.
 
 The user wants to understand the question better before answering. Either:
 
-- add context: `oq context <number> "…"`, for an extra explanation or a fact you looked up, or
-- reword it: `oq reword <number> --note "Why it changed" [--title …] [--context …] [--option …]`,
+- add context: `tempo context <number> "…"`, for an extra explanation or a fact you looked up, or
+- reword it: `tempo reword <number> --note "Why it changed" [--title …] [--context …] [--option …]`,
   when the question itself was unclear or the options need to change. Passing `--option`
   replaces all options. Old versions stay in the thread.
 
 When answering needs research (reading code, docs, past decisions), hand it to a subagent and
-have it run `oq context` or `oq reword` itself. Then tell the user in chat that the question
+have it run `tempo context` or `tempo reword` itself. Then tell the user in chat that the question
 was updated, with its link.
 
 ## Other commands
 
-- `oq list` (`--status answered|archived|all`, `--all-projects`) and `oq show <number>`.
-- `oq priority <number> now|soon|later` when the need changes.
-- `oq archive`: archive the project's answered questions once nothing is open.
+- `tempo list` (`--status answered|archived|all`, `--all-projects`) and `tempo show <number>`.
+- `tempo priority <number> now|soon|later` when the need changes.
+- `tempo archive`: archive the project's answered questions once nothing is open.

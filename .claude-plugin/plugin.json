@@ -1,9 +1,9 @@
 {
-  "name": "open-questions",
+  "name": "tempo",
   "version": "0.1.0",
-  "description": "Keeps the questions Claude asks you in SQLite, with a local page to read, follow up on and answer them. Answers reach Claude by themselves.",
+  "description": "You set the tempo, Claude follows: keeps the questions Claude asks you in SQLite, with a local page to read, follow up on and answer them. Answers reach Claude by themselves.",
   "author": { "name": "André Brás" },
-  "repository": "https://github.com/andrebras/open-questions",
+  "repository": "https://github.com/andrebras/tempo",
   "license": "MIT",
   "keywords": ["questions", "decisions", "inbox", "sqlite"]
 }

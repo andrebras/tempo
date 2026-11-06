@@ -1,10 +1,10 @@
 {
-  "name": "open-questions",
-  "description": "Open questions between you and Claude, kept in SQLite with a local page to answer them.",
+  "name": "tempo",
+  "description": "Tempo: the questions Claude needs you to decide, kept in SQLite with a local page to answer them.",
   "owner": { "name": "André Brás" },
   "plugins": [
     {
-      "name": "open-questions",
+      "name": "tempo",
       "source": "./",
       "description": "Keeps the questions Claude asks you in SQLite, with a local page to read, follow up on and answer them."
     }
