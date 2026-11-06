@@ -289,13 +289,13 @@ def _take_inbox(store, project):
         version = question["versions"][entry["version"] - 1]
         heading = "%s %s (%s)" % (entry["project"], question["label"], version["title"])
         if entry["kind"] == "answer":
-            if entry["choice"]:
-                option = next(o for o in version["options"] if o["letter"] == entry["choice"])
-                line = "- %s answered (%s) %s" % (heading, entry["choice"], option["text"])
-            else:
-                line = "- %s answered" % heading
-            if entry["body"]:
-                line += "\n  Note: %s" % entry["body"]
+            earlier = [
+                e for e in question["entries"] if e["kind"] == "answer" and e["id"] < entry["id"]
+            ]
+            verb = "changed the answer to" if earlier else "answered"
+            line = "- %s %s %s" % (heading, verb, _describe_answer(question, entry))
+            if earlier:
+                line += "\n  Before: %s" % _describe_answer(question, earlier[-1])
         else:
             line = "- %s asks for more: %s" % (heading, entry["body"])
         lines.append(line)
@@ -306,6 +306,17 @@ def _take_inbox(store, project):
         )
     store.mark_delivered([entry["id"] for entry in entries])
     return "\n".join(lines)
+
+
+def _describe_answer(question, entry):
+    parts = []
+    if entry["choice"]:
+        version = question["versions"][entry["version"] - 1]
+        option = next(o for o in version["options"] if o["letter"] == entry["choice"])
+        parts.append("(%s) %s" % (entry["choice"], option["text"]))
+    if entry["body"]:
+        parts.append("Note: %s" % entry["body"] if parts else entry["body"])
+    return " / ".join(parts)
 
 
 def format_question(question):

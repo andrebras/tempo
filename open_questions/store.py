@@ -212,6 +212,8 @@ class Store:
         question = self._find(project, number)
         if question["status"] == "archived":
             raise QuestionError("This question is archived")
+        if question["status"] == "answered":
+            raise QuestionError("This question is already answered; reopen it to answer again")
         body = (body or "").strip()
         current = self._current_version(question["id"])
         letters = [option["letter"] for option in json.loads(current["options"])]
@@ -227,6 +229,20 @@ class Store:
                 "UPDATE questions SET status = 'answered', updated_at = ? WHERE id = ?",
                 (now(), question["id"]),
             )
+        return self.get(project, number)
+
+    def reopen(self, project, number):
+        """Open an answered question again so the user can give a new answer.
+
+        The earlier answers stay in the thread; the next one is delivered as a change.
+        """
+        question = self._find(project, number)
+        if question["status"] != "answered":
+            raise QuestionError("Only answered questions can be reopened")
+        self.db.execute(
+            "UPDATE questions SET status = 'open', updated_at = ? WHERE id = ?",
+            (now(), question["id"]),
+        )
         return self.get(project, number)
 
     # Reading

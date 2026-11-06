@@ -50,6 +50,13 @@ class ServerTest(DatabaseTest):
         self.assertEqual(json.loads(data)["status"], "answered")
         self.assertEqual(len(self.store.undelivered("demo")), 1)
 
+    def test_answering_twice_needs_a_reopen(self):
+        path = "/api/questions/demo/1/"
+        self.assertEqual(self.request("POST", path + "answer", {"choice": "a"})[0], 200)
+        self.assertEqual(self.request("POST", path + "answer", {"choice": "b"})[0], 400)
+        self.assertEqual(self.request("POST", path + "reopen", {})[0], 200)
+        self.assertEqual(self.request("POST", path + "answer", {"choice": "b"})[0], 200)
+
     def test_reports_rule_errors(self):
         status, data = self.request("POST", "/api/questions/demo/1/followup", {"body": ""})
         self.assertEqual(status, 400)

@@ -167,6 +167,7 @@ async function loadDetail(force) {
   const current = route();
   const detail = $("#detail");
   if (!current) {
+    if (!force) return;
     state.current = null;
     detail.replaceChildren(el("p", { class: "empty" }, "Pick a question on the left."));
     return;
@@ -201,40 +202,63 @@ function renderQuestion(question, draft) {
     el("h2", {}, question.title),
     el("div", { class: "context" }, question.context),
   ];
+  const reopened = question.status === "open" && question.answer;
   if (question.answer) {
-    const chosen = question.options.find((option) => option.letter === question.answer.choice);
+    const chosen = question.versions[question.answer.version - 1].options
+      .find((option) => option.letter === question.answer.choice);
     const answeredVersion = question.answer.version !== question.version
       ? ` (on version ${question.answer.version})` : "";
     parts.push(el("div", { class: "answered" },
-      el("strong", {}, "Your answer" + answeredVersion + ": "),
+      el("strong", {}, (reopened ? "Your previous answer" : "Your answer") + answeredVersion + ": "),
       chosen ? `(${chosen.letter}) ${chosen.text}` : "",
       question.answer.body ? (chosen ? " · " : "") + question.answer.body : ""));
   }
-  if (question.status !== "archived") {
-    const choice = draft.choice || (question.answer && question.answer.version === question.version
-      ? question.answer.choice : null);
+  const error = el("p", { class: "error", hidden: true });
+  const post = (path, body) => api(`/api/questions/${encodeURIComponent(question.project)}/${question.number}/${path}`, body)
+    .catch((problem) => { error.textContent = problem.message; error.hidden = false; throw problem; });
+  const refresh = () => { state.current = null; state.shown = null; return Promise.all([loadDetail(true), loadList()]); };
+  if (question.status === "answered") {
+    // Answered questions are read-only; reopening is a deliberate step, so an old tab
+    // can't add a second answer by accident.
+    parts.push(el("div", { class: "actions" },
+      el("button", { onclick: () => post("reopen").then(refresh, () => {}) }, "Reopen to answer again")), error);
+  } else if (question.status === "open") {
     parts.push(el("div", { class: "options", role: "radiogroup" },
       question.options.map((option) => el("label", {},
         el("input", { type: "radio", name: "choice", value: option.letter,
-                      checked: option.letter === choice }),
+                      checked: option.letter === draft.choice }),
         el("span", {}, el("span", { class: "letter" }, `(${option.letter}) `), option.text,
            option.letter === question.recommended && el("span", { class: "badge rec" }, "recommended"))))));
     const note = el("textarea", { id: "note",
       placeholder: "A note with your answer, your own answer, or what you need to know more about" });
     note.value = draft.text;
-    const error = el("p", { class: "error", hidden: true });
-    const send = (path, body) => api(`/api/questions/${encodeURIComponent(question.project)}/${question.number}/${path}`, body)
-      .then(() => { state.current = null; state.shown = null; return Promise.all([loadDetail(true), loadList()]); })
-      .catch((problem) => { error.textContent = problem.message; error.hidden = false; });
     parts.push(note, el("div", { class: "actions" },
       el("button", { class: "primary", onclick: () => {
         const picked = document.querySelector("input[name=choice]:checked");
-        send("answer", { choice: picked ? picked.value : null, body: note.value });
-      } }, question.answer ? "Change answer" : "Send answer"),
-      el("button", { onclick: () => send("followup", { body: note.value }) }, "Ask for more context")), error);
+        post("answer", { choice: picked ? picked.value : null, body: note.value })
+          .then(() => goToNextOpen(question), () => {});
+      } }, reopened ? "Send new answer" : "Send answer"),
+      el("button", { onclick: () => post("followup", { body: note.value }).then(refresh, () => {}) },
+        "Ask for more context")), error);
   }
   parts.push(renderThread(question));
   return el("article", {}, parts);
+}
+
+async function goToNextOpen(answered) {
+  // After an answer, move on to the next open question: same project first, then any.
+  state.current = null;
+  state.shown = null;
+  const data = await api("/api/questions?status=open");
+  const others = data.questions.filter((q) => !(q.project === answered.project && q.number === answered.number));
+  const next = others.find((q) => q.project === answered.project) || others[0];
+  if (next) {
+    location.hash = `#/${encodeURIComponent(next.project)}/${next.number}`;
+  } else {
+    history.replaceState(null, "", location.pathname);
+    await loadList();
+    $("#detail").replaceChildren(el("p", { class: "empty" }, "All questions answered. Nice work."));
+  }
 }
 
 function renderThread(question) {

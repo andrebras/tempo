@@ -65,6 +65,21 @@ class ThreadTest(DatabaseTest):
         self.assertEqual(question["answer"]["choice"], "b")
         self.assertEqual(question["answer"]["version"], 2)
 
+    def test_a_second_answer_needs_the_question_reopened(self):
+        self.add()
+        self.store.answer("demo", 1, "a")
+        with self.assertRaises(QuestionError):
+            self.store.answer("demo", 1, "b")
+        self.assertEqual(self.store.reopen("demo", 1)["status"], "open")
+        question = self.store.answer("demo", 1, "b")
+        self.assertEqual([e["choice"] for e in question["entries"]], ["a", "b"])
+        self.assertEqual(question["answer"]["choice"], "b")
+
+    def test_only_answered_questions_can_be_reopened(self):
+        self.add()
+        with self.assertRaises(QuestionError):
+            self.store.reopen("demo", 1)
+
     def test_answer_needs_a_real_option_or_text(self):
         self.add()
         with self.assertRaises(QuestionError):

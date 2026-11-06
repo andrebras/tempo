@@ -49,6 +49,16 @@ class CliTest(DatabaseTest):
             _, again, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/demo"}))
         self.assertEqual(again, "")
 
+    def test_a_changed_answer_says_what_it_was_before(self):
+        self.add()
+        self.store.answer("demo", 1, "a")
+        run("inbox")
+        self.store.reopen("demo", 1)
+        self.store.answer("demo", 1, None, "Neither, go up")
+        _, out, _ = run("inbox")
+        self.assertIn("changed the answer to Neither, go up", out)
+        self.assertIn("Before: (a) Left", out)
+
     def test_user_prompt_hook_ignores_other_projects(self):
         self.add(project="other")
         self.store.follow_up("other", 1, "Why?")

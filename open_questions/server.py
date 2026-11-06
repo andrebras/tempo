@@ -73,6 +73,8 @@ def make_handler(port):
                 )
             elif action == "followup":
                 self._handle(lambda: store.follow_up(project, _int(number), body.get("body", "")))
+            elif action == "reopen":
+                self._handle(lambda: store.reopen(project, _int(number)))
             else:
                 self._json(404, {"error": "Not found"})
 
