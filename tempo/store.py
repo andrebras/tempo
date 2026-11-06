@@ -6,9 +6,9 @@ that happens to it afterwards (added context, rewords, follow-ups, answers) is a
 entry in its thread. Entries written by the user start undelivered; the hook and
 `tempo wait` hand them to Claude and mark them delivered.
 
-A project starts out named after the git folder a session runs in. The folders table
-remembers every folder seen and, once the user picks one in Settings, the project it
-belongs to, so a project can have a readable name and several folders.
+A project is just a name. The first time a session runs in a git folder, the folder is
+filed under a project of the same name; renaming the project in Settings takes its
+questions and folders along.
 """
 
 import json
@@ -120,6 +120,8 @@ def _migrate(db):
             " CHECK (priority IN ('now', 'soon', 'later'))"
         )
         db.execute("UPDATE questions SET priority = 'now' WHERE urgent = 1")
+    # Folders used to fall back to their own name when no project was picked.
+    db.execute("UPDATE folders SET project = folder WHERE project IS NULL")
 
 
 class Store:
@@ -327,41 +329,25 @@ class Store:
     def projects(self):
         return [row["name"] for row in self.db.execute("SELECT name FROM projects ORDER BY name")]
 
-    # Projects and folders, set in Settings
+    # Projects and their folders, renamed in Settings
 
     def see_folder(self, folder):
-        """Remember a folder a session ran in, so Settings can list it."""
+        """Remember a folder a session ran in; a new one is filed under its own name."""
         folder = _required(folder, "folder")
         self.db.execute(
-            "INSERT INTO folders (folder, seen_at) VALUES (?, ?)"
+            "INSERT INTO folders (folder, project, seen_at) VALUES (?, ?, ?)"
             " ON CONFLICT (folder) DO UPDATE SET seen_at = excluded.seen_at",
-            (folder, now()),
+            (folder, folder, now()),
         )
 
     def project_for(self, folder):
-        """The project a folder belongs to: the one picked in Settings, else its own name."""
+        """The project a folder is filed under; a folder never seen is its own project."""
         row = self.db.execute("SELECT project FROM folders WHERE folder = ?", (folder,)).fetchone()
-        return (row and row["project"]) or folder
-
-    def set_folder_project(self, folder, project):
-        """Put a folder in a project. An empty name, or the folder's own, removes the choice."""
-        row = self.db.execute("SELECT folder FROM folders WHERE folder = ?", (folder,)).fetchone()
-        if row is None:
-            raise QuestionError("The folder %s has not been seen yet" % folder)
-        project = (project or "").strip()
-        self.db.execute(
-            "UPDATE folders SET project = ? WHERE folder = ?",
-            (project if project and project != folder else None, folder),
-        )
+        return row["project"] if row else folder
 
     def folders(self):
         return [
-            {
-                "folder": row["folder"],
-                "project": row["project"] or row["folder"],
-                "chosen": row["project"] is not None,
-                "seen_at": row["seen_at"],
-            }
+            {"folder": row["folder"], "project": row["project"], "seen_at": row["seen_at"]}
             for row in self.db.execute("SELECT * FROM folders ORDER BY folder")
         ]
 
@@ -387,8 +373,8 @@ class Store:
     def rename_project(self, old, new):
         """Give a project a new name: its questions, numbering and folders move with it.
 
-        Merging into a project that has no questions yet is fine; one with questions is
-        refused, because both would have a Q1.
+        Joining two projects is fine as long as only one of them has questions; otherwise
+        both would have a Q1.
         """
         new = (new or "").strip()
         if not new:
@@ -397,7 +383,7 @@ class Store:
             raise QuestionError("The project is already called %s" % new)
         if not any(project["name"] == old for project in self.project_summaries()):
             raise QuestionError("There is no project called %s" % old)
-        if self._question_count(new):
+        if self._question_count(new) and self._question_count(old):
             raise QuestionError(
                 "%s already has questions, so their numbers would clash; pick another name" % new
             )
@@ -410,12 +396,8 @@ class Store:
                 )
                 self.db.execute("UPDATE questions SET project = ? WHERE project = ?", (new, old))
                 self.db.execute("DELETE FROM projects WHERE name = ?", (old,))
-            # Folders that belonged to the old name follow it, whether they were moved
-            # there in Settings or simply share its name.
             moved = self.db.execute(
-                "UPDATE folders SET project = ?"
-                " WHERE project = ? OR (project IS NULL AND folder = ?)",
-                (new, old, old),
+                "UPDATE folders SET project = ? WHERE project = ?", (new, old)
             ).rowcount
             if not moved:
                 # Projects named after their folder before folders were remembered: keep
@@ -423,8 +405,6 @@ class Store:
                 self.db.execute(
                     "INSERT OR IGNORE INTO folders (folder, project) VALUES (?, ?)", (old, new)
                 )
-            # A folder whose project is now its own name needs no choice any more.
-            self.db.execute("UPDATE folders SET project = NULL WHERE project = folder")
 
     def undelivered(self, project=None):
         sql = (

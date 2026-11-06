@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tempo.store import SCHEMA, QuestionError, Store, connect, db_path
+from tempo.store import SCHEMA, QuestionError, Store, _migrate, connect, db_path
 from tests.helpers import DatabaseTest
 
 
@@ -167,31 +167,13 @@ class ListTest(DatabaseTest):
 
 
 class ProjectsTest(DatabaseTest):
-    def test_a_folder_is_its_own_project_until_one_is_chosen(self):
+    def test_a_new_folder_is_filed_under_its_own_name(self):
         self.store.see_folder("onzehq")
-        self.assertEqual(self.store.project_for("onzehq"), "onzehq")
-        self.store.set_folder_project("onzehq", "ONZE HQ")
-        self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
-        self.store.set_folder_project("onzehq", " ")
         self.assertEqual(self.store.project_for("onzehq"), "onzehq")
         self.assertEqual(self.store.project_for("never-seen"), "never-seen")
-
-    def test_only_seen_folders_can_be_moved(self):
-        with self.assertRaises(QuestionError):
-            self.store.set_folder_project("elsewhere", "demo")
-
-    def test_lists_folders_and_projects_together(self):
-        self.add(project="onzehq")
-        self.store.see_folder("onzehq")
-        self.store.see_folder("onzehq-api")
-        self.store.set_folder_project("onzehq-api", "onzehq")
         self.assertEqual(
             self.store.project_summaries(),
-            [{"name": "onzehq", "questions": 1, "folders": ["onzehq", "onzehq-api"]}],
-        )
-        self.assertEqual(
-            [(f["folder"], f["project"], f["chosen"]) for f in self.store.folders()],
-            [("onzehq", "onzehq", False), ("onzehq-api", "onzehq", True)],
+            [{"name": "onzehq", "questions": 0, "folders": ["onzehq"]}],
         )
 
     def test_rename_moves_questions_numbering_and_folders(self):
@@ -200,31 +182,39 @@ class ProjectsTest(DatabaseTest):
         self.add(project="onzehq")
         self.store.follow_up("onzehq", 40, "Why?")
         self.store.see_folder("onzehq")
-        self.store.see_folder("api")
-        self.store.set_folder_project("api", "onzehq")
         self.store.rename_project("onzehq", "ONZE HQ")
         self.assertEqual(self.store.projects(), ["ONZE HQ"])
         self.assertEqual([q["label"] for q in self.store.list("ONZE HQ")], ["Q1", "Q40"])
         self.assertEqual(self.add(project="ONZE HQ")["label"], "Q41")
         self.assertEqual(self.store.undelivered("ONZE HQ")[0]["project"], "ONZE HQ")
         self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
-        self.assertEqual(self.store.project_for("api"), "ONZE HQ")
+        self.store.see_folder("onzehq")
+        self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
 
     def test_rename_maps_a_folder_that_was_never_seen(self):
         self.add(project="onzehq")
         self.store.rename_project("onzehq", "ONZE HQ")
         self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
 
-    def test_a_seen_folder_shows_its_project_before_the_first_question(self):
-        self.add(project="open-questions")
-        self.store.rename_project("open-questions", "tempo")
+    def test_renaming_an_empty_project_into_another_joins_its_folders(self):
+        self.add(project="onzehq")
         self.store.see_folder("onzehq")
+        self.store.see_folder("onzehq-api")
+        self.store.rename_project("onzehq-api", "onzehq")
         self.assertEqual(
             self.store.project_summaries(),
-            [
-                {"name": "onzehq", "questions": 0, "folders": ["onzehq"]},
-                {"name": "tempo", "questions": 1, "folders": ["open-questions"]},
-            ],
+            [{"name": "onzehq", "questions": 1, "folders": ["onzehq", "onzehq-api"]}],
+        )
+
+    def test_renaming_only_changes_the_case_keeps_everything(self):
+        # What happened for real: dataforge became DataForge, and its folder stayed behind
+        # as an empty dataforge project.
+        self.add(project="dataforge")
+        self.store.see_folder("dataforge")
+        self.store.rename_project("dataforge", "DataForge")
+        self.assertEqual(
+            self.store.project_summaries(),
+            [{"name": "DataForge", "questions": 1, "folders": ["dataforge"]}],
         )
 
     def test_rename_merges_into_a_project_without_questions(self):
@@ -233,13 +223,6 @@ class ProjectsTest(DatabaseTest):
         self.store.rename_project("onzehq", "ONZE HQ")
         self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
         self.assertEqual(self.add(project="ONZE HQ")["label"], "Q10")
-
-    def test_rename_back_to_the_folder_name_clears_the_choice(self):
-        self.add(project="onzehq")
-        self.store.see_folder("onzehq")
-        self.store.rename_project("onzehq", "ONZE HQ")
-        self.store.rename_project("ONZE HQ", "onzehq")
-        self.assertEqual(self.store.folders()[0]["chosen"], False)
 
     def test_rename_refuses_a_clash_and_changes_nothing(self):
         self.add(project="onzehq")
@@ -255,12 +238,10 @@ class ProjectsTest(DatabaseTest):
         self.assertEqual(self.store.projects(), ["ONZE HQ", "onzehq"])
         self.assertEqual(len(self.store.list("onzehq")), 1)
 
-    def test_rename_of_a_project_that_only_has_folders(self):
-        self.store.see_folder("api")
-        self.store.set_folder_project("api", "Later")
-        self.store.rename_project("Later", "Soon")
-        self.assertEqual(self.store.project_for("api"), "Soon")
-        self.assertEqual(self.store.projects(), [])
+    def test_old_folders_without_a_project_are_filed_under_their_name(self):
+        self.store.db.execute("INSERT INTO folders (folder) VALUES ('dataforge')")
+        _migrate(self.store.db)
+        self.assertEqual(self.store.folders()[0]["project"], "dataforge")
 
 
 class DbPathTest(unittest.TestCase):

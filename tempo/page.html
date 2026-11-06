@@ -179,7 +179,6 @@
          padding: 14px 0; border-top: 1px solid var(--line); }
   .row > div:first-child { min-width: 0; }
   .row strong { display: block; font-weight: 600; overflow-wrap: anywhere; }
-  .row .folder { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: .875rem; }
   .row form { display: flex; gap: 8px; flex: 1 1 280px; max-width: 400px; }
   .row form > :not(button) { flex: 1 1 0; min-width: 0; }
   .row input { padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
@@ -418,8 +417,8 @@ function count(number, word) {
 function renderProjects(data) {
   return el("section", { class: "card" },
     el("h3", {}, "Projects"),
-    el("p", {}, "Renaming a project moves its questions, their numbers and its folders to the new name. "
-      + "A project that already has questions can't take another one's name, because both would have a Q1."),
+    el("p", {}, "A project's name is what you see everywhere. Renaming it takes its questions and the "
+      + "git folders it covers along. To join two projects, rename one to the other's name; that works while only one of them has questions."),
     data.projects.length ? data.projects.map((project) => {
       const input = el("input", { value: project.name, "aria-label": `New name for ${project.name}` });
       const folders = project.folders.length
@@ -443,46 +442,12 @@ function renamed(from, to) {
   if (back && decodeURIComponent(back[1]) === from) state.back = `#/${encodeURIComponent(to)}/${back[2]}`;
 }
 
-function renderFolders(data) {
-  const NEW = "\n new";  // can't clash with a project name, which never starts with a newline
-  return el("section", { class: "card" },
-    el("h3", {}, "Folders"),
-    el("p", {}, "The git folders Claude sessions ran in, and the project their questions go to. "
-      + "Put several folders in one project to share its questions."),
-    data.folders.length ? data.folders.map((folder) => {
-      const names = [...new Set([...data.projects.map((project) => project.name), folder.folder])]
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-      const select = el("select", { "aria-label": `Project for ${folder.folder}` },
-        names.map((name) => el("option", { value: name, selected: name === folder.project },
-          name === folder.folder ? `Its own name (${name})` : name)),
-        el("option", { value: NEW }, "New project…"));
-      const input = el("input", { placeholder: "New project name", hidden: true,
-                                  "aria-label": `New project for ${folder.folder}` });
-      select.addEventListener("change", () => {
-        input.hidden = select.value !== NEW;
-        if (!input.hidden) input.focus();
-      });
-      const read = () => {
-        const value = select.value === NEW ? input.value.trim() : select.value;
-        return value && value !== folder.project ? value : null;
-      };
-      return saveRow(
-        el("div", {}, el("strong", { class: "folder" }, folder.folder),
-          el("span", { class: "meta" }, folder.seen_at
-            ? `Last seen ${new Date(folder.seen_at).toLocaleString()}`
-            : "Linked when its project was renamed")),
-        [select, input], read,
-        (project) => api(`/api/folders/${encodeURIComponent(folder.folder)}`, { project }));
-    }) : el("p", { class: "empty" }, "No folders yet. A folder appears here once a Claude session in it gets a message from you."));
-}
-
 function renderSettings(data) {
   $("#settings").replaceChildren(el("div", { class: "settings" },
     el("button", { class: "back", onclick: closeSettings }, "← Back to questions"),
     el("h2", {}, "Settings"),
     renderAppearance(),
     renderProjects(data),
-    renderFolders(data),
     // Placeholder: what belongs here is still to be decided.
     el("section", { class: "card" },
       el("h3", {}, "Question rules", el("span", { class: "badge later" }, "coming soon")),

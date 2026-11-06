@@ -67,10 +67,6 @@ def make_handler(port):
                 self._question_action(store, parts[2], parts[3], parts[4], body)
             elif len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "rename":
                 self._save_setting(store, lambda: store.rename_project(parts[2], body.get("name")))
-            elif len(parts) == 3 and parts[:2] == ["api", "folders"]:
-                self._save_setting(
-                    store, lambda: store.set_folder_project(parts[2], body.get("project"))
-                )
             else:
                 self._json(404, {"error": "Not found"})
 
@@ -140,8 +136,8 @@ def serve(port):
 
 
 def _settings(store):
-    """What the Settings screen shows: projects with their folders, and every folder seen."""
-    return {"projects": store.project_summaries(), "folders": store.folders()}
+    """What the Settings screen shows: projects with their folders."""
+    return {"projects": store.project_summaries()}
 
 
 def _parts(path):
