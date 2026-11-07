@@ -6,6 +6,14 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `tempo config page off` stops sessions from starting the page, for when you answer from the
+  terminal. Claude then points you to `tempo show N` and `tempo answer N <letter>` instead of
+  page links. `tempo serve --background` still starts the page on demand, and
+  `tempo config page on` brings back the default. `tempo config` shows the current value. The
+  setting is kept in the database; existing databases get it without a version change.
+
 ### Changed
 
 - `tempo status` counts the questions of the current folder's project, as the page shows one

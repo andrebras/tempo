@@ -914,6 +914,73 @@ class CliTest(DatabaseTest):
         with mock.patch.object(cli, "_wait_processes", return_value=None):
             self.assertTrue(cli.wait_running("demo"))
 
+    # The page turned off with `tempo config page off`
+
+    def test_config_shows_and_changes_the_page_setting(self):
+        self.assertEqual(
+            run("config"),
+            (0, "page on: each session starts the page at http://127.0.0.1:%d/\n" % TEST_PORT, ""),
+        )
+        code, out, _ = run("config", "page", "off")
+        self.assertEqual(code, 0)
+        self.assertIn("page off", out)
+        self.assertIn("tempo serve --background", out)
+        self.assertFalse(self.store.start_page())
+        self.assertIn("page off", run("config", "page")[1])
+        run("config", "page", "on")
+        self.assertTrue(self.store.start_page())
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            cli.main(["config", "page", "maybe"])
+
+    def test_with_the_page_off_the_session_start_hook_leaves_it_alone(self):
+        self.add()
+        self.store.set_start_page(False)
+        with mock.patch.object(cli, "start_server") as start:
+            _, out, _ = run("hook", "session-start", stdin="{}")
+        start.assert_not_called()
+        note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("127.0.0.1", note)
+        self.assertIn("never give page links", note)
+        self.assertIn("- Q1 Which way? `tempo show 1`, answer with `tempo answer 1 <letter>`", note)
+        self.assertIn("number, title and `tempo show N`", note)
+        self.assertIn("hook session-start demo note sent, page off", self.hook_log())
+
+    def test_with_the_page_off_serve_still_starts_it(self):
+        self.store.set_start_page(False)
+        with mock.patch.object(cli, "start_server", return_value=True) as start:
+            self.assertEqual(run("serve", "--background")[0], 0)
+        start.assert_called_once()
+
+    def test_with_the_page_off_texts_point_to_the_terminal(self):
+        self.store.set_start_page(False)
+        _, out, _ = run("add", "--title", "T", "--context", "C", "--option", "x", "--option", "y")
+        self.assertEqual(
+            out, "Added Q1 in demo: `tempo show 1`, answer with `tempo answer 1 <letter>`\n"
+        )
+        self.store.answer("demo", 1, "a")
+        _, out, _ = run("hook", "user-prompt-submit", stdin="{}")
+        context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertTrue(context.startswith("New from the user in Tempo:"), context)
+        self.add()
+        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
+        reason = json.loads(self.stop(*reply))["reason"]
+        self.assertIn("so answers would not reach you", reason)
+
+    def test_with_the_page_off_a_question_number_counts_as_its_link(self):
+        self.add()
+        self.store.set_start_page(False)
+        self.marker(os.getpid())
+
+        def reply(text):
+            return self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
+
+        self.assertEqual(reply("Q1 asks which way. (a) Left (b) Right"), "")
+        reason = json.loads(reply("May I push?"))["reason"]
+        self.assertIn("give its number (such as Q5)", reason)
+        self.assertNotIn("link", reason)
+        # The closing list names Q1, but that doesn't record the question asked above it.
+        self.assertIn("block", reply("May I push?\n\n- Q1 Which way? `tempo show 1`"))
+
 
 class GitTest(DatabaseTest):
     """Runs real git commands in temporary folders. Git's own variables, set when the

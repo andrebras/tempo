@@ -19,7 +19,8 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`) |
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
 | `tempo status` | For you, not Claude: print `? 3` when 3 questions of the current folder's project wait for you, nothing when none do, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
-| `tempo serve [--background]` | Run the page |
+| `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) |
+| `tempo serve [--background]` | Run the page; works whether or not sessions start it |
 
 `oq`, the command's old name, still works as an alias.
 
@@ -29,7 +30,8 @@ Hooks are small commands that Claude Code runs at fixed moments of a session. Te
 three, each a call to `tempo hook …`:
 
 - **SessionStart**, when a session starts: starts the page (see
-  [The page server](#the-page-server)) and tells Claude how to use Tempo: every decision
+  [The page server](#the-page-server)), unless you turned that off (see
+  [Turning the page off](#turning-the-page-off)), and tells Claude how to use Tempo: every decision
   goes in Tempo, each question gets a goal, and every update ends with the project's open
   questions. It then lists those open questions. When the session's folder looks like a
   known folder renamed or moved, it asks Claude to tell you about the banner on the page.
@@ -93,6 +95,25 @@ The page asks for `/health` too, every few seconds. When the server it first tal
 been replaced (its `pid` or `started` changed), usually after an update, the page reloads
 itself, so its code always matches the server's. A note you were typing and the option you
 picked are kept through the reload.
+
+### Turning the page off
+
+If you answer from the terminal, you can stop sessions from starting the page:
+
+```bash
+tempo config page off   # sessions no longer start the page
+tempo config page on    # back to the default
+tempo config            # show the current value
+```
+
+The setting is kept in the database, so every session and project sees it. With it off:
+
+- The SessionStart hook doesn't start the page. A page that is already running is left alone.
+- `tempo serve --background` still starts the page whenever you want it.
+- Claude points you to the terminal instead of the page. The SessionStart note, `tempo add`
+  and the hooks name `tempo show N` and `tempo answer N <letter>` and give no page links.
+  The Stop hook counts a question's number (such as Q5) in a sentence as pointing at it,
+  where it would otherwise want the question's link.
 
 ## Projects in the header
 

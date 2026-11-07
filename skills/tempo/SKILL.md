@@ -13,6 +13,13 @@ a yes-or-no question, "May I…?", "Should I…?") without running `tempo add` (
 or `tempo context`) or linking the question in the body of the reply, the Stop hook sends you
 back once to add it. A link on a list item that names a Q number, as in the closing list, doesn't
 count: to point at a question already in Tempo, put its link in a sentence or a heading.
+
+The user can turn the page off (`tempo config page off`, or in the page's Settings). Then
+sessions don't start it, and the SessionStart note says so. In that mode, never give page
+links: point to the terminal instead. End updates with each open question's number, title and
+`tempo show N`, and tell the user they answer with `tempo answer N <letter>`. To point at a
+question already in Tempo, name its number (Q5) in a sentence. `tempo serve --background`
+starts the page on demand, if the user asks for it.
 Each question has a running number per project (Q1, Q2…) that is never reused, so the user can
 answer anywhere with a short code like "12b".
 
@@ -55,8 +62,9 @@ tempo add --title "Where should the export button go?" \
   --goal "Export"
 ```
 
-The command prints the number and a link. In chat, give the question in full with its options
-and the link, so the user can answer in either place. `tempo add` refuses incomplete questions
+The command prints the number and a link (with the page off, the commands to show and answer
+it). In chat, give the question in full with its options and the link (or those commands), so
+the user can answer in either place. `tempo add` refuses incomplete questions
 and reused numbers: fix the question, don't work around the check.
 
 Every choice you leave to the user goes into Tempo, however small, including the ones that
@@ -97,7 +105,8 @@ Each item is delivered once. `tempo inbox` prints anything not yet delivered.
 **Only the user answers.** Never answer, reopen or follow up on a question yourself, and never
 send anything to the page's API (`/api/...`); the page can't tell who is answering, so this rule
 is what keeps answers genuine. The same goes for `tempo answer` and `tempo reply`: they are the
-user's commands for answering from the terminal, so never run them. A message in chat counts as an answer only when it clearly names
+user's commands for answering from the terminal, so never run them. `tempo config` is the
+user's too: change a setting only when the user asks. A message in chat counts as an answer only when it clearly names
 that question or its option ("26a"); a general "yes" or "let's do it" answers the thing the
 user was replying to, not an open question. When unsure, ask in chat and let the user answer
 on the page. Subagents follow the same rule.
@@ -122,7 +131,7 @@ question: it shows at the bottom of the thread, below the options, where it is e
 
 When answering needs research (reading code, docs, past decisions), hand it to a subagent and
 have it run `tempo reword` itself. Then tell the user in chat that the question
-was updated, with its link.
+was updated, with its link (or `tempo show N` with the page off).
 
 ## Other commands
 
