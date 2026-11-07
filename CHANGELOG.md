@@ -6,6 +6,11 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `TEMPO_IN_THREAD=1` keeps Tempo's hooks quiet: they do nothing and print nothing. Another
+  tool that runs Claude sessions on your behalf can set it in those sessions.
+
 ### Changed
 
 - Settings lists each project's folders read-only: the menu to file a folder under another
@@ -13,6 +18,13 @@ All notable changes to Tempo are listed here. The format follows
   are hidden (they stay in the database).
 - When several known folders are missing, the rename banner shows a "Link to <project>"
   button for each one, with its path, instead of sending you to Settings.
+
+### Removed
+
+- Threads, the early feature behind `TEMPO_THREADS=1`: the `/threads` page, its API, the
+  Settings link, and the `TEMPO_THREADS` and `TEMPO_THREADS_PERMISSION_MODE` settings. Threads
+  move to their own project. Tempo goes back to capturing the questions Claude asks while you
+  work in the terminal. Databases that already have the threads tables keep them, unused.
 
 ## [0.5.1] - 2026-11-07
 
