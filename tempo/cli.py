@@ -659,8 +659,8 @@ def format_question(question: Question) -> str:
 def start_server(port: int) -> bool:
     """Start the page in the background, replacing a Tempo server that is old or broken.
 
-    A Tempo server of this same version from this same folder is left running, and so
-    is anything on the port that cannot be shown to be Tempo.
+    A Tempo server of this version or a newer one is left running, whatever folder it runs
+    from, and so is anything on the port that cannot be shown to be Tempo.
     """
     from tempo.server import ROOT
 
@@ -697,7 +697,7 @@ def _stop_stale(port: int) -> bool:
     except ValueError:
         health = None
     if isinstance(health, dict) and health.get("app") == "tempo":
-        if health.get("version") == server.version() and health.get("root") == server.ROOT:
+        if not _older(health.get("version"), server.version()):
             return False
         pid = health.get("pid")
     elif _fetch(port, "/") is not None:
@@ -719,6 +719,23 @@ def _stop_stale(port: int) -> bool:
             return True
         time.sleep(0.1)
     return False
+
+
+def _older(theirs: object, ours: str | None) -> bool:
+    """Whether a running server's version is older than this code's. A missing or odd
+    version counts as older; if this code's own version is unknown, nothing is."""
+
+    def parts(version: object) -> tuple[int, ...] | None:
+        try:
+            return tuple(int(part) for part in str(version).split("."))
+        except ValueError:
+            return None
+
+    mine = parts(ours) if ours else None
+    if mine is None:
+        return False
+    running = parts(theirs) if theirs else None
+    return running is None or running < mine
 
 
 def _fetch(port: int, path: str) -> bytes | None:
