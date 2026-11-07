@@ -36,6 +36,13 @@ All notable changes to Tempo are listed here. The format follows
 - A Tempo page from 0.5 or older, whose `/health` does not say which database it uses, is no
   longer replaced by code on a test or branch database. It is taken to be on the real
   database, and only code on the real database replaces it.
+- `bin/tempo` always runs its own copy of Tempo. Before, run from a folder that holds a
+  `tempo/` package, such as a Tempo checkout, it ran that folder's code instead, because
+  `python -m tempo` looks in the current folder first. That hit hooks in sessions working on
+  Tempo itself and the tmux badge in a pane there. It now runs `tempo/__main__.py` as a file,
+  which leaves the current folder off Python's search path; the command still runs in the
+  current folder. Running `tempo wait` and `tempo serve` processes are still recognized by
+  their new command line, and by the old one.
 
 ## [0.6.0] - 2026-11-07
 
