@@ -79,7 +79,8 @@ database, so run it after a change to the page. It needs Google Chrome and
 
 ```
 .claude-plugin/   plugin and marketplace manifests
-bin/              tempo (the command), oq (its old name), ci, check-version and media
+bin/              tempo (the command), oq (its old name), ci, check-version, media and
+                  release
 docs/             reference, screenshots and the demo GIF
 hooks/            hook configuration
 tempo/            store (SQLite), cli (tempo), server, and the page (page.html and its
@@ -91,13 +92,28 @@ tests/            Python tests (test_page.py drives the page in Chrome), and pag
 
 ## Releasing
 
-Installed copies only update when the version changes. To release changes users should get,
-do all of this in one pull request:
+Installed copies only update when the version changes. A release is one pull request that
+raises `version` in both `.claude-plugin/plugin.json` and `pyproject.toml`, following
+[Semantic Versioning](https://semver.org), and renames the `Unreleased` section of
+`CHANGELOG.md` to the new version and today's date.
 
-1. Raise `version` in both `.claude-plugin/plugin.json` and `pyproject.toml`, following
-   [Semantic Versioning](https://semver.org).
-2. In `CHANGELOG.md`, rename the `Unreleased` section to the new version and today's date,
-   with one short line per change.
+`bin/release` makes that pull request. Run it in the main checkout, on `main`:
+
+```sh
+bin/release 0.6.0
+```
+
+It first refuses, saying why, when the version isn't `x.y.z` or isn't higher than the current
+one, when `main` has uncommitted changes or isn't the same as `origin/main`, or when
+`Unreleased` has nothing in it. Then it makes the branch `release/0.6.0`, edits the three
+files, commits "Release 0.6.0", runs `bin/ci` in a clean copy (a temporary git worktree outside
+this folder, so the worktrees under `.claude/` can't interfere), pushes, opens the pull request
+and turns on auto-merge. It prints each step and stops at the first that fails; if `bin/ci`
+fails, you are left on the release branch. Fix the problem on `main` as usual, then run
+`git switch main`, `git branch -D release/0.6.0` and `bin/release 0.6.0` again.
+
+It does not merge, update the installed plugin or restart the page. GitHub merges the pull
+request once its CI passes; the commands for afterwards are printed at the end.
 
 `bin/check-version`, run by `bin/ci`, fails when the two versions differ or the changelog has
 no section for the version. When the pull request merges, the Release workflow creates the tag
