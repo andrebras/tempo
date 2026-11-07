@@ -1118,7 +1118,8 @@ def project_name(cwd: str, record: bool = False) -> str:
     path = repo or os.path.realpath(cwd)
     folder = folder_name(path)
     with Store(connect()) as store:
-        if record and store.see_folder(folder, path) and repo:
+        identity = (lambda: repo_identity(path)) if repo else None
+        if record and store.see_folder(folder, path, identity) and repo:
             store.spot_rename(path, gone=lambda known: not os.path.exists(known))
         return store.project_for(folder, path)
 
@@ -1152,6 +1153,24 @@ def repo_path(cwd: str) -> str | None:
         return os.path.realpath(os.path.dirname(common))
     except (OSError, ValueError, subprocess.CalledProcessError):
         return None
+
+
+def repo_identity(repo: str) -> tuple[str | None, str | None]:
+    """The repo's first commit and the address of its origin remote, either None when
+    git cannot tell (no commit yet, no remote, or no git). A renamed copy keeps both, so
+    they tell a renamed repo from an unrelated one. Merged histories can have several
+    first commits; with --reverse the oldest comes first."""
+    first_commit = _git_line(repo, "rev-list", "--max-parents=0", "--reverse", "HEAD")
+    return first_commit, _git_line(repo, "config", "--get", "remote.origin.url")
+
+
+def _git_line(cwd: str, *args: str) -> str | None:
+    """The first line git prints, or None when it fails or prints nothing."""
+    try:
+        lines = _git(cwd, *args).splitlines()
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return None
+    return (lines[0].strip() or None) if lines else None
 
 
 def _git(cwd: str, *args: str) -> str:
