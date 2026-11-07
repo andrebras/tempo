@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from tempo import threads
 from tempo.store import QuestionError, Store, connect
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -25,6 +26,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PAGE = os.path.join(HERE, "page.html")
 SCRIPT = os.path.join(HERE, "page.js")
+THREADS_PAGE = os.path.join(HERE, "threads.html")
 
 
 def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
@@ -78,6 +80,15 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
                 self._handle(lambda: store.get(parts[2], _int(parts[3])))
             elif parts == ["api", "settings"]:
                 self._json(200, _settings(store))
+            elif not threads.enabled() or not _threads_path(parts):
+                self._json(404, {"error": "Not found"})
+            elif parts == ["threads"]:
+                with open(THREADS_PAGE, "rb") as page:
+                    self._send(200, page.read(), "text/html; charset=utf-8")
+            elif parts == ["api", "threads"]:
+                self._json(200, {"threads": threads.threads()})
+            elif len(parts) == 3:
+                self._handle(lambda: threads.thread(_int(parts[2])))
             else:
                 self._json(404, {"error": "Not found"})
 
@@ -99,6 +110,12 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
                 self._save_setting(store, lambda: _link(store, body))
             elif parts == ["api", "folders", "keep"]:
                 self._save_setting(store, lambda: _keep(store, body))
+            elif not threads.enabled() or not _threads_path(parts):
+                self._json(404, {"error": "Not found"})
+            elif parts == ["api", "threads"]:
+                self._handle(lambda: threads.start(body.get("folder"), body.get("body")))
+            elif len(parts) == 3:
+                self._handle(lambda: threads.reply(_int(parts[2]), body.get("body")))
             else:
                 self._json(404, {"error": "Not found"})
 
@@ -216,7 +233,11 @@ def _commit() -> str | None:
 def _settings(store: Store) -> dict[str, Any]:
     """What the Settings screen shows: projects with their folders, and new folders that
     may be renamed ones."""
-    return {"projects": store.project_summaries(), "renames": store.renames()}
+    return {
+        "projects": store.project_summaries(),
+        "renames": store.renames(),
+        "threads": threads.enabled(),
+    }
 
 
 def _link(store: Store, body: Any) -> dict[str, Any]:
@@ -229,6 +250,11 @@ def _keep(store: Store, body: Any) -> dict[str, Any]:
     """The banner's "keep it apart": the folder stays its own project."""
     store.keep_folder(str(body.get("path") or ""))
     return {}
+
+
+def _threads_path(parts: list[str]) -> bool:
+    """The threads page and its API, which answer only while TEMPO_THREADS=1 is set."""
+    return parts == ["threads"] or parts[:2] == ["api", "threads"]
 
 
 def _parts(path: str) -> list[str]:

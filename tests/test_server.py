@@ -3,7 +3,9 @@ import json
 import os
 import threading
 from http.server import ThreadingHTTPServer
+from unittest import mock
 
+from tempo import threads
 from tempo.server import ROOT, make_handler
 from tests.helpers import DatabaseTest
 
@@ -203,3 +205,29 @@ class ServerTest(DatabaseTest):
                 self.assertEqual(status, 403)
         self.assertEqual(self.store.projects(), ["demo"])
         self.assertEqual(self.store.project_for("onzehq"), "onzehq")
+
+    def test_threads_are_hidden_unless_turned_on(self):
+        with mock.patch.dict("os.environ", {"TEMPO_THREADS": ""}):
+            for method, path in [
+                ("GET", "/threads"),
+                ("GET", "/api/threads"),
+                ("GET", "/api/threads/1"),
+                ("POST", "/api/threads"),
+                ("POST", "/api/threads/1"),
+            ]:
+                with self.subTest(path=path):
+                    status, _ = self.request(method, path, {} if method == "POST" else None)
+                    self.assertEqual(status, 404)
+            self.assertFalse(json.loads(self.request("GET", "/api/settings")[1])["threads"])
+
+    def test_threads_answer_when_turned_on(self):
+        with mock.patch.dict("os.environ", {"TEMPO_THREADS": "1"}):
+            status, page = self.request("GET", "/threads")
+            self.assertEqual(status, 200)
+            self.assertIn(b"<title>Tempo threads</title>", page)
+            self.assertEqual(json.loads(self.request("GET", "/api/threads")[1]), {"threads": []})
+            self.assertTrue(json.loads(self.request("GET", "/api/settings")[1])["threads"])
+            with mock.patch.object(threads, "_send", return_value={"id": 1}) as send:
+                status, _ = self.request("POST", "/api/threads", {"folder": ROOT, "body": "Hi"})
+            self.assertEqual(status, 200)
+            send.assert_called_once()
