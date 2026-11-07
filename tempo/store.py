@@ -760,6 +760,18 @@ class Store:
         return moves
 
     def undelivered(self, project: str | None = None) -> Entries:
+        return self._undelivered(project)
+
+    def take_undelivered(self, project: str | None = None) -> Entries:
+        """Return the user's undelivered entries and mark them delivered in one
+        transaction, so two readers at once (two sessions' hooks, or a hook and tempo
+        wait) never both pass on the same entry."""
+        with self._transaction():
+            entries = self._undelivered(project)
+            self.mark_delivered([entry["id"] for entry in entries])
+        return entries
+
+    def _undelivered(self, project: str | None) -> Entries:
         sql = (
             "SELECT e.*, q.project, q.number FROM entries e"
             " JOIN questions q ON q.id = e.question_id"

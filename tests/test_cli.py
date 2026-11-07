@@ -124,6 +124,24 @@ class CliTest(DatabaseTest):
             _, again, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/demo"}))
         self.assertEqual(again, "")
 
+    def test_two_inbox_reads_at_once_deliver_an_answer_once(self):
+        # A hook in a second session (or tempo wait) reads the inbox while this one does.
+        self.add()
+        self.store.answer("demo", 1, "b")
+        read = cli.Store.undelivered
+        other = []
+
+        def read_then_the_other(store, project=None):
+            entries = read(store, project)
+            if not other:
+                other.append(None)
+                other[0] = cli.take_inbox("demo")
+            return entries
+
+        with mock.patch.object(cli.Store, "undelivered", read_then_the_other):
+            texts = [cli.take_inbox("demo"), *other]
+        self.assertEqual(sum("answered (b) Right" in (text or "") for text in texts), 1)
+
     def test_session_start_hook_stays_quiet_in_a_thread(self):
         with (
             mock.patch.dict("os.environ", {"TEMPO_IN_THREAD": "1"}),

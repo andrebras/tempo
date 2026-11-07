@@ -633,6 +633,15 @@ class RaceTest(DatabaseTest):
         with self.assertRaisesRegex(QuestionError, "archived"):
             self.store.follow_up("demo", 1, "Why?")
 
+    def test_an_entry_taken_by_another_reader_meanwhile_is_not_taken_again(self):
+        self.add()
+        self.store.follow_up("demo", 1, "Why?")
+        taken = []
+        self.meanwhile(lambda other: taken.extend(other.take_undelivered("demo")))
+        self.assertEqual(self.store.take_undelivered("demo"), [])
+        self.assertEqual([entry["body"] for entry in taken], ["Why?"])
+        self.assertEqual(self.store.undelivered("demo"), [])
+
     def test_two_rewords_at_the_same_moment_both_save(self):
         self.add()
         self.meanwhile(lambda other: other.reword("demo", 1, "First", title="One?"))

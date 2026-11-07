@@ -562,7 +562,7 @@ def take_inbox(project: str | None) -> str:
 
 
 def _take_inbox(store: Store, project: str | None) -> str:
-    entries = store.undelivered(project)
+    entries = store.take_undelivered(project)
     if not entries:
         return ""
     lines = ["New from the user on the Tempo page (http://127.0.0.1:%d/):" % _port()]
@@ -594,7 +594,6 @@ def _take_inbox(store: Store, project: str | None) -> str:
             "Answer each follow-up in the question itself with `tempo reword --context`, so"
             " the box the user reads shows it; use a subagent when it needs research."
         )
-    store.mark_delivered([entry["id"] for entry in entries])
     return "\n".join(lines)
 
 

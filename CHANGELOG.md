@@ -19,6 +19,8 @@ All notable changes to Tempo are listed here. The format follows
   with "Option () does not exist".
 - Joining a project into another one keeps one "start here" mark per goal. When both had a
   marked question in the same goal, the joined project's mark is dropped.
+- An answer or follow-up reaches Claude once, even when two sessions in the same project,
+  or a session and `tempo wait`, pick up the user's news at the same moment.
 
 ## [0.5.4] - 2026-11-07
 
