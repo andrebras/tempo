@@ -638,9 +638,24 @@ class Store:
             key = path if path and taken.fetchone() else folder
             self.db.execute(
                 "INSERT INTO folders (folder, path, project, seen_at) VALUES (?, ?, ?, ?)",
-                (key, path, folder, now()),
+                (key, path, self._new_project(folder, path), now()),
             )
             return True
+
+    def _new_project(self, folder: str, path: str | None) -> str:
+        """The project a new folder starts in: its name, unless another folder is filed
+        under that, as when two repos are both called api. Then its parent folder's name
+        is added, "api (personal)", and a number if that is in use too."""
+        used = self.db.execute("SELECT 1 FROM folders WHERE project = ?", (folder,)).fetchone()
+        if not path or not used:
+            return folder
+        names = {project["name"] for project in self.project_summaries()}
+        parent = os.path.basename(os.path.dirname(path))
+        base = "%s (%s)" % (folder, parent) if parent else folder
+        name, number = base, 2
+        while name in names:
+            name, number = "%s %d" % (base, number), number + 1
+        return name
 
     def project_for(self, folder: str, path: str | None = None) -> str:
         """The project a folder is filed under; a folder never seen is its own project."""
@@ -677,21 +692,14 @@ class Store:
 
     def spot_rename(self, path: str, gone: Callable[[str], bool]) -> Folders:
         """Note that the new folder at path may be a known folder renamed or moved: one
-        whose path is gone (no longer on disk). A gone folder is offered once only, so a
-        folder deleted long ago doesn't come up for every new folder. Returns the
+        whose path is gone (no longer on disk). A gone folder stays on offer to each new
+        folder until one is linked to it, so a banner the user kept apart, or one not
+        answered yet, never hides it from the real renamed folder. Returns the
         candidates; the folder keeps its own project until the user picks."""
-        offered = set()
-        for row in self.db.execute(
-            "SELECT renamed_from FROM folders WHERE renamed_from IS NOT NULL"
-        ):
-            offered.update(json.loads(row["renamed_from"]))
         candidates = [
             folder
             for folder in self.folders()
-            if folder["path"]
-            and folder["path"] != path
-            and folder["path"] not in offered
-            and gone(str(folder["path"]))
+            if folder["path"] and folder["path"] != path and gone(str(folder["path"]))
         ]
         if candidates:
             self.db.execute(
@@ -701,31 +709,53 @@ class Store:
         return candidates
 
     def renames(self) -> Summaries:
-        """New folders that may be renamed or moved ones, waiting for the user to say."""
+        """New folders that may be renamed or moved ones, waiting for the user to say.
+        A folder whose every candidate was since linked to another folder has none left."""
         known = {folder["path"]: folder for folder in self.folders()}
         rows = self.db.execute(
             "SELECT path, renamed_from FROM folders"
             " WHERE renamed_from IS NOT NULL AND rename_answered_at IS NULL ORDER BY path"
         )
-        return [
+        renames = [
             dict(
                 known[row["path"]],
                 candidates=[known[old] for old in json.loads(row["renamed_from"]) if old in known],
             )
             for row in rows
         ]
+        return [rename for rename in renames if rename["candidates"]]
 
     def link_folder(self, path: str, project: str | None) -> None:
-        """File the folder at path under a project, and settle any rename it waited on."""
+        """File the folder at path under a project, and settle any rename it waited on.
+        The missing folders of that project it was offered are forgotten: the folder
+        was found, so no other new folder is offered it again.
+
+        Questions asked in the folder before it was linked went to its own project; when
+        no other folder uses that project, it joins the one linked to, so their answers
+        reach the folder's sessions."""
         project = (project or "").strip()
         if not project:
             raise QuestionError("Pick a project for the folder")
-        moved = self.db.execute(
-            "UPDATE folders SET project = ?, rename_answered_at = ? WHERE path = ?",
-            (project, now(), path),
-        ).rowcount
-        if not moved:
+        row = self.db.execute(
+            "SELECT project, renamed_from FROM folders WHERE path = ?", (path,)
+        ).fetchone()
+        if row is None:
             raise QuestionError("There is no folder at %s" % path)
+        own = row["project"]
+        shared = self.db.execute(
+            "SELECT 1 FROM folders WHERE project = ? AND path IS NOT ?", (own, path)
+        ).fetchone()
+        if own != project and not shared and self._question_count(own):
+            self.rename_project(own, project)
+        with self._transaction():
+            self.db.execute(
+                "UPDATE folders SET project = ?, rename_answered_at = ? WHERE path = ?",
+                (project, now(), path),
+            )
+            for old in json.loads(row["renamed_from"] or "[]"):
+                self.db.execute(
+                    "DELETE FROM folders WHERE path = ? AND project = ?", (old, project)
+                )
 
     def keep_folder(self, path: str) -> None:
         """The folder at path is not a renamed one: it stays its own project."""

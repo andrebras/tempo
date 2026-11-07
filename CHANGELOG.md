@@ -131,6 +131,24 @@ All notable changes to Tempo are listed here. The format follows
   project name you are typing.
 - A send that fails always shows its error, even when the question was redrawn while the
   request ran.
+- The "renamed or moved" banner reaches the folder that was really renamed. Before, a missing
+  folder was offered once only, to the first new folder any session opened, even a scratch
+  folder outside git, and "Keep as its own project" on that wrong banner used it up. Now only
+  a new git repo is offered missing folders, a missing folder stays on offer until a folder
+  is linked to it, and banners left with nothing to offer go away.
+- "Link to <project>" in the rename banner brings along the questions asked in the folder
+  before you clicked it. They stayed in the folder's interim project, which no session used any
+  more, so their answers were never delivered. They now move into the linked project after its
+  own questions, each noting its old number, unless another folder still uses that project.
+- Two repos with the same folder name, such as `work/api` and `personal/api`, get a project
+  each. The second one used to land in the first one's project, with no way to split them; it
+  now starts in a project named after its parent folder too, such as `api (personal)`, which
+  you can rename in Settings. A folder moved to a new place under the same name also starts
+  its own project: link it from the banner, or rename its project in Settings to join them.
+- Worktrees of a bare repo, such as `shop.git` with `shop-main` checked out from it, share the
+  project `shop`. They used to be filed under the folder the bare repo sits in. A submodule is
+  now a project of its own, named after its folder, instead of a project named after a folder
+  inside `.git/modules`.
 
 ### Security
 

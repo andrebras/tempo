@@ -467,7 +467,7 @@ class CliTest(DatabaseTest):
     def test_add_remembers_the_folder_and_uses_its_project(self):
         del os.environ["TEMPO_PROJECT"]
         add = ("add", "--title", "T", "--context", "C", "--option", "x", "--option", "y")
-        with mock.patch.object(cli, "folder_path", return_value="/x/tempo-settings"):
+        with mock.patch.object(cli, "repo_path", return_value="/x/tempo-settings"):
             _, out, _ = run(*add)
             self.assertIn("Added Q1 in tempo-settings", out)
             self.store.rename_project("tempo-settings", "Tempo")
@@ -657,7 +657,20 @@ class CliTest(DatabaseTest):
             self.assertTrue(cli.wait_running("demo"))
 
 
-class RenameNoteTest(DatabaseTest):
+class GitTest(DatabaseTest):
+    """Runs real git commands in temporary folders. Git's own variables, set when the
+    tests run from a git hook or `git rebase --exec`, would point those commands at the
+    repo running the tests instead, so they are cleared."""
+
+    def setUp(self):
+        super().setUp()
+        clean = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        patcher = mock.patch.dict(os.environ, clean, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
+class RenameNoteTest(GitTest):
     """A session starts in a folder Tempo has never seen while a known one is gone."""
 
     def setUp(self):
@@ -666,7 +679,7 @@ class RenameNoteTest(DatabaseTest):
         self.lab = os.path.realpath(self.tmp.name)
         self.old = os.path.join(self.lab, "open-questions")
         self.new = os.path.join(self.lab, "tempo")
-        os.makedirs(self.old)
+        subprocess.run(["git", "init", "-q", self.old], check=True)
         self.store.see_folder("open-questions", self.old)
         self.store.rename_project("open-questions", "Tempo")
 
@@ -695,15 +708,24 @@ class RenameNoteTest(DatabaseTest):
         self.assertNotIn("Settings", note)
         self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
 
+    def test_a_new_folder_outside_git_is_not_offered(self):
+        # A quick session in a scratch folder must not take the renamed repo's banner.
+        os.rename(self.old, self.new)
+        scratch = os.path.join(self.lab, "scratch")
+        os.makedirs(scratch)
+        self.assertNotIn("is new to Tempo", self.start(scratch))
+        self.assertIn("looks renamed or moved", self.start(self.new))
+        self.assertEqual([r["path"] for r in self.store.renames()], [self.new])
+
     def test_no_missing_folder_starts_a_new_project_as_before(self):
-        os.makedirs(self.new)
+        subprocess.run(["git", "init", "-q", self.new], check=True)
         note = self.start(self.new)
         self.assertNotIn("is new to Tempo", note)
         self.assertEqual(self.store.renames(), [])
         self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
 
 
-class ProjectNameTest(DatabaseTest):
+class ProjectNameTest(GitTest):
     def test_uses_the_main_checkout_folder_from_subfolders_and_worktrees(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -719,6 +741,38 @@ class ProjectNameTest(DatabaseTest):
             with self.subTest(folder=folder):
                 self.assertEqual(cli.folder_path(folder), os.path.realpath(repo))
                 self.assertEqual(cli.project_name(folder), "shop")
+
+    def test_worktrees_of_a_bare_repo_share_the_repo_project(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        bare = os.path.join(tmp.name, "shop.git")
+        subprocess.run([*git, "init", "-q", "--bare", bare], check=True)
+        # A first commit, so the bare repo has a branch to check out.
+        seed = os.path.join(tmp.name, "seed")
+        subprocess.run([*git, "clone", "-q", bare, seed], check=True, capture_output=True)
+        subprocess.run([*git, "-C", seed, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+        subprocess.run([*git, "-C", bare, "fetch", "-q", seed, "HEAD:main"], check=True)
+        main = os.path.join(tmp.name, "shop-main")
+        subprocess.run([*git, "-C", bare, "worktree", "add", "-q", main, "main"], check=True)
+        self.assertEqual(cli.folder_path(main), os.path.realpath(bare))
+        self.assertEqual(cli.project_name(main), "shop")
+
+    def test_a_submodule_is_a_project_of_its_own(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        app, lib = os.path.join(tmp.name, "app"), os.path.join(tmp.name, "lib")
+        for repo in (app, lib):
+            subprocess.run([*git, "init", "-q", repo], check=True)
+            subprocess.run(
+                [*git, "-C", repo, "commit", "-q", "--allow-empty", "-m", "x"], check=True
+            )
+        add = ["-c", "protocol.file.allow=always", "submodule", "add", "-q", lib, "vendor/lib"]
+        subprocess.run([*git, "-C", app, *add], check=True, capture_output=True)
+        submodule = os.path.join(app, "vendor", "lib")
+        self.assertEqual(cli.folder_path(submodule), os.path.realpath(submodule))
+        self.assertEqual(cli.project_name(submodule), "lib")
 
     def test_uses_the_folder_itself_outside_git(self):
         tmp = tempfile.TemporaryDirectory()

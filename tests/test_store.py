@@ -523,6 +523,21 @@ class ProjectsTest(DatabaseTest):
             [("/home/api", "api"), ("/work/api", "Work API")],
         )
 
+    def test_a_second_folder_of_a_name_gets_its_own_project(self):
+        self.store.see_folder("api", "/work/api")
+        self.add(project="api")
+        self.assertTrue(self.store.see_folder("api", "/personal/api"))
+        self.assertEqual(self.store.project_for("api", "/work/api"), "api")
+        self.assertEqual(self.store.project_for("api", "/personal/api"), "api (personal)")
+        # A third one, whose parent's name is taken too, gets a number.
+        self.store.see_folder("api", "/old/personal/api")
+        self.assertEqual(self.store.project_for("api", "/old/personal/api"), "api (personal) 2")
+        # Questions filed under a folder's name before folders were remembered are the
+        # first folder's of that name: only another folder makes the name taken.
+        self.add(project="shop")
+        self.store.see_folder("shop", "/lab/shop")
+        self.assertEqual(self.store.project_for("shop", "/lab/shop"), "shop")
+
     def test_a_folder_known_by_name_only_gets_its_path(self):
         # Rows from before paths were stored: the first session in that name adopts one.
         self.store.db.execute(
@@ -591,6 +606,31 @@ class RenameTest(DatabaseTest):
         self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "Tempo")
         self.assertEqual(self.store.renames(), [])
 
+    def test_linking_brings_the_questions_asked_before_it(self):
+        self.add(project="Tempo")
+        self.see("/lab/tempo")
+        self.add(project="tempo", title="Asked before linking?")
+        self.store.link_folder("/lab/tempo", "Tempo")
+        self.assertEqual(self.store.list("tempo", "all"), [])
+        [_, moved] = self.store.list("Tempo", "all")
+        self.assertEqual((moved["number"], moved["title"]), (2, "Asked before linking?"))
+        entries = [e["body"] for e in self.store.get("Tempo", 2)["entries"]]
+        self.assertIn("Moved from tempo Q1 when tempo joined Tempo.", entries)
+        # A later answer is news for the sessions in the folder, now in Tempo.
+        self.store.answer("Tempo", 2, "a")
+        self.assertEqual(len(self.store.undelivered("Tempo")), 1)
+
+    def test_linking_leaves_questions_of_a_project_other_folders_still_use(self):
+        self.see("/lab/tempo")
+        self.store.see_folder("tempo", "/elsewhere/tempo")
+        self.store.db.execute(
+            "UPDATE folders SET project = 'tempo' WHERE path = '/elsewhere/tempo'"
+        )
+        self.add(project="tempo")
+        self.store.link_folder("/lab/tempo", "Tempo")
+        self.assertEqual(len(self.store.list("tempo", "all")), 1)
+        self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "Tempo")
+
     def test_keeping_it_apart_settles_it_and_keeps_its_project(self):
         self.see("/lab/tempo")
         self.store.keep_folder("/lab/tempo")
@@ -611,11 +651,27 @@ class RenameTest(DatabaseTest):
         self.assertEqual(self.store.renames(), [])
         self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "tempo")
 
-    def test_a_missing_folder_is_offered_once_only(self):
+    def test_keeping_a_folder_apart_leaves_the_missing_one_on_offer(self):
+        # "Keep" says this folder is not the missing one, not that the missing one is gone
+        # for good: the next new folder may still be it.
+        self.see("/lab/scratch")
+        self.store.keep_folder("/lab/scratch")
+        self.assertEqual([c["path"] for c in self.see("/lab/tempo")], ["/lab/open-questions"])
+        self.assertEqual([r["path"] for r in self.store.renames()], ["/lab/tempo"])
+
+    def test_a_waiting_offer_does_not_hide_the_missing_folder_from_the_next_one(self):
+        self.see("/lab/scratch")
+        self.assertEqual([c["path"] for c in self.see("/lab/tempo")], ["/lab/open-questions"])
+        self.assertEqual([r["path"] for r in self.store.renames()], ["/lab/scratch", "/lab/tempo"])
+
+    def test_linking_retires_the_missing_folder_everywhere(self):
+        self.see("/lab/scratch")
         self.see("/lab/tempo")
-        self.store.keep_folder("/lab/tempo")
-        self.assertEqual(self.see("/lab/other"), [])
+        self.store.link_folder("/lab/tempo", "Tempo")
+        # The other banner had only that folder to offer, so it goes too.
         self.assertEqual(self.store.renames(), [])
+        self.assertEqual(self.see("/lab/other"), [])
+        self.assertEqual(self.store.project_for("scratch", "/lab/scratch"), "scratch")
 
     def test_link_needs_a_project_and_a_known_folder(self):
         self.see("/lab/tempo")

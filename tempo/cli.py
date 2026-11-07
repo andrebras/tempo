@@ -1037,33 +1037,65 @@ def _tempo_pid(port: int) -> int | None:
 def project_name(cwd: str, record: bool = False) -> str:
     """The project a folder is filed under, named after the folder until renamed.
 
-    With record, the folder is remembered, so its project shows in Settings.
+    With record, the folder is remembered, so its project shows in Settings. Only a new
+    git repo may be a renamed or moved one: a scratch folder outside git never is.
     """
-    path = folder_path(cwd)
-    folder = os.path.basename(path)
+    repo = repo_path(cwd)
+    path = repo or os.path.realpath(cwd)
+    folder = folder_name(path)
     with Store(connect()) as store:
-        if record and store.see_folder(folder, path):
+        if record and store.see_folder(folder, path) and repo:
             store.spot_rename(path, gone=lambda known: not os.path.exists(known))
         return store.project_for(folder, path)
 
 
 def folder_path(cwd: str) -> str:
     """The full path of the git repo's top folder (the main checkout, not a worktree), or
-    of cwd outside git. Symlinks are resolved, so one folder always has one path."""
+    of cwd outside git. Symlinks are resolved, so one folder always has one path.
+
+    Letter case is kept as given. On macOS a folder can be entered as Tempo or tempo, but
+    Claude Code sends hooks the cwd as the system reports it (getcwd, and `pwd -P` after
+    each Bash command), which is always the folder's own case, so it never splits a
+    project in two."""
+    return repo_path(cwd) or os.path.realpath(cwd)
+
+
+def repo_path(cwd: str) -> str | None:
+    """The full path of the git repo's top folder, or None outside git: the main checkout
+    for a worktree, the bare repo itself (such as shop.git) for a worktree of a bare repo,
+    and its own folder for a submodule."""
     try:
-        # git is looked up on PATH on purpose; the arguments are fixed.
-        common = subprocess.run(
-            ["git", "rev-parse", "--git-common-dir"],  # noqa: S607
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
+        common, top = _git(cwd, "rev-parse", "--git-common-dir", "--show-toplevel").splitlines()
         # Git answers relative to cwd (".git") or with a full path; join handles both.
         common = os.path.normpath(os.path.join(os.path.abspath(cwd), common))
+        if os.path.basename(common) != ".git":
+            # A bare repo, or a submodule's (or another separate) git folder.
+            if _git(common, "rev-parse", "--is-bare-repository").strip() != "true":
+                return os.path.realpath(top)
+            # A hidden bare folder, as in repo/.bare, stands for the folder it is in.
+            if not os.path.basename(common).startswith("."):
+                return os.path.realpath(common)
         return os.path.realpath(os.path.dirname(common))
-    except (OSError, subprocess.CalledProcessError):
-        return os.path.realpath(cwd)
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return None
+
+
+def _git(cwd: str, *args: str) -> str:
+    # git is looked up on PATH on purpose. There is no shell, and every caller passes
+    # fixed arguments.
+    return subprocess.run(  # noqa: S603
+        ["git", *args],  # noqa: S607
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def folder_name(path: str) -> str:
+    """A folder's name, without the .git a bare repo's folder ends with."""
+    name = os.path.basename(path)
+    return name[: -len(".git")] if name.endswith(".git") and name != ".git" else name
 
 
 def _project(value: str | None, record: bool = False) -> str:
