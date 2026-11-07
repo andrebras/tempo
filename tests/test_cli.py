@@ -40,6 +40,15 @@ class FakeClock:
 
 
 class CliTest(DatabaseTest):
+    def setUp(self):
+        super().setUp()
+        # The pids of the `tempo wait` processes running: none unless a test adds one, so
+        # waits running on this computer for real never count.
+        self.waits = set()
+        waits = mock.patch.object(cli, "_wait_processes", side_effect=lambda: set(self.waits))
+        waits.start()
+        self.addCleanup(waits.stop)
+
     def test_add_prints_the_number_and_link(self):
         code, out, _ = run(
             "add", "--title", "T", "--context", "C", "--option", "x", "--option", "y"
@@ -510,10 +519,13 @@ class CliTest(DatabaseTest):
         # It checked the inbox every 0.25 seconds until the second was up, without waiting.
         self.assertEqual(clock.slept, [0.25] * 4)
 
-    def marker(self, pid, project="demo"):
+    def marker(self, pid, project="demo", wait=True):
+        """Leave a wait marker for the pid; with wait, the pid also runs `tempo wait`."""
         path = os.path.join(self.tmp.name, "wait-%d.json" % pid)
         with open(path, "w") as file:
             json.dump({"pid": pid, "project": project}, file)
+        if wait:
+            self.waits.add(pid)
         return path
 
     def test_wait_leaves_a_marker_while_it_runs(self):
@@ -523,8 +535,10 @@ class CliTest(DatabaseTest):
             seen.append(cli.wait_running("demo"))
             return "Answered"
 
+        self.waits.add(os.getpid())  # The wait runs in this process.
         with mock.patch.object(cli, "take_inbox", side_effect=inbox):
             run("wait", "--timeout", "5")
+        self.waits.clear()
         self.assertEqual(seen, [True])
         self.assertFalse(cli.wait_running("demo"))
         self.assertEqual([n for n in os.listdir(self.tmp.name) if n.startswith("wait-")], [])
@@ -536,9 +550,20 @@ class CliTest(DatabaseTest):
         self.assertTrue(cli.wait_running("demo"))
         ended = subprocess.Popen(["true"])
         ended.wait()
-        dead = self.marker(ended.pid)
+        dead = self.marker(ended.pid, wait=False)
         self.assertTrue(cli.wait_running("demo"))
         self.assertFalse(os.path.exists(dead))
+
+    def test_a_marker_whose_pid_now_runs_something_else_is_dropped(self):
+        # A killed wait's pid can be given to another process, which is alive but no wait.
+        reused = self.marker(os.getpid(), wait=False)
+        self.assertFalse(cli.wait_running("demo"))
+        self.assertFalse(os.path.exists(reused))
+
+    def test_without_ps_a_marker_counts_while_its_process_lives(self):
+        self.marker(os.getpid(), wait=False)
+        with mock.patch.object(cli, "_wait_processes", return_value=None):
+            self.assertTrue(cli.wait_running("demo"))
 
 
 class RenameNoteTest(DatabaseTest):
@@ -870,3 +895,21 @@ class TempoPidTest(unittest.TestCase):
                 runs = [ran("4242\n"), ran(command)]
                 with mock.patch.object(cli.subprocess, "run", side_effect=runs):
                     self.assertEqual(cli._tempo_pid(2204), pid)
+
+
+class WaitProcessesTest(unittest.TestCase):
+    def test_lists_the_processes_running_tempo_wait(self):
+        sleep = [sys.executable, "-c", "import time; time.sleep(30)"]
+        wait = subprocess.Popen([*sleep, "-m", "tempo", "wait", "--timeout", "1800"])
+        other = subprocess.Popen([*sleep, "-m", "tempo", "serve"])
+        for process in (wait, other):
+            self.addCleanup(process.wait)
+            self.addCleanup(process.kill)
+        waits = cli._wait_processes()
+        self.assertIn(wait.pid, waits)
+        self.assertNotIn(other.pid, waits)
+        self.assertNotIn(os.getpid(), waits)
+
+    def test_none_when_ps_cannot_run(self):
+        with mock.patch.object(cli.subprocess, "run", side_effect=OSError):
+            self.assertIsNone(cli._wait_processes())

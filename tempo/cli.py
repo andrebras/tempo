@@ -324,8 +324,10 @@ def run_wait(args: argparse.Namespace) -> int:
 
 def wait_running(project: str) -> bool:
     """Whether a `tempo wait` covering the project is running. Markers left by waits
-    that were killed are removed."""
+    that were killed are removed, and so are those whose pid has since been given to a
+    process that is not a wait."""
     folder = os.path.dirname(_db_path())
+    waits = _wait_processes()
     running = False
     for name in os.listdir(folder):
         if not (name.startswith("wait-") and name.endswith(".json")):
@@ -334,7 +336,8 @@ def wait_running(project: str) -> bool:
         try:
             with open(path, encoding="utf-8") as file:
                 marker = json.load(file)
-            alive = _alive(int(marker["pid"]))
+            pid = int(marker["pid"])
+            alive = _alive(pid) if waits is None else pid in waits
         except (OSError, ValueError, KeyError, TypeError):
             alive = False
         if alive:
@@ -343,6 +346,31 @@ def wait_running(project: str) -> bool:
             with contextlib.suppress(OSError):
                 os.remove(path)
     return running
+
+
+# How a `tempo wait` process shows in ps: bin/tempo runs `python3 -m tempo wait …`.
+WAIT_COMMAND = re.compile(r"(?:^|\s)-m tempo wait(?:\s|$)")
+
+
+def _wait_processes() -> set[int] | None:
+    """The pids of the `tempo wait` processes running, or None when ps cannot be run."""
+    try:
+        # ps is looked up on PATH on purpose; the arguments are fixed and there is no shell.
+        listing = subprocess.run(
+            ["ps", "-A", "-o", "pid=,command="],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    waits = set()
+    for line in listing.splitlines():
+        pid, _, command = line.strip().partition(" ")
+        if pid.isdigit() and WAIT_COMMAND.search(command):
+            waits.add(int(pid))
+    return waits
 
 
 def _alive(pid: int) -> bool:

@@ -83,6 +83,9 @@ All notable changes to Tempo are listed here. The format follows
   answer naming an option its question no longer had) dropped it without a word. It is now
   marked delivered only once its text is ready, and an option that is missing shows as its
   letter alone.
+- A `tempo wait` that was killed no longer counts as running when the computer gives its process
+  number to another program. The Stop hook now checks that the process really runs `tempo wait`,
+  so it asks Claude to start a new wait instead of trusting a dead one.
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still
