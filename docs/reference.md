@@ -98,7 +98,8 @@ picked are kept through the reload.
 
 ### Turning the page off
 
-If you answer from the terminal, you can stop sessions from starting the page:
+If you answer from the terminal, you can stop sessions from starting the page, with the
+switch under Sessions in the page's Settings or from the terminal:
 
 ```bash
 tempo config page off   # sessions no longer start the page
@@ -177,6 +178,9 @@ The gear button at the top right of the page opens Settings.
 - **Appearance**: theme (System, Light or Dark), font (System sans, Serif or Monospace), text
   size, and width: how many characters fit on a line of a question (Narrow 68, Medium 80 or
   Wide 100). These are kept in your browser, not in the database.
+- **Sessions**: "Start the page with each session", On or Off. It is the same setting as
+  `tempo config page on|off` (see [Turning the page off](#turning-the-page-off)) and is kept
+  in the database.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
   its questions, their numbers and its folders along. To join two projects, rename one to

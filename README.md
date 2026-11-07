@@ -64,14 +64,15 @@ decision, it adds a question and links to it in chat. On the page you can:
   looked. **All projects ▾** lists every project.
 - **Spot what changed**: a dot after a question's number in the list means Claude reworded
   it or added context since you last opened it.
-- **Adjust Settings** with the gear button: theme, font, text size and line width, and project
-  names. Settings also lists the folders each project covers. When a folder looks renamed or
+- **Adjust Settings** with the gear button: theme, font, text size and line width, whether
+  each session starts the page, and project names. Settings also lists the folders each project covers. When a folder looks renamed or
   moved, a banner asks whether to link it to its old project.
 
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too.
 
-If you would rather answer from the terminal, run `tempo config page off`: sessions then stop
+If you would rather answer from the terminal, run `tempo config page off` (or use the switch
+under Sessions in Settings): sessions then stop
 starting the page, and Claude points you to `tempo show` and `tempo answer` instead of page
 links. `tempo serve --background` still starts the page when you want it, and
 `tempo config page on` brings back the default (`tempo config` shows the current value).
