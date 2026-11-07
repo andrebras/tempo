@@ -47,9 +47,9 @@ Each answer is delivered once, whichever way it arrives: through a hook or `temp
 
 A Tempo problem never blocks your prompt or the session. When something goes wrong, such as
 a locked database or a folder Tempo can't name, the hooks exit cleanly and say nothing to the
-session. The error goes to standard error, which Claude Code doesn't pass to Claude. With
-`TEMPO_IN_THREAD=1` (see [Environment variables](#environment-variables)), the hooks do
-nothing at all.
+session. The error goes to standard error, which Claude Code doesn't pass to Claude, and to
+the page log. With `TEMPO_IN_THREAD=1` (see [Environment variables](#environment-variables)),
+the hooks do nothing but write their line in the log.
 
 A Claude session keeps the plugin version it started with, hooks included. After you update
 Tempo, restart open sessions, for example with `claude --continue`, so they use the new
@@ -174,5 +174,14 @@ it survives plugin updates and reinstalls. The variables' old names (`OQ_DB`, `O
 `OQ_PROJECT`) still work; when both are set, the `TEMPO_` one wins. If only the old database
 at `~/.claude/open-questions/questions.db` exists, Tempo keeps using it where it is.
 
-With `TEMPO_IN_THREAD=1`, Tempo's hooks do nothing and print nothing: another tool that runs
-Claude sessions on your behalf can set it so Tempo stays quiet in those sessions.
+The page log, `server.log`, also gets one line for each change made through the page (the
+time in UTC, the method, the path and the status code, such as
+`2026-11-07T10:00:00Z POST /api/questions/demo/1/answer 200`) and one for each hook run (the
+time, the event, the project and what happened, such as `delivered 2`,
+`blocked: unrecorded question`, `blocked: no wait` or `error: …`). It never holds what a request
+sent or the text of a question or answer. Past about 1 MB it moves to `server.log.1`, replacing
+the older one, and a new `server.log` starts.
+
+With `TEMPO_IN_THREAD=1`, Tempo's hooks do nothing and print nothing, apart from their line in
+the log: another tool that runs Claude sessions on your behalf can set it so Tempo stays quiet in
+those sessions.

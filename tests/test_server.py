@@ -154,6 +154,30 @@ class ServerTest(DatabaseTest):
         self.assertEqual(json.loads(data)["status"], "answered")
         self.assertEqual(len(self.store.undelivered("demo")), 1)
 
+    def log(self):
+        """server.log's lines, without their times."""
+        path = os.path.join(self.tmp.name, "server.log")
+        if not os.path.exists(path):
+            return []
+        with open(path, encoding="utf-8") as file:
+            return [line.split(" ", 1)[1] for line in file.read().splitlines()]
+
+    def test_logs_each_change_request_without_its_body(self):
+        self.request("GET", "/api/questions")
+        self.request("POST", "/api/questions/demo/1/answer", {"choice": "a", "body": "Secret note"})
+        self.request("POST", "/api/questions/demo/1/answer?x=1", {"choice": "b"})
+        self.request("POST", "/api/questions/demo/1/answer", {}, origin="http://evil.example")
+        self.request("DELETE", "/api/questions/demo/1")
+        self.assertEqual(
+            self.log(),
+            [
+                "POST /api/questions/demo/1/answer 200",
+                "POST /api/questions/demo/1/answer 400",
+                "POST /api/questions/demo/1/answer 403",
+                "DELETE /api/questions/demo/1 501",
+            ],
+        )
+
     def test_answering_twice_needs_a_reopen(self):
         path = "/api/questions/demo/1/"
         self.assertEqual(self.request("POST", path + "answer", {"choice": "a"})[0], 200)

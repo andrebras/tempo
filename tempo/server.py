@@ -15,10 +15,12 @@ import subprocess
 import time
 import traceback
 from collections.abc import Callable
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from tempo import log
 from tempo.store import QuestionError, Store, connect
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -160,6 +162,16 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
 
         def log_message(self, format: str, *args: Any) -> None:
             pass
+
+        def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+            """One line in server.log for each request that is not a plain GET: method,
+            path and status code. Never the body or the query, which may quote answers."""
+            if self.command == "GET":
+                return
+            if isinstance(code, HTTPStatus):
+                code = code.value
+            path = urlparse(getattr(self, "path", "") or "").path
+            log.write(self.command or "-", path or "-", code)
 
         def _trusted(self, write: bool) -> bool:
             if self.headers.get("Host") not in allowed_hosts:

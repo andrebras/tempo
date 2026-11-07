@@ -15,7 +15,9 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from tempo import log
 from tempo.store import (
+    Entries,
     Entry,
     Question,
     QuestionError,
@@ -348,6 +350,7 @@ def run_hook(args: argparse.Namespace) -> int:
     # Another tool that runs Claude sessions on the user's behalf sets this, so Tempo's
     # hooks stay quiet in those sessions.
     if os.environ.get("TEMPO_IN_THREAD") == "1":
+        log.write("hook", args.event, "-", "quiet: TEMPO_IN_THREAD")
         return 0
     try:
         payload = json.load(sys.stdin)
@@ -357,28 +360,36 @@ def run_hook(args: argparse.Namespace) -> int:
         payload = {}
     cwd = payload.get("cwd") or os.getcwd()
     if args.event == "stop":
-        reason = stop_reason(payload, cwd)
+        reason, project, outcome = stop_outcome(payload, cwd)
+        log.write("hook", args.event, project, outcome)
         if reason:
             print(json.dumps({"decision": "block", "reason": reason}))
         return 0
     # A hook must never block or break the session over a Tempo problem: exit code 2
     # would discard the user's prompt. Errors go to stderr, which Claude Code does not
     # pass to the session when the hook exits 0.
+    page = ""
     try:
         if args.event == "session-start":
-            start_server(args.port)
+            page = ", page started" if start_server(args.port) else ", page left running"
     except Exception as error:
+        page = ", page not started"
         print("tempo: the page did not start: %s" % error, file=sys.stderr)
+    project = "-"
     try:
         override = setting("PROJECT")
         project = override or project_name(cwd, record=True)
         if args.event == "session-start":
             text = session_note(project, args.port, None if override else folder_path(cwd))
+            outcome = "note sent" + page
         else:
-            text = take_inbox(project)
+            text, delivered = deliver_inbox(project)
+            outcome = "delivered %d" % delivered if delivered else "nothing new"
     except Exception as error:
+        log.write("hook", args.event, project, "error: %s" % error)
         print("tempo: hook skipped: %s" % error, file=sys.stderr)
         return 0
+    log.write("hook", args.event, project, outcome)
     if text:
         event = "SessionStart" if args.event == "session-start" else "UserPromptSubmit"
         print(
@@ -444,8 +455,9 @@ def rename_note(rename: dict[str, Any]) -> str:
     )
 
 
-def stop_reason(payload: dict[str, Any], cwd: str) -> str | None:
-    """Why the reply that just ended must not stop yet, or None.
+def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, str]:
+    """Why the reply that just ended must not stop yet (or None), with the project and
+    a short outcome for the log.
 
     In order: the user's new answers and follow-ups (handed over and marked delivered),
     a question asked only in chat, then open questions with no `tempo wait` running to
@@ -453,27 +465,29 @@ def stop_reason(payload: dict[str, Any], cwd: str) -> str | None:
     error lets the reply end, so the hook can never trap a session.
     """
     if payload.get("stop_hook_active"):
-        return None
+        return None, "-", "let through: already sent back once"
+    project = "-"
     try:
         project = setting("PROJECT") or project_name(cwd)
-        inbox = take_inbox(project)
+        inbox, delivered = deliver_inbox(project)
         if inbox:
-            return inbox
+            return inbox, project, "delivered %d" % delivered
         unrecorded = unrecorded_options(payload)
         if unrecorded:
-            return unrecorded
+            return unrecorded, project, "blocked: unrecorded question"
         with Store(connect()) as store:
             questions = store.list(project, "open")
         if questions and not wait_running(project):
-            return (
+            reason = (
                 "%s has open questions in Tempo, but no `tempo wait` is running, so answers"
                 " from the page would not reach you until the user writes in chat. Start"
                 " `tempo wait --timeout 1800` with the Bash tool's run_in_background option,"
                 " then end the reply." % project
             )
-    except Exception:
-        return None
-    return None
+            return reason, project, "blocked: no wait"
+    except Exception as error:
+        return None, project, "error: %s" % error
+    return None, project, "let through"
 
 
 # Lettered options such as "(a) …" and "(b) …" on separate items of one reply.
@@ -570,12 +584,17 @@ def run_serve(args: argparse.Namespace) -> int | None:
 
 def take_inbox(project: str | None) -> str:
     """Return the user's undelivered answers and follow-ups as text, marking them seen."""
+    return deliver_inbox(project)[0]
+
+
+def deliver_inbox(project: str | None) -> tuple[str, int]:
+    """take_inbox, with how many answers and follow-ups it handed over."""
     with Store(connect()) as store:
-        return _take_inbox(store, project)
+        entries = store.take_undelivered(project)
+        return _describe_inbox(store, entries), len(entries)
 
 
-def _take_inbox(store: Store, project: str | None) -> str:
-    entries = store.take_undelivered(project)
+def _describe_inbox(store: Store, entries: Entries) -> str:
     if not entries:
         return ""
     lines = ["New from the user on the Tempo page (http://127.0.0.1:%d/):" % _port()]
@@ -685,14 +704,12 @@ def start_server(port: int) -> bool:
         return False
     # The child gets its own copy of the log file handle, so ours can close. The
     # argument list is fixed and there is no shell, so nothing outside reaches it.
-    log_path = os.path.join(os.path.dirname(_db_path()), "server.log")
-    # Errors in the log may quote questions, so it is private like the database.
-    with open(log_path, "a", opener=lambda name, flags: os.open(name, flags, 0o600)) as log:
+    with os.fdopen(log.open_log(), "a") as server_log:
         subprocess.Popen(  # noqa: S603
             [sys.executable, "-m", "tempo", "serve", "--port", str(port)],
             cwd=ROOT,
-            stdout=log,
-            stderr=log,
+            stdout=server_log,
+            stderr=server_log,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
