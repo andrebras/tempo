@@ -18,6 +18,9 @@ All notable changes to Tempo are listed here. The format follows
   session kept running old code without saying so. Code run from a git checkout stays quiet.
 - A test runs the previous release's `tempo add`, `list` and prompt hook against a database
   migrated by the current code, so a release that breaks older sessions fails CI.
+- A test runs the prompt and Stop hooks the way Claude Code does (`bin/tempo hook …` in its
+  own process, with Claude Code's JSON on stdin) and checks that an answer from the page
+  reaches Claude exactly once.
 
 ### Fixed
 
