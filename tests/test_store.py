@@ -40,6 +40,18 @@ class ActivityTest(DatabaseTest):
             {"demo": "2026-01-03T00:00:00Z", "other": "2026-01-04T00:00:00Z"},
         )
 
+    def test_each_listed_question_has_its_latest_news_from_claude(self):
+        def activity():
+            return [q["activity"] for q in self.store.list("demo")]
+
+        self.at("2026-01-01T00:00:00Z", self.add)
+        self.at("2026-01-02T00:00:00Z", self.add)
+        self.assertEqual(activity(), ["2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"])
+        self.at("2026-01-03T00:00:00Z", self.store.reword, "demo", 1, "Clearer", title="Which?")
+        self.at("2026-01-04T00:00:00Z", self.store.add_context, "demo", 2, "More detail")
+        self.at("2026-01-05T00:00:00Z", self.store.follow_up, "demo", 1, "Why?")
+        self.assertEqual(activity(), ["2026-01-03T00:00:00Z", "2026-01-04T00:00:00Z"])
+
     def test_a_project_without_questions_has_no_activity(self):
         self.store.see_folder("empty")
         self.assertEqual(self.store.project_activity(), {})

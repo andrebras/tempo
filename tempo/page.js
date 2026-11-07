@@ -1,5 +1,6 @@
 const state = {
-  status: "open", project: storedProject(), seen: storedSeen(), current: null, shown: null, back: null,
+  status: "open", project: storedProject(), seen: storedSeen(), opened: storedOpened(),
+  current: null, shown: null, back: null,
 };
 
 // The page shows one project at a time and remembers the last one per browser.
@@ -32,6 +33,36 @@ function chipProjects(projects, counts, activity, seen, current) {
     name, open: counts[name] || 0, current: name === current,
     fresh: name !== current && Boolean(activity[name]) && !(seen?.[name] >= activity[name]),
   })).filter((chip) => chip.current || chip.open || chip.fresh);
+}
+
+// When the user last opened each open question: its activity time then, as the server
+// gave it, by project and number. Kept per browser.
+function storedOpened() {
+  try { return JSON.parse(localStorage.getItem("opened")) || {}; } catch { return {}; }
+}
+
+// The record after the list is shown: the question on screen counts as opened now, and on
+// a first visit to a project so does every open question there, so nothing is new yet.
+// Questions no longer open, and projects that are gone, are dropped to keep it small.
+function noteOpened(opened, projects, open, project, current) {
+  const next = {};
+  for (const name of projects) if (opened[name]) next[name] = {};
+  const first = project && !next[project];
+  if (first) next[project] = {};
+  for (const q of open) {
+    const now = q.project === project && (first || current?.number === q.number);
+    const at = now ? q.activity : opened[q.project]?.[q.number];
+    if (at && next[q.project]) next[q.project][q.number] = at;
+  }
+  return next;
+}
+
+// A dot on an open question Claude changed (asked, reworded, or added context to) since
+// the user last opened it. A question waiting on Claude shows that instead.
+function questionFresh(question, opened) {
+  const at = opened[question.project]?.[question.number];
+  return question.status === "open" && !question.waiting && Boolean(opened[question.project])
+    && !(at >= question.activity);
 }
 
 const $ = (selector) => document.querySelector(selector);
@@ -135,6 +166,8 @@ async function loadList() {
   for (const q of open.questions) counts[q.project] = (counts[q.project] || 0) + 1;
   markSeen(data.activity || {});
   renderProjectBar(data.projects, counts, data.activity || {});
+  state.opened = noteOpened(state.opened, data.projects, open.questions, state.project, current);
+  try { localStorage.setItem("opened", JSON.stringify(state.opened)); } catch { /* just don't remember */ }
   const words = $("#search").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (q) => words.every((word) =>
     `${q.label} ${q.title} ${q.context} ${q.goal || ""}`.toLowerCase().includes(word));
@@ -162,7 +195,8 @@ async function loadList() {
     const active = current && current.project === question.project && current.number === question.number;
     list.append(el("a", { href: `#/${encodeURIComponent(question.project)}/${question.number}`,
                           class: [question.start_here && "start", active && "active"].filter(Boolean).join(" ") },
-      el("span", { class: "label" }, question.label, startHere(question), waitBadge(question, true)),
+      el("span", { class: "label" }, question.label, newDot(questionFresh(question, state.opened)),
+        startHere(question), waitBadge(question, true)),
       el("span", { class: "title" }, question.title),
       question.start_here && el("span", { class: "reason" }, question.start_here),
       question.status === "open" && el("span", { class: "facts" }, facts(question))));
@@ -458,7 +492,7 @@ function renderProjectBar(projects, counts, activity) {
   $("#chips").replaceChildren(...chips.map((chip) => el("button", {
     class: "chip", "aria-pressed": String(chip.current), onclick: () => switchProject(chip.name),
   }, chip.name, el("span", { class: "count" }, ` · ${chip.open}`),
-  chip.fresh && el("span", { class: "dot", title: "Something new" }, el("span", { class: "sr" }, ", something new")))));
+  newDot(chip.fresh))));
   // Rebuilding the open menu keeps the keyboard on the same row.
   const focused = [...document.querySelectorAll("#project-menu button")].indexOf(document.activeElement);
   $("#project-menu").replaceChildren(...projects.map((name) => el("li", { role: "none" }, el("button", {
@@ -466,6 +500,11 @@ function renderProjectBar(projects, counts, activity) {
     onclick: () => switchProject(name),
   }, el("span", { class: "name" }, name), el("span", { class: "count" }, `${counts[name] || 0} open`)))));
   if (focused >= 0) document.querySelectorAll("#project-menu button")[focused]?.focus();
+}
+
+// The dot on a chip or a list row that marks something new.
+function newDot(show) {
+  return show && el("span", { class: "dot", title: "Something new" }, el("span", { class: "sr" }, ", something new"));
 }
 
 function switchProject(name) {
@@ -716,5 +755,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
+  noteOpened, questionFresh,
 };
 else start();
