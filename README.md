@@ -95,6 +95,72 @@ They act on the project of the folder you run them in; add `--project NAME` for 
 `PATH` only inside a session. In your own shell, run it from the plugin's folder, for example
 with an alias: `alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo`.
 
+### The full-screen view: `tempo tui`
+
+`tempo tui` shows what the page shows, in the terminal, with panels side by side as in
+lazygit, and you use it only with the keyboard. It needs nothing installed: it is drawn with
+curses, which comes with Python. Projects (top left) lists every project with open questions,
+plus the current folder's, with how many are open; a dot marks the ones with questions waiting
+for you. Questions (bottom left) lists the selected project's open questions, grouped by goal
+as on the page: `»` marks the goal's start-here question, `…` one waiting on Claude, and
+`quick` one that is quick to answer. Detail (right) shows the selected question: its context,
+the lettered options with the recommended one marked, and its thread. The bottom line shows the
+keys for the panel you are in. This is the screen at 80 by 24 characters:
+
+```text
+┌─ Projects ─────────────┐┌─ Detail ───────────────────────────────────────────┐
+│● shop                 2││tempo · Q1 · open                                   │
+│● tempo                3││Which database should the sync use?                 │
+└────────────────────────┘│Goal: Release 0.7 · quick · open 6 minutes          │
+┌─ Questions ────────────┐│Start here: unlocks Q2 and Q3                       │
+│Release 0.7             ││                                                    │
+│»Q1 Which databas… quick││The sync keeps a copy of each project's questions on│
+│ Q2 Ship the scre… quick││a second machine.                                   │
+│Other                   ││                                                    │
+│…Q3 Keep the old oq com…││• SQLite needs nothing installed and is what Tempo  │
+│                        ││  already uses.                                     │
+│                        ││• Postgres handles many writers, but needs a server.│
+│                        ││                                                    │
+│                        ││The sync command runs every few minutes.            │
+│                        ││                                                    │
+│                        ││(a) SQLite, one file per project [recommended]      │
+│                        ││(b) Postgres on the home server                     │
+│                        ││(c) Wait until someone asks for sync                │
+│                        ││                                                    │
+│                        ││Thread                                              │
+│                        ││Asked 2026-11-07 23:33                              │
+│                        ││                                                    │
+└────────────────────────┘└────────────────────────────────────────────────────┘
+j/k question  Enter detail  h/l panels  a-c answer  r follow up  ? help  q quit
+```
+
+| Key | What it does |
+| --- | --- |
+| `j` `k`, `↓` `↑` | Move to the next or previous project or question; in Detail, scroll |
+| `h` `l`, `←` `→`, `Tab` `Shift-Tab` | Go to the previous or next panel |
+| `Enter` | Go from Projects to Questions, and from Questions to Detail |
+| `a`, `b`, `c`… | Answer the selected question with that option. The bottom line asks first: `y` sends, `e` adds a note before sending, `n` or `Esc` cancels |
+| `A`, `B`, `C`… | The same. Use Shift for options `h`, `j`, `k`, `l`, `q` and `r`, since those letters also move or quit |
+| `r` | Ask Claude for more (a follow-up): type it on the bottom line, `Enter` sends, `Esc` cancels |
+| `PgDn` `PgUp`, `Ctrl-d` `Ctrl-u` | Scroll the detail by a page |
+| `?` | Show the keys |
+| `q`, `Esc` | Quit |
+
+Answers and follow-ups are saved exactly as the page and `tempo answer` save them, so Claude
+gets them the same way. The bottom line then says what was saved, or why it was refused (for
+example, when the question was answered on the page meanwhile). The screen follows changes by
+itself within a second or two: a question Claude adds or rewords, or an answer from the page.
+On a screen narrower than 60 characters it shows one panel at a time, and `h` and `l` go to
+the others. Set `NO_COLOR` to turn colors off. It never starts the page.
+
+To open it in a tmux popup with `prefix` then `T` (`display-popup` needs tmux 3.2 or later;
+`-d` starts it in the current pane's folder, so it opens on that folder's project), add this to
+`~/.tmux.conf` and reload it with `tmux source-file ~/.tmux.conf`:
+
+```tmux
+bind T display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.claude/plugins/marketplaces/tempo/bin/tempo tui"
+```
+
 ### A badge in the tmux status bar
 
 `tempo status` prints `? 3` when three questions of the current folder's project are waiting
