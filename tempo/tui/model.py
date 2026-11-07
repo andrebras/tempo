@@ -66,6 +66,8 @@ class Board:
         # "normal", "help", "confirm" (an answer waiting for y/n), "note" or "reply".
         self.mode = "normal"
         self.letter = ""
+        # The option's text, for the confirm prompt.
+        self.option = ""
         # The question an answer or follow-up being written is for, fixed when it starts,
         # so a reload meanwhile (which may select another question) can't redirect it.
         self.target: tuple[str, int] | None = None
@@ -132,6 +134,9 @@ class Board:
     def press(self, key: str) -> bool:
         """Act on one key, named as the screen names them ("j", "B", "enter", "esc", "tab",
         "btab", "up", "pgdn", "ctrl-d", "backspace", …). False means quit."""
+        if key == "ctrl-c":
+            # Usually a terminal turns Ctrl-C into an interrupt; without one, it still quits.
+            return False
         if self.mode == "help":
             self.mode = "normal"
             return True
@@ -194,11 +199,13 @@ class Board:
     def _pick(self, letter: str) -> None:
         if not self._selected() or self.question is None:
             return
-        if letter not in [option["letter"] for option in self.question["options"]]:
+        texts = {option["letter"]: option["text"] for option in self.question["options"]}
+        if letter not in texts:
             # The store's own words for it.
             self.message = ("Option (%s) does not exist" % letter, "error")
             return
         self.mode, self.letter, self.target = "confirm", letter, self._here()
+        self.option = texts[letter]
 
     def _confirm(self, key: str) -> None:
         if key in ("y", "Y", "enter"):

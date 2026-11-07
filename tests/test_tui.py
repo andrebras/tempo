@@ -121,6 +121,7 @@ class BoardTest(DatabaseTest):
         board.press("b")
         self.assertEqual(board.mode, "confirm")
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
+        self.assertEqual(board.option, "Right")
         board.press("y")
         self.assertEqual(board.message, ("Answered Q1: (b) Right", "ok"))
         self.assertIsNone(board.question)
@@ -216,6 +217,8 @@ class BoardTest(DatabaseTest):
         self.assertEqual(board.mode, "help")
         self.assertTrue(board.press("q"))
         self.assertFalse(board.press("q"))
+        board.press("r")
+        self.assertFalse(board.press("ctrl-c"))
 
     def test_moving_between_projects_shows_each_ones_questions(self):
         self.add(title="Here")
