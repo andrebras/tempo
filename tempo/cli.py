@@ -358,48 +358,71 @@ def session_note(project: str, port: int) -> str:
 
 # Lettered options such as "(a) …" and "(b) …" on separate items of one reply.
 OPTION = re.compile(r"(?:^|\s)\(([a-e])\)\s", re.MULTILINE)
-TEMPO_LINK = re.compile(r"127\.0\.0\.1:\d+/#/|\btempo (?:add|reword)\b")
+# A yes-or-no question or a request for permission, starting a sentence or a list item.
+ASK = re.compile(
+    r"(?:^|[.!?:]\s+|^\s*[-*]\s+)(?:(?:may|can|could|should|shall) (?:i|we)"
+    r"|do you want|would you like|want me to|ok(?:ay)? to)\b[^.!?\n]*\?"
+    r"|\byes or no\b|\breply (?:yes|no|ok)\b|\(y(?:es)?/n(?:o)?\)",
+    re.IGNORECASE | re.MULTILINE,
+)
+# What doesn't count as asking: code, quoted lines and quoted phrases.
+QUOTED = re.compile(r"```.*?(?:```|\Z)|`[^`\n]*`|^\s*>.*$|\"[^\"\n]*\"|“[^”\n]*”", re.S | re.M)
+# A list item naming a question and its link, as in the closing list of open questions:
+# "- Q3 Title http://127.0.0.1:2204/#/…" or "- **Q3** Title [Goal] http://…".
+LISTED = re.compile(r"^\s*[-*]\s.*\bQ\d+\b.*127\.0\.0\.1:\d+/#/.*$", re.MULTILINE)
+TEMPO_LINK = re.compile(r"127\.0\.0\.1:\d+/#/")
+TEMPO_RUN = re.compile(r"\b(?:tempo|oq) (?:add|reword|context)\b")
 
 
 def unrecorded_options(payload: dict[str, Any]) -> str | None:
     """Why the reply that just ended must not stop yet, or None.
 
-    A reply that offers lettered options without a Tempo link or a `tempo add` is a
-    question asked only in chat. Runs once per reply: when Claude was already sent back
-    (stop_hook_active), it lets the reply end. Any problem reading the transcript lets it
-    end too, so the check can never trap a session.
+    A reply that asks the user something (lettered options, a yes-or-no question or a
+    request for permission) is a question asked only in chat, unless the reply ran
+    `tempo add`, `tempo reword` or `tempo context`, or links a Tempo question outside the
+    closing list of open questions. Code and quoted text never count as asking. Runs once
+    per reply: when Claude was already sent back (stop_hook_active), it lets the reply
+    end. Any problem reading the transcript lets it end too, so the check can never trap
+    a session.
     """
     if payload.get("stop_hook_active"):
         return None
     try:
-        text = _last_reply(payload["transcript_path"])
-    except (KeyError, OSError, ValueError, TypeError):
+        text, commands = _last_reply(payload["transcript_path"])
+    except (KeyError, OSError, ValueError, TypeError, AttributeError):
         return None
-    if {"a", "b"} <= set(OPTION.findall(text)) and not TEMPO_LINK.search(text):
+    prose = QUOTED.sub(" ", text)
+    asks = {"a", "b"} <= set(OPTION.findall(prose)) or ASK.search(prose)
+    recorded = TEMPO_RUN.search(commands) or TEMPO_LINK.search(LISTED.sub("", prose))
+    if asks and not recorded:
         return (
-            "This reply offers lettered options, so it asks the user to decide, but no Tempo"
-            " question was added. Add it with `tempo add` (see the tempo skill) and give its"
-            " link, or, if it is already in Tempo, add the question's link."
+            "This reply asks the user to decide something (lettered options, a yes-or-no"
+            " question or a request for permission), but it is not in Tempo. Add it with"
+            " `tempo add` (see the tempo skill; a yes-or-no question gets the options Yes"
+            " and No), then give the question in full with its link. If it is already in"
+            " Tempo, give its link in the body of the reply. Merging, publishing and"
+            " installing still also need a one-line OK in chat."
         )
     return None
 
 
-def _last_reply(path: str) -> str:
-    """Everything Claude wrote and ran since the user's last message, as one text."""
-    parts: list[str] = []
+def _last_reply(path: str) -> tuple[str, str]:
+    """What Claude wrote, and the tool inputs it ran, since the user's last message."""
+    texts: list[str] = []
+    commands: list[str] = []
     with open(path, encoding="utf-8") as transcript:
         for line in transcript:
             entry = json.loads(line)
             content = (entry.get("message") or {}).get("content")
             if entry.get("type") == "user" and not _tool_results(content):
-                parts = []
+                texts, commands = [], []
             elif entry.get("type") == "assistant" and isinstance(content, list):
                 for block in content:
                     if block.get("type") == "text":
-                        parts.append(block.get("text", ""))
+                        texts.append(block.get("text", ""))
                     elif block.get("type") == "tool_use":
-                        parts.append(json.dumps(block.get("input", {})))
-    return "\n".join(parts)
+                        commands.append(json.dumps(block.get("input", {})))
+    return "\n".join(texts), "\n".join(commands)
 
 
 def _tool_results(content: Any) -> bool:
