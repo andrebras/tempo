@@ -78,10 +78,15 @@ def styles(color: bool) -> dict[str, int]:
     """How each style name looks: in color when the terminal has it and NO_COLOR is unset,
     else with bold, dim, underline and reverse only."""
     pair = {"accent": 0, "green": 0, "red": 0, "yellow": 0, "magenta": 0}
-    if color:
-        curses.start_color()
-        with contextlib.suppress(curses.error):
+    if curses.has_colors():
+        try:
+            # curses.wrapper has started colors, which would paint the screen white on
+            # black. This keeps the terminal's own text and background colors, with or
+            # without colors of ours.
             curses.use_default_colors()
+        except curses.error:
+            color = False
+    if color:
         colors = (
             curses.COLOR_CYAN,
             curses.COLOR_GREEN,

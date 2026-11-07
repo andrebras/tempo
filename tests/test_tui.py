@@ -307,11 +307,13 @@ def _can_run_curses():
 class ScreenTest(DatabaseTest):
     """The real curses screen in a pseudo-terminal (pty), as a tmux popup would run it."""
 
-    def start(self, height=24, width=80):
+    def start(self, height=24, width=80, **settings):
         self.master, slave = pty.openpty()
         self.addCleanup(os.close, self.master)
         self.resize(height, width, slave)
-        env = dict(os.environ, TERM="xterm-256color", NO_COLOR="")
+        env = dict(os.environ, TERM="xterm-256color")
+        env.pop("NO_COLOR", None)
+        env.update(settings)
         self.process = subprocess.Popen(
             [sys.executable, "-m", "tempo", "tui"],
             cwd=CODE_ROOT,
@@ -392,6 +394,21 @@ class ScreenTest(DatabaseTest):
         self.see("2/3")
         os.write(self.master, b"\x1b")
         self.assertEqual(self.finish(), 0)
+
+    def test_no_color_draws_without_colors(self):
+        self.add(title="Left or right?", recommended="a")
+        self.start(NO_COLOR="1")
+        self.see("Left or right?")
+        os.write(self.master, b"q")
+        self.assertEqual(self.finish(), 0)
+        # No text or background color codes (ESC [ 3x m, ESC [ 4x m): bold, dim and reverse
+        # only, on the terminal's own colors.
+        self.assertNotRegex(self.screen, rb"\x1b\[(\d+;)*[34][0-8](;\d+)*m")
+        self.start()
+        self.see("Left or right?")
+        os.write(self.master, b"q")
+        self.assertEqual(self.finish(), 0)
+        self.assertRegex(self.screen, rb"\x1b\[(\d+;)*3[0-8](;\d+)*m")
 
     def test_an_error_inside_the_screen_still_restores_the_terminal(self):
         self.add(title="Left or right?")
@@ -519,6 +536,7 @@ class CommandTest(DatabaseTest):
             self.assertEqual(cli.main(["tui"]), 1)
         self.assertEqual(err.getvalue(), "tempo: tui needs a terminal\n")
 
+    @unittest.skipUnless(curses is not None, "needs curses")
     def test_tui_starts_on_the_folders_project_and_never_starts_the_page(self):
         with (
             mock.patch.object(sys.stdin, "isatty", return_value=True),
