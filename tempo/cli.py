@@ -4,6 +4,7 @@ hand the user's answers back to Claude."""
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -290,15 +291,56 @@ def run_inbox(args: argparse.Namespace) -> None:
 def run_wait(args: argparse.Namespace) -> int:
     project = None if args.all_projects else _project(args.project)
     deadline = time.time() + args.timeout if args.timeout else None
-    while True:
-        text = take_inbox(project)
-        if text:
-            print(text)
-            return 0
-        if deadline and time.time() >= deadline:
-            print("Nothing new from the user.")
-            return 0
-        time.sleep(args.interval)
+    # A marker tells the Stop hook that a wait is running for this project.
+    marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
+    with open(marker, "w", encoding="utf-8") as file:
+        json.dump({"pid": os.getpid(), "project": project}, file)
+    try:
+        while True:
+            text = take_inbox(project)
+            if text:
+                print(text)
+                return 0
+            if deadline and time.time() >= deadline:
+                print("Nothing new from the user.")
+                return 0
+            time.sleep(args.interval)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(marker)
+
+
+def wait_running(project: str) -> bool:
+    """Whether a `tempo wait` covering the project is running. Markers left by waits
+    that were killed are removed."""
+    folder = os.path.dirname(_db_path())
+    running = False
+    for name in os.listdir(folder):
+        if not (name.startswith("wait-") and name.endswith(".json")):
+            continue
+        path = os.path.join(folder, name)
+        try:
+            with open(path, encoding="utf-8") as file:
+                marker = json.load(file)
+            alive = _alive(int(marker["pid"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            alive = False
+        if alive:
+            running = running or marker.get("project") in (None, project)
+        else:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+    return running
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True  # The process exists but belongs to someone else.
+    except OSError:
+        return False
+    return True
 
 
 def run_hook(args: argparse.Namespace) -> int:
@@ -308,7 +350,7 @@ def run_hook(args: argparse.Namespace) -> int:
         payload = {}
     cwd = payload.get("cwd") or os.getcwd()
     if args.event == "stop":
-        reason = unrecorded_options(payload)
+        reason = stop_reason(payload, cwd)
         if reason:
             print(json.dumps({"decision": "block", "reason": reason}))
         return 0
@@ -333,8 +375,8 @@ def session_note(project: str, port: int) -> str:
     lines = [
         "Tempo is installed: the user reads and answers questions at %s." % link,
         "- Every choice or decision for the user goes in Tempo with `tempo add` (see the tempo"
-        " skill for the format), never only in chat. That includes 'say whether…' items in"
-        " pending steps.",
+        " skill for the format), never only in chat. That includes yes-or-no confirmations,"
+        " requests for permission and 'say whether…' items in pending steps.",
         "- Give every question a goal with `--goal`: the piece of work its answer moves"
         " forward, named the same way across questions (e.g. 'Release 0.4')."
         ' Mark one question in a goal `--start-here "unlocks …"` only when its answer'
@@ -342,7 +384,7 @@ def session_note(project: str, port: int) -> str:
         "- End every update with the open questions of this project, one line each:"
         " number, title and link.",
         "- An answer on the Tempo page never approves merging, publishing or installing:"
-        " ask for that in chat.",
+        " record the question in Tempo and also ask for a one-line OK in chat.",
     ]
     with Store(connect()) as store:
         questions = store.list(project, "open")
@@ -356,50 +398,105 @@ def session_note(project: str, port: int) -> str:
     return "\n".join(lines)
 
 
+def stop_reason(payload: dict[str, Any], cwd: str) -> str | None:
+    """Why the reply that just ended must not stop yet, or None.
+
+    In order: the user's new answers and follow-ups (handed over and marked delivered),
+    a question asked only in chat, then open questions with no `tempo wait` running to
+    bring the answers back. Blocks at most once per reply (stop_hook_active), and any
+    error lets the reply end, so the hook can never trap a session.
+    """
+    if payload.get("stop_hook_active"):
+        return None
+    try:
+        project = setting("PROJECT") or project_name(cwd)
+        inbox = take_inbox(project)
+        if inbox:
+            return inbox
+        unrecorded = unrecorded_options(payload)
+        if unrecorded:
+            return unrecorded
+        with Store(connect()) as store:
+            questions = store.list(project, "open")
+        if questions and not wait_running(project):
+            return (
+                "%s has open questions in Tempo, but no `tempo wait` is running, so answers"
+                " from the page would not reach you until the user writes in chat. Start"
+                " `tempo wait --timeout 1800` with the Bash tool's run_in_background option,"
+                " then end the reply." % project
+            )
+    except Exception:
+        return None
+    return None
+
+
 # Lettered options such as "(a) …" and "(b) …" on separate items of one reply.
 OPTION = re.compile(r"(?:^|\s)\(([a-e])\)\s", re.MULTILINE)
-TEMPO_LINK = re.compile(r"127\.0\.0\.1:\d+/#/|\btempo (?:add|reword)\b")
+# A yes-or-no question or a request for permission, starting a sentence or a list item.
+ASK = re.compile(
+    r"(?:^|[.!?:]\s+|^\s*[-*]\s+)(?:(?:may|can|could|should|shall) (?:i|we)"
+    r"|do you want|would you like|want me to|ok(?:ay)? to)\b[^.!?\n]*\?"
+    r"|\byes or no\b|\breply (?:yes|no|ok)\b|\(y(?:es)?/n(?:o)?\)",
+    re.IGNORECASE | re.MULTILINE,
+)
+# What doesn't count as asking: code, quoted lines and quoted phrases.
+QUOTED = re.compile(r"```.*?(?:```|\Z)|`[^`\n]*`|^\s*>.*$|\"[^\"\n]*\"|“[^”\n]*”", re.S | re.M)
+# A list item naming a question and its link, as in the closing list of open questions:
+# "- Q3 Title http://127.0.0.1:2204/#/…" or "- **Q3** Title [Goal] http://…".
+LISTED = re.compile(r"^\s*[-*]\s.*\bQ\d+\b.*127\.0\.0\.1:\d+/#/.*$", re.MULTILINE)
+TEMPO_LINK = re.compile(r"127\.0\.0\.1:\d+/#/")
+TEMPO_RUN = re.compile(r"\b(?:tempo|oq) (?:add|reword|context)\b")
 
 
 def unrecorded_options(payload: dict[str, Any]) -> str | None:
     """Why the reply that just ended must not stop yet, or None.
 
-    A reply that offers lettered options without a Tempo link or a `tempo add` is a
-    question asked only in chat. Runs once per reply: when Claude was already sent back
-    (stop_hook_active), it lets the reply end. Any problem reading the transcript lets it
-    end too, so the check can never trap a session.
+    A reply that asks the user something (lettered options, a yes-or-no question or a
+    request for permission) is a question asked only in chat, unless the reply ran
+    `tempo add`, `tempo reword` or `tempo context`, or links a Tempo question outside the
+    closing list of open questions. Code and quoted text never count as asking. Runs once
+    per reply: when Claude was already sent back (stop_hook_active), it lets the reply
+    end. Any problem reading the transcript lets it end too, so the check can never trap
+    a session.
     """
     if payload.get("stop_hook_active"):
         return None
     try:
-        text = _last_reply(payload["transcript_path"])
-    except (KeyError, OSError, ValueError, TypeError):
+        text, commands = _last_reply(payload["transcript_path"])
+    except (KeyError, OSError, ValueError, TypeError, AttributeError):
         return None
-    if {"a", "b"} <= set(OPTION.findall(text)) and not TEMPO_LINK.search(text):
+    prose = QUOTED.sub(" ", text)
+    asks = {"a", "b"} <= set(OPTION.findall(prose)) or ASK.search(prose)
+    recorded = TEMPO_RUN.search(commands) or TEMPO_LINK.search(LISTED.sub("", prose))
+    if asks and not recorded:
         return (
-            "This reply offers lettered options, so it asks the user to decide, but no Tempo"
-            " question was added. Add it with `tempo add` (see the tempo skill) and give its"
-            " link, or, if it is already in Tempo, add the question's link."
+            "This reply asks the user to decide something (lettered options, a yes-or-no"
+            " question or a request for permission), but it is not in Tempo. Add it with"
+            " `tempo add` (see the tempo skill; a yes-or-no question gets the options Yes"
+            " and No), then give the question in full with its link. If it is already in"
+            " Tempo, give its link in the body of the reply. Merging, publishing and"
+            " installing still also need a one-line OK in chat."
         )
     return None
 
 
-def _last_reply(path: str) -> str:
-    """Everything Claude wrote and ran since the user's last message, as one text."""
-    parts: list[str] = []
+def _last_reply(path: str) -> tuple[str, str]:
+    """What Claude wrote, and the tool inputs it ran, since the user's last message."""
+    texts: list[str] = []
+    commands: list[str] = []
     with open(path, encoding="utf-8") as transcript:
         for line in transcript:
             entry = json.loads(line)
             content = (entry.get("message") or {}).get("content")
             if entry.get("type") == "user" and not _tool_results(content):
-                parts = []
+                texts, commands = [], []
             elif entry.get("type") == "assistant" and isinstance(content, list):
                 for block in content:
                     if block.get("type") == "text":
-                        parts.append(block.get("text", ""))
+                        texts.append(block.get("text", ""))
                     elif block.get("type") == "tool_use":
-                        parts.append(json.dumps(block.get("input", {})))
-    return "\n".join(parts)
+                        commands.append(json.dumps(block.get("input", {})))
+    return "\n".join(texts), "\n".join(commands)
 
 
 def _tool_results(content: Any) -> bool:
@@ -448,6 +545,14 @@ def _take_inbox(store: Store, project: str | None) -> str:
             line = "- %s %s %s" % (heading, verb, _describe_answer(question, entry))
             if earlier:
                 line += "\n  Before: %s" % _describe_answer(question, earlier[-1])
+            if "?" in (entry["body"] or ""):
+                # Rewording reopens an answered question, so its reply goes in the thread.
+                how = (
+                    "`tempo context %d`" % entry["number"]
+                    if question["status"] == "answered"
+                    else "`tempo reword %d --context`" % entry["number"]
+                )
+                line += "\n  The note asks something: answer it in the question with %s." % how
         else:
             line = "- %s asks for more: %s" % (heading, entry["body"])
         lines.append(line)

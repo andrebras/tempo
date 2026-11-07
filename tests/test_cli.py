@@ -167,12 +167,50 @@ class CliTest(DatabaseTest):
         )
         self.assertEqual(json.loads(out)["decision"], "block")
 
+    def test_stop_sends_back_questions_the_closing_list_does_not_record(self):
+        closing = "\n\nOpen questions in demo:\n- Q1: Which way? http://127.0.0.1:2204/#/demo/1"
+        cases = {
+            "options": "Pick one:\n- (a) Left\n- (b) Right",
+            "options and the closing list": "Pick one:\n- (a) Left\n- (b) Right" + closing,
+            "yes or no": "May I clean up the database? Reply yes or no.",
+            "permission over steps": "May I do this?\n1. Back up\n2. Clean up" + closing,
+            "should I": "Done.\n\nShould I also update the docs?",
+            "do you want": "- Do you want me to push it?",
+            "bold closing list": "May I push?\n\n- **Q1** Which way? [Release] http://127.0.0.1:2204/#/demo/1",
+            "tempo add named, not run": "(a) Left (b) Right. I will run tempo add next.",
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                out = self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
+                self.assertEqual(json.loads(out)["decision"], "block")
+                self.assertIn("tempo add", json.loads(out)["reason"])
+
+    def test_stop_ignores_code_quotes_and_statements(self):
+        cases = {
+            "code block": "Fixed:\n```\nif ask:\n    print('May I go? Reply yes')\n```",
+            "inline code": "The hook now matches `Should I …?`.",
+            "quoted line": "You wrote:\n> May I clean up the database? Reply yes or no.",
+            "quoted phrase": 'The text "May I clean up? Reply yes or no." was missed before.',
+            "statement": "I can update the docs next. Steps:\n1. Back up\n2. Clean up",
+            "how can I": "How can I tell? The log shows it.",
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                reply = [("user", "Go"), ("assistant", [{"type": "text", "text": text}])]
+                self.assertEqual(self.stop(*reply), "")
+
     def test_stop_lets_tempo_questions_and_old_replies_through(self):
         options = [{"type": "text", "text": "(a) Left (b) Right"}]
         linked = [{"type": "text", "text": "(a) Left (b) Right http://127.0.0.1:2204/#/demo/1"}]
         added = [{"type": "tool_use", "input": {"command": "tempo add --title T"}}]
+        reworded = [{"type": "tool_use", "input": {"command": "tempo reword 3 --note N"}}]
+        yes_no = [{"type": "text", "text": "May I clean up? Reply yes or no.\n- Q1: T http://x"}]
+        heading = [{"type": "text", "text": "**Q5: Push?** http://127.0.0.1:2204/#/demo/5\nMay I?"}]
         cases = {
             "linked": [("user", "Q?"), ("assistant", linked)],
+            "linked in a heading": [("user", "Q?"), ("assistant", heading)],
+            "yes or no added": [("user", "Q?"), ("assistant", added), ("assistant", yes_no)],
+            "reworded": [("user", "Q?"), ("assistant", reworded), ("assistant", options)],
             "added": [("user", "Q?"), ("assistant", added), ("assistant", options)],
             "earlier reply": [("assistant", options), ("user", "Thanks"), ("assistant", [])],
             "after a tool result": [
@@ -187,6 +225,41 @@ class CliTest(DatabaseTest):
                 self.assertEqual(self.stop(*replies), "")
         self.assertEqual(self.stop(("user", "Q?"), ("assistant", options), active=True), "")
         self.assertEqual(run("hook", "stop", stdin="{}")[1], "")
+
+    def test_stop_hands_over_new_answers_once(self):
+        self.add(title="Left or right?")
+        self.store.answer("demo", 1, "b")
+        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
+        self.assertEqual(self.stop(*reply, active=True), "")
+        out = json.loads(self.stop(*reply))
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("demo Q1 (Left or right?) answered (b) Right", out["reason"])
+        self.assertEqual(self.stop(*reply), "")
+
+    def test_stop_hands_over_answers_before_anything_else(self):
+        self.add()
+        self.add()
+        self.store.answer("demo", 1, "a")
+        options = [("user", "Go"), ("assistant", [{"type": "text", "text": "(a) Up (b) Down"}])]
+        self.assertIn("answered (a) Left", json.loads(self.stop(*options))["reason"])
+        self.assertIn("tempo add", json.loads(self.stop(*options))["reason"])
+
+    def test_stop_asks_for_a_wait_while_questions_are_open(self):
+        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
+        self.assertEqual(self.stop(*reply), "")
+        self.add()
+        out = json.loads(self.stop(*reply))
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("tempo wait --timeout 1800", out["reason"])
+        self.assertIn("run_in_background", out["reason"])
+        self.assertEqual(self.stop(*reply, active=True), "")
+        self.marker(os.getpid())
+        self.assertEqual(self.stop(*reply), "")
+
+    def test_stop_lets_the_reply_end_on_any_error(self):
+        self.add()
+        with mock.patch.object(cli, "wait_running", side_effect=RuntimeError):
+            self.assertEqual(run("hook", "stop", stdin="{}")[1], "")
 
     def test_user_prompt_hook_ignores_other_projects(self):
         self.add(project="other")
@@ -248,6 +321,16 @@ class CliTest(DatabaseTest):
         self.assertIn("asks for more: What is left?", out)
         self.assertIn("tempo reword", out)
 
+    def test_a_note_that_asks_something_needs_a_reply(self):
+        self.add()
+        self.add()
+        self.store.answer("demo", 1, "a", "Fine. Do we still need the skill?")
+        self.store.answer("demo", 2, "b", "Nicer view")
+        _, out, _ = run("inbox")
+        self.assertIn("answer it in the question with `tempo context 1`", out)
+        self.assertEqual(out.count("The note asks something"), 1)
+        self.assertNotIn("reword", out)
+
     def test_wait_returns_as_soon_as_something_arrives(self):
         self.add()
         self.store.follow_up("demo", 1, "Hm?")
@@ -258,6 +341,36 @@ class CliTest(DatabaseTest):
     def test_wait_gives_up_after_the_timeout(self):
         _, out, _ = run("wait", "--timeout", "1", "--interval", "0.2")
         self.assertIn("Nothing new", out)
+
+    def marker(self, pid, project="demo"):
+        path = os.path.join(self.tmp.name, "wait-%d.json" % pid)
+        with open(path, "w") as file:
+            json.dump({"pid": pid, "project": project}, file)
+        return path
+
+    def test_wait_leaves_a_marker_while_it_runs(self):
+        seen = []
+
+        def inbox(project):
+            seen.append(cli.wait_running("demo"))
+            return "Answered"
+
+        with mock.patch.object(cli, "take_inbox", side_effect=inbox):
+            run("wait", "--timeout", "5")
+        self.assertEqual(seen, [True])
+        self.assertFalse(cli.wait_running("demo"))
+        self.assertEqual([n for n in os.listdir(self.tmp.name) if n.startswith("wait-")], [])
+
+    def test_wait_running_matches_the_project_and_drops_dead_markers(self):
+        self.marker(os.getpid(), project="other")
+        self.assertFalse(cli.wait_running("demo"))
+        self.marker(os.getpid(), project=None)
+        self.assertTrue(cli.wait_running("demo"))
+        ended = subprocess.Popen(["true"])
+        ended.wait()
+        dead = self.marker(ended.pid)
+        self.assertTrue(cli.wait_running("demo"))
+        self.assertFalse(os.path.exists(dead))
 
 
 class ProjectNameTest(unittest.TestCase):

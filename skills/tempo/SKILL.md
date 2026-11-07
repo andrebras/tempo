@@ -1,6 +1,6 @@
 ---
 name: tempo
-description: Records every question Claude needs the user to decide on in the Tempo database, with full context and lettered options, and picks up the user's answers and follow-ups from its local page. Use whenever you are about to ask the user to choose or decide something that blocks or shapes the work, when the user asks about an open question or a Q number (like "Q12" or "12b"), or when hook output says the user answered or asked for more on the Tempo page. Do not use for quick yes/no confirmations inside a single reply.
+description: Records every question Claude needs the user to decide on in the Tempo database, with full context and lettered options, and picks up the user's answers and follow-ups from its local page. Use whenever you are about to ask the user to choose or decide something that blocks or shapes the work, when the user asks about an open question or a Q number (like "Q12" or "12b"), or when hook output says the user answered or asked for more on the Tempo page. That includes yes/no confirmations and requests for permission.
 ---
 
 # Tempo
@@ -8,8 +8,11 @@ description: Records every question Claude needs the user to decide on in the Te
 Questions for the user live in a SQLite database, not only in chat. The user reads and answers
 them on a local page at http://127.0.0.1:2204/ (started by this plugin's SessionStart hook,
 which also lists the project's open questions). End every update with those open questions,
-one line each: number, title and link. If a reply offers lettered options without a Tempo link
-or `tempo add`, the Stop hook sends you back once to add the question.
+one line each: number, title and link. If a reply asks the user something (lettered options,
+a yes-or-no question, "May I…?", "Should I…?") without running `tempo add` (or `tempo reword`
+or `tempo context`) or linking the question in the body of the reply, the Stop hook sends you
+back once to add it. A link on a list item that names a Q number, as in the closing list, doesn't
+count: to point at a question already in Tempo, put its link in a sentence or a heading.
 Each question has a running number per project (Q1, Q2…) that is never reused, so the user can
 answer anywhere with a short code like "12b".
 
@@ -60,6 +63,11 @@ Every choice you leave to the user goes into Tempo, however small, including the
 sneak into a list of next steps ("say whether you want X", "tell me if Y"). A question that
 lives only in chat is easy to miss and never reaches the page.
 
+That includes yes/no confirmations and requests for permission ("May I delete the old
+branch?"): add them with the options Yes and No. Merging, publishing and installing are the
+one exception to an answer on the page: it never approves them. Record the question in Tempo
+like any other, and also ask for a one-line OK in chat before you act.
+
 To continue numbering from an older list, run `tempo set-next <number>` once before the first add.
 
 ## Getting answers back
@@ -72,6 +80,13 @@ Answers and follow-ups from the page reach you two ways:
    which wakes you with what they wrote, or after 30 minutes with "Nothing new from the
    user." Start it again after either, while questions are still open, so no wait outlives
    the session by long. Run only one wait per session.
+3. **When a reply ends**: the Stop hook hands you anything new and sends you back once to
+   deal with it. If the project has open questions and no `tempo wait` is running for it,
+   it sends you back once to start one. A running wait counts for every session in the
+   same project.
+
+An answer whose note asks something comes with a line saying so: reply in the question with
+`tempo context` (a reword would reopen the answered question).
 
 Each item is delivered once. `tempo inbox` prints anything not yet delivered.
 

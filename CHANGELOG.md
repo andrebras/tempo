@@ -6,6 +6,15 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Answers always reach Claude. When a reply ends, the Stop hook hands Claude the project's
+  new answers and follow-ups, so it carries on with them instead of stopping. If the project
+  has open questions and no `tempo wait` is running, it sends Claude back once to start one.
+  `tempo wait` leaves a marker next to the database while it runs, so the hook can tell.
+- An answer whose note asks something ("Do we still need the skill?") is delivered with a
+  line asking Claude to reply in the question with `tempo context`.
+
 ### Changed
 
 - Follow-ups from the page now tell Claude to answer them in the question itself with
@@ -14,6 +23,13 @@ All notable changes to Tempo are listed here. The format follows
   project name, which the header already shows.
 - The empty screen's width follows the font (70 characters) instead of a fixed 460 pixels,
   so its short sentences no longer break in the middle.
+- The Stop hook catches every question left only in chat: yes-or-no questions and requests
+  for permission ("May I…?", "Should I…?", "Reply yes or no") as well as lettered options.
+  A question counts as recorded only when the reply ran `tempo add`, `tempo reword` or
+  `tempo context`, or links it outside the closing list of open questions. Code and quoted
+  text don't count as asking.
+- The skill puts yes/no confirmations and requests for permission in Tempo too. Merging,
+  publishing and installing still also need a one-line OK in chat.
 
 ## [0.4.0] - 2026-11-07
 
