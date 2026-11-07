@@ -613,6 +613,13 @@ class RaceTest(DatabaseTest):
     def answers(self, number):
         return [e for e in self.store.get("demo", number)["entries"] if e["kind"] == "answer"]
 
+    def test_an_error_after_sqlite_ended_the_transaction_is_the_one_raised(self):
+        # SQLite rolls back by itself after some errors, such as a full disk; rolling back
+        # again would hide the real error behind "no transaction is active".
+        with self.assertRaisesRegex(ValueError, "the real error"), self.store._transaction():
+            self.store.db.execute("ROLLBACK")
+            raise ValueError("the real error")
+
     def test_a_second_answer_at_the_same_moment_is_refused(self):
         self.add()
         self.meanwhile(lambda other: other.answer("demo", 1, "a"))

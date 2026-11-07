@@ -26,6 +26,7 @@ import os
 import sqlite3
 import stat
 import string
+import time
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta, timezone
 from types import TracebackType
@@ -185,7 +186,7 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     if path != ":memory:":
         _make_private(path)
     db.row_factory = sqlite3.Row
-    db.execute("PRAGMA journal_mode = WAL")
+    _use_wal(db)
     db.execute("PRAGMA foreign_keys = ON")
     try:
         _migrate(db)
@@ -193,6 +194,21 @@ def connect(path: str | None = None) -> sqlite3.Connection:
         db.close()
         raise
     return db
+
+
+def _use_wal(db: sqlite3.Connection) -> None:
+    """Switch the file to WAL mode, which then stays set. While another process is making
+    the same switch on a brand-new database, SQLite says it is locked without waiting, so
+    this tries again for up to two seconds."""
+    for _ in range(40):
+        try:
+            db.execute("PRAGMA journal_mode = WAL")
+            return
+        except sqlite3.OperationalError as error:
+            if "locked" not in str(error):
+                raise
+            time.sleep(0.05)
+    db.execute("PRAGMA journal_mode = WAL")
 
 
 def _make_private(path: str) -> None:
@@ -278,7 +294,12 @@ def _migrate(db: sqlite3.Connection) -> None:
             " Update Tempo, or restart the session to use the installed version."
             % (_version(db), len(MIGRATIONS))
         )
-    db.executescript(SCHEMA)
+    # One statement at a time inside one write transaction, so processes opening a brand-new
+    # database at the same moment wait for each other (executescript would commit first).
+    with _Transaction(db):
+        for statement in SCHEMA.split(";"):
+            if statement.strip():
+                db.execute(statement)
     for number, step in enumerate(MIGRATIONS, start=1):
         if _version(db) >= number:
             continue
@@ -974,7 +995,12 @@ class _Transaction:
         value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.db.execute("COMMIT" if kind is None else "ROLLBACK")
+        if kind is None:
+            self.db.execute("COMMIT")
+        # SQLite rolls back by itself after some errors; a second rollback would fail and
+        # hide the error that caused it.
+        elif self.db.in_transaction:
+            self.db.execute("ROLLBACK")
 
 
 def _required(value: str | None, name: str) -> str:
