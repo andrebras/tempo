@@ -852,7 +852,24 @@ class BranchDbTest(unittest.TestCase):
             branch_db(self.root), os.path.join(self.root, ".tempo-dev", "questions.db")
         )
 
-    def test_the_main_checkout_and_the_installed_plugin_get_none(self):
+    def head(self, text):
+        os.makedirs(os.path.join(self.root, ".git"), exist_ok=True)
+        with open(os.path.join(self.root, ".git", "HEAD"), "w") as head:
+            head.write(text)
+
+    def test_the_installed_plugin_and_the_main_checkout_on_main_get_none(self):
         self.assertIsNone(branch_db(self.root))
-        os.mkdir(os.path.join(self.root, ".git"))
+        self.head("ref: refs/heads/main\n")
         self.assertIsNone(branch_db(self.root))
+
+    def test_the_main_checkout_on_another_branch_or_no_branch_gets_its_own(self):
+        # Code being built on a branch must not migrate the real database.
+        for head in (
+            "ref: refs/heads/feature/new-step\n",
+            "9e813c1aa0f1d2c3b4a5968778695a4b3c2d1e0f\n",
+        ):
+            with self.subTest(head=head):
+                self.head(head)
+                self.assertEqual(
+                    branch_db(self.root), os.path.join(self.root, ".tempo-dev", "questions.db")
+                )

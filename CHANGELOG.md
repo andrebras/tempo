@@ -21,6 +21,11 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- Tempo code run from the main checkout on a branch other than `main`, or on no branch, uses
+  its own database, `.tempo-dev/questions.db`, like a worktree does. Before, it used and
+  migrated the real database, so older sessions then ran on a database changed by code that
+  was never released. The main checkout on `main` and the installed plugin keep the real
+  database.
 - Tempo works in a repository that pins a Python version that isn't installed, through asdf,
   pyenv or mise. Its hooks and commands failed there with exit code 126, because the version
   manager picked Python by the session's folder. The `tempo` command now looks up Python from

@@ -77,11 +77,25 @@ def db_path() -> str:
 
 
 def branch_db(root: str = CODE_ROOT) -> str | None:
-    """A throwaway database inside the code's folder when that folder is a git worktree,
-    so code still being built never touches the real questions; None otherwise."""
-    if os.path.isfile(os.path.join(root, ".git")):
-        return os.path.join(root, ".tempo-dev", "questions.db")
-    return None
+    """A throwaway database inside the code's folder when that folder is a git checkout
+    that isn't on main, so code still being built never touches (or migrates) the real
+    questions; None otherwise.
+
+    Only two kinds of code use the real database: the installed plugin, which has no .git,
+    and the main checkout on main. Any worktree, whatever its branch, and the main checkout
+    on another branch or on no branch, get their own."""
+    git = os.path.join(root, ".git")
+    if os.path.isdir(git):
+        try:
+            with open(os.path.join(git, "HEAD"), encoding="utf-8") as head:
+                on_main = head.read().strip() == "ref: refs/heads/main"
+        except OSError:
+            on_main = False
+        if on_main:
+            return None
+    elif not os.path.isfile(git):
+        return None
+    return os.path.join(root, ".tempo-dev", "questions.db")
 
 
 SCHEMA = """

@@ -33,7 +33,9 @@ The Python tools are configured in `pyproject.toml`, Biome in `biome.json`. When
 line says why.
 
 Use a scratch database (`TEMPO_DB`) and another port (`TEMPO_PORT`) when you try changes by
-hand, so your real questions stay untouched.
+hand, so your real questions stay untouched. Code run from a worktree, or from the main
+checkout on any branch but `main`, does this by itself: it uses `.tempo-dev/questions.db`
+inside its folder and a port of its own.
 
 ## Screenshots and demo GIF
 

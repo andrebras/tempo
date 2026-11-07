@@ -181,10 +181,12 @@ it survives plugin updates and reinstalls. The variables' old names (`OQ_DB`, `O
 `OQ_PROJECT`) still work; when both are set, the `TEMPO_` one wins. If only the old database
 at `~/.claude/open-questions/questions.db` exists, Tempo keeps using it where it is.
 
-Tempo code that runs from a git worktree uses a branch database instead,
-`.tempo-dev/questions.db` inside the worktree, unless `TEMPO_DB` is set, so code still being
-built never touches your real questions. Its page gets a port of its own too, unless
-`TEMPO_PORT` is set.
+Tempo code that runs from a git checkout which isn't on `main` uses a branch database
+instead, `.tempo-dev/questions.db` inside that checkout, unless `TEMPO_DB` is set, so code
+still being built never touches (or migrates) your real questions. That covers every
+worktree, whatever its branch, and the main checkout on another branch or on no branch. Only
+the installed plugin and the main checkout on `main` use the real database. Code on a branch
+database serves its page on a port of its own too, unless `TEMPO_PORT` is set.
 
 The page log, `server.log`, also gets one line for each change made through the page (the
 time in UTC, the method, the path and the status code, such as
