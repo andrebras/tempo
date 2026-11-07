@@ -189,7 +189,7 @@ def _delivery_commands(commands: argparse._SubParsersAction[argparse.ArgumentPar
 
 
 def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """The user's commands in the terminal: the same answer and follow-up as on the page."""
+    """The user's commands in the terminal: answer and follow up as on the page, and a badge."""
     answer = commands.add_parser(
         "answer", help="Answer a question with an option, as the page does"
     )
