@@ -459,10 +459,13 @@ function renderProjectBar(projects, counts, activity) {
     class: "chip", "aria-pressed": String(chip.current), onclick: () => switchProject(chip.name),
   }, chip.name, el("span", { class: "count" }, ` · ${chip.open}`),
   chip.fresh && el("span", { class: "dot", title: "Something new" }, el("span", { class: "sr" }, ", something new")))));
+  // Rebuilding the open menu keeps the keyboard on the same row.
+  const focused = [...document.querySelectorAll("#project-menu button")].indexOf(document.activeElement);
   $("#project-menu").replaceChildren(...projects.map((name) => el("li", { role: "none" }, el("button", {
     role: "menuitem", tabindex: "-1", "aria-current": name === state.project ? "true" : false,
     onclick: () => switchProject(name),
   }, el("span", { class: "name" }, name), el("span", { class: "count" }, `${counts[name] || 0} open`)))));
+  if (focused >= 0) document.querySelectorAll("#project-menu button")[focused]?.focus();
 }
 
 function switchProject(name) {
