@@ -71,6 +71,24 @@ decision, it adds a question and links to it in chat. On the page you can:
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too.
 
+## From the terminal
+
+You can also answer without opening the page. These commands are for you, not for Claude, and
+work like the page: Claude gets what you send through the same hooks and `tempo wait`.
+
+```bash
+tempo list                                # the project's open questions
+tempo show 12                             # one question, with its options and thread
+tempo answer 12 b                         # answer Q12 with option (b)
+tempo answer 12 b --note "Keep it small"  # with a note
+tempo reply 12 "What would (c) cost?"     # ask for more context, like the page's follow-up
+```
+
+They act on the project of the folder you run them in; add `--project NAME` for another one
+(`tempo list --all-projects` shows every project's questions). `tempo` is on Claude Code's
+`PATH` only inside a session. In your own shell, run it from the plugin's folder, for example
+with an alias: `alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo`.
+
 ## How it works
 
 ```

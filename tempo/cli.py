@@ -1,5 +1,5 @@
-"""The `tempo` command: how Claude adds, rewords and reads questions, and how hooks
-hand the user's answers back to Claude."""
+"""The `tempo` command: how Claude adds, rewords and reads questions, how hooks
+hand the user's answers back to Claude, and how the user answers from the terminal."""
 
 from __future__ import annotations
 
@@ -65,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     _read_commands(commands)
     _change_commands(commands)
     _delivery_commands(commands)
+    _user_commands(commands)
     _run_commands(commands)
     return parser
 
@@ -184,6 +185,26 @@ def _delivery_commands(commands: argparse._SubParsersAction[argparse.ArgumentPar
     wait.add_argument("--timeout", type=int, default=0, help="Seconds; 0 waits forever")
     wait.add_argument("--interval", type=float, default=2.0)
     wait.set_defaults(run=run_wait)
+
+
+def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The user's commands in the terminal: the same answer and follow-up as on the page."""
+    answer = commands.add_parser(
+        "answer", help="Answer a question with an option, as the page does"
+    )
+    answer.add_argument("number", type=_number)
+    answer.add_argument("letter", help="The option's letter, such as b")
+    answer.add_argument("--note", default="", help="A note to go with the answer")
+    answer.add_argument("--project")
+    answer.set_defaults(run=run_answer)
+
+    reply = commands.add_parser(
+        "reply", help="Ask Claude for more on a question, as the page's follow-up does"
+    )
+    reply.add_argument("number", type=_number)
+    reply.add_argument("body", help="What is unclear or what you would like to know")
+    reply.add_argument("--project")
+    reply.set_defaults(run=run_reply)
 
 
 def _run_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -373,6 +394,16 @@ def run_wait(args: argparse.Namespace) -> int:
     finally:
         with contextlib.suppress(OSError):
             os.remove(marker)
+
+
+def run_answer(args: argparse.Namespace) -> None:
+    question = _store().answer(_project(args.project), args.number, args.letter, args.note)
+    print("Answered %s: %s" % (question["label"], _describe_answer(question, question["answer"])))
+
+
+def run_reply(args: argparse.Namespace) -> None:
+    question = _store().follow_up(_project(args.project), args.number, args.body)
+    print("Added your follow-up to %s." % question["label"])
 
 
 def _folder_project(path: str) -> str:
