@@ -15,6 +15,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from tempo import log
 from tempo.store import (
     Entry,
     Question,
@@ -685,14 +686,12 @@ def start_server(port: int) -> bool:
         return False
     # The child gets its own copy of the log file handle, so ours can close. The
     # argument list is fixed and there is no shell, so nothing outside reaches it.
-    log_path = os.path.join(os.path.dirname(_db_path()), "server.log")
-    # Errors in the log may quote questions, so it is private like the database.
-    with open(log_path, "a", opener=lambda name, flags: os.open(name, flags, 0o600)) as log:
+    with os.fdopen(log.open_log(), "a") as server_log:
         subprocess.Popen(  # noqa: S603
             [sys.executable, "-m", "tempo", "serve", "--port", str(port)],
             cwd=ROOT,
-            stdout=log,
-            stderr=log,
+            stdout=server_log,
+            stderr=server_log,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )

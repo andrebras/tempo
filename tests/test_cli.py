@@ -534,7 +534,9 @@ class StartServerTest(unittest.TestCase):
         self.current = {"app": "tempo", "version": server.version(), "root": server.ROOT, "pid": 42}
         self.listening = True
         self.folder = tmp.name
-        self.patch("_db_path", return_value=os.path.join(tmp.name, "tempo.db"))
+        database = mock.patch.dict(os.environ, {"TEMPO_DB": os.path.join(tmp.name, "tempo.db")})
+        database.start()
+        self.addCleanup(database.stop)
         self.patch("_listening", side_effect=lambda port: self.listening)
         self.fetch = self.patch("_fetch")
         self.tempo_pid = self.patch("_tempo_pid", return_value=None)
