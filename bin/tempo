@@ -6,12 +6,16 @@
 # plugin's folder, and its real path is used from the current folder; then the system's
 # Python and Homebrew's are tried. The command itself runs in the current folder, which
 # names the project.
+#
+# Python runs tempo/__main__.py as a file, not `python -m tempo`: -m puts the current
+# folder first on Python's search path, so from inside another Tempo checkout (or any
+# folder with a tempo/ package) that folder's code would run instead of this one's.
 root="$(cd "$(dirname "$0")/.." && pwd)"
 probe='import sys; sys.version_info >= (3, 9) and print(sys.executable)'
 for python in python3 /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
   found="$(cd "$root" && "$python" -c "$probe" 2>/dev/null)" || found=""
   if [ -n "$found" ] && [ -x "$found" ]; then
-    PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec "$found" -m tempo "$@"
+    PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec "$found" "$root/tempo/__main__.py" "$@"
   fi
 done
 echo "tempo: needs Python 3.9 or newer, and found none that runs." >&2
