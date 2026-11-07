@@ -9,6 +9,13 @@ cd "$(dirname "$0")/.."
 # in step with the $schema version in biome.json.
 biome_version=2.5.15
 
+# The scripts in .venv/bin start with the absolute path of the folder's Python, so
+# moving or renaming the folder breaks them ("bad interpreter"). Start over then.
+if [ -d .venv ] && ! { .venv/bin/python -c '' && .venv/bin/pip --version; } >/dev/null 2>&1; then
+  echo "==> Rebuilding .venv: its Python no longer runs (was the folder moved?)"
+  python3 -m venv --clear .venv
+fi
+
 if [ ! -x .venv/bin/ruff ] || ! cmp -s requirements-dev.txt .venv/requirements-dev.txt; then
   python3 -m venv .venv
   .venv/bin/pip install --quiet --disable-pip-version-check -r requirements-dev.txt
