@@ -28,6 +28,7 @@ the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on fi
 | Tests | `unittest`, from the standard library |
 | Lint the page's script (`tempo/page.js`) and its tests | [Biome](https://biomejs.dev), recommended rules |
 | Tests for the page's text renderer | `node --test`, built into Node.js |
+| The page's main flows in a real browser | `unittest`, driving headless Google Chrome |
 
 The Python tools are configured in `pyproject.toml`, Biome in `biome.json`. When a rule has to be silenced on one line, the
 line says why.
@@ -56,6 +57,16 @@ higher than it knows. So a change raises that number only when it has to.
 Prefer a compatible change when one can do the job. `tests/test_previous_release.py`
 checks that the last release still works on a database the current code has opened.
 
+## Page tests in a browser
+
+`tests/test_page.py` runs the page in headless Google Chrome against the real server code
+and a throwaway database: answering, asking for more, a reword under a typed note,
+reopening, the timed refresh keeping focus, a server restart keeping the draft, the "new"
+dots, and a link to a missing question. `bin/ci` runs them with the other tests; to run only
+them, use `python3 -m unittest tests.test_page`. They take about two seconds. They skip,
+saying why, when Chrome isn't installed; set `CHROME` to the browser's path if it isn't
+found on its own. GitHub's Ubuntu runners have Chrome, so they always run there.
+
 ## Screenshots and demo GIF
 
 `bin/media` makes the README's pictures again, `docs/screenshot-light.png`,
@@ -73,7 +84,8 @@ hooks/            hook configuration
 tempo/            store (SQLite), cli (tempo), server, and the page (page.html and its
                   script, page.js)
 skills/           the skill that teaches Claude the workflow
-tests/            Python tests, and page.test.js for the page's script
+tests/            Python tests (test_page.py drives the page in Chrome), and page.test.js
+                  for the page's script
 ```
 
 ## Releasing
