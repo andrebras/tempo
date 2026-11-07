@@ -6,6 +6,15 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Answers always reach Claude. When a reply ends, the Stop hook hands Claude the project's
+  new answers and follow-ups, so it carries on with them instead of stopping. If the project
+  has open questions and no `tempo wait` is running, it sends Claude back once to start one.
+  `tempo wait` leaves a marker next to the database while it runs, so the hook can tell.
+- An answer whose note asks something ("Do we still need the skill?") is delivered with a
+  line asking Claude to reply in the question with `tempo context`.
+
 ### Changed
 
 - The empty screen says "Nothing is waiting on you" (or "No answered questions"), without the

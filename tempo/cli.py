@@ -4,6 +4,7 @@ hand the user's answers back to Claude."""
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -290,15 +291,56 @@ def run_inbox(args: argparse.Namespace) -> None:
 def run_wait(args: argparse.Namespace) -> int:
     project = None if args.all_projects else _project(args.project)
     deadline = time.time() + args.timeout if args.timeout else None
-    while True:
-        text = take_inbox(project)
-        if text:
-            print(text)
-            return 0
-        if deadline and time.time() >= deadline:
-            print("Nothing new from the user.")
-            return 0
-        time.sleep(args.interval)
+    # A marker tells the Stop hook that a wait is running for this project.
+    marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
+    with open(marker, "w", encoding="utf-8") as file:
+        json.dump({"pid": os.getpid(), "project": project}, file)
+    try:
+        while True:
+            text = take_inbox(project)
+            if text:
+                print(text)
+                return 0
+            if deadline and time.time() >= deadline:
+                print("Nothing new from the user.")
+                return 0
+            time.sleep(args.interval)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(marker)
+
+
+def wait_running(project: str) -> bool:
+    """Whether a `tempo wait` covering the project is running. Markers left by waits
+    that were killed are removed."""
+    folder = os.path.dirname(_db_path())
+    running = False
+    for name in os.listdir(folder):
+        if not (name.startswith("wait-") and name.endswith(".json")):
+            continue
+        path = os.path.join(folder, name)
+        try:
+            with open(path, encoding="utf-8") as file:
+                marker = json.load(file)
+            alive = _alive(int(marker["pid"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            alive = False
+        if alive:
+            running = running or marker.get("project") in (None, project)
+        else:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+    return running
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True  # The process exists but belongs to someone else.
+    except OSError:
+        return False
+    return True
 
 
 def run_hook(args: argparse.Namespace) -> int:
@@ -308,7 +350,7 @@ def run_hook(args: argparse.Namespace) -> int:
         payload = {}
     cwd = payload.get("cwd") or os.getcwd()
     if args.event == "stop":
-        reason = unrecorded_options(payload)
+        reason = stop_reason(payload, cwd)
         if reason:
             print(json.dumps({"decision": "block", "reason": reason}))
         return 0
@@ -354,6 +396,38 @@ def session_note(project: str, port: int) -> str:
                 "- %s %s%s %s" % (q["label"], q["title"], goal if q["goal"] else "", _url(q))
             )
     return "\n".join(lines)
+
+
+def stop_reason(payload: dict[str, Any], cwd: str) -> str | None:
+    """Why the reply that just ended must not stop yet, or None.
+
+    In order: the user's new answers and follow-ups (handed over and marked delivered),
+    a question asked only in chat, then open questions with no `tempo wait` running to
+    bring the answers back. Blocks at most once per reply (stop_hook_active), and any
+    error lets the reply end, so the hook can never trap a session.
+    """
+    if payload.get("stop_hook_active"):
+        return None
+    try:
+        project = setting("PROJECT") or project_name(cwd)
+        inbox = take_inbox(project)
+        if inbox:
+            return inbox
+        unrecorded = unrecorded_options(payload)
+        if unrecorded:
+            return unrecorded
+        with Store(connect()) as store:
+            questions = store.list(project, "open")
+        if questions and not wait_running(project):
+            return (
+                "%s has open questions in Tempo, but no `tempo wait` is running, so answers"
+                " from the page would not reach you until the user writes in chat. Start"
+                " `tempo wait --timeout 1800` with the Bash tool's run_in_background option,"
+                " then end the reply." % project
+            )
+    except Exception:
+        return None
+    return None
 
 
 # Lettered options such as "(a) …" and "(b) …" on separate items of one reply.
@@ -471,6 +545,14 @@ def _take_inbox(store: Store, project: str | None) -> str:
             line = "- %s %s %s" % (heading, verb, _describe_answer(question, entry))
             if earlier:
                 line += "\n  Before: %s" % _describe_answer(question, earlier[-1])
+            if "?" in (entry["body"] or ""):
+                # Rewording reopens an answered question, so its reply goes in the thread.
+                how = (
+                    "`tempo context %d`" % entry["number"]
+                    if question["status"] == "answered"
+                    else "`tempo reword %d --context`" % entry["number"]
+                )
+                line += "\n  The note asks something: answer it in the question with %s." % how
         else:
             line = "- %s asks for more: %s" % (heading, entry["body"])
         lines.append(line)
