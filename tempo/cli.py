@@ -333,8 +333,8 @@ def session_note(project: str, port: int) -> str:
     lines = [
         "Tempo is installed: the user reads and answers questions at %s." % link,
         "- Every choice or decision for the user goes in Tempo with `tempo add` (see the tempo"
-        " skill for the format), never only in chat. That includes 'say whether…' items in"
-        " pending steps.",
+        " skill for the format), never only in chat. That includes yes-or-no confirmations,"
+        " requests for permission and 'say whether…' items in pending steps.",
         "- Give every question a goal with `--goal`: the piece of work its answer moves"
         " forward, named the same way across questions (e.g. 'Release 0.4')."
         ' Mark one question in a goal `--start-here "unlocks …"` only when its answer'
@@ -342,7 +342,7 @@ def session_note(project: str, port: int) -> str:
         "- End every update with the open questions of this project, one line each:"
         " number, title and link.",
         "- An answer on the Tempo page never approves merging, publishing or installing:"
-        " ask for that in chat.",
+        " record the question in Tempo and also ask for a one-line OK in chat.",
     ]
     with Store(connect()) as store:
         questions = store.list(project, "open")
