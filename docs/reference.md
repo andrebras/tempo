@@ -79,3 +79,6 @@ The page log is written next to the database. The database sits outside the plug
 it survives plugin updates and reinstalls. The variables' old names (`OQ_DB`, `OQ_PORT`,
 `OQ_PROJECT`) still work; when both are set, the `TEMPO_` one wins. If only the old database
 at `~/.claude/open-questions/questions.db` exists, Tempo keeps using it where it is.
+
+With `TEMPO_IN_THREAD=1`, Tempo's hooks do nothing and print nothing: another tool that runs
+Claude sessions on your behalf can set it so Tempo stays quiet in those sessions.
