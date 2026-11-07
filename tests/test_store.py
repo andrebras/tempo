@@ -135,11 +135,82 @@ class ListTest(DatabaseTest):
         self.store.add_context("demo", 3, "Because.")
         self.assertIsNone(self.store.list("demo")[2]["waiting"])
 
-    def test_lists_by_priority_then_number_within_a_project(self):
-        self.add(title="Calm", priority="later")
-        self.add(title="Normal")
-        self.add(title="Hurry", priority="now")
-        self.assertEqual([q["title"] for q in self.store.list("demo")], ["Hurry", "Normal", "Calm"])
+    def test_groups_open_questions_by_goal_oldest_group_first_and_no_goal_last(self):
+        self.add(title="Loose")
+        self.add(title="Release one", goal="Release 0.4")
+        self.add(title="Settings one", goal="Q5 settings")
+        self.add(title="Release two", goal="Release 0.4")
+        self.add(title="Settings two", goal="Q5 settings")
+        self.add(title="Other project", project="other", goal="Release 0.4")
+        self.assertEqual(
+            [q["title"] for q in self.store.list(status="open")],
+            [
+                "Release one",
+                "Release two",
+                "Settings one",
+                "Settings two",
+                "Loose",
+                "Other project",
+            ],
+        )
+
+    def test_start_here_comes_first_in_its_goal_and_only_one_per_goal(self):
+        self.add(goal="Release")
+        self.add(goal="Release")
+        self.add(goal="Docs", start_here="unlocks the docs")
+        self.add(goal="Release", start_here="unlocks Q1 and Q2")
+        self.assertEqual([q["number"] for q in self.store.list("demo")], [4, 1, 2, 3])
+        self.store.set_goal("demo", 2, start_here="  sets the  pattern ")
+        marked = {q["number"]: q["start_here"] for q in self.store.list("demo")}
+        self.assertEqual(marked, {1: None, 2: "sets the pattern", 3: "unlocks the docs", 4: None})
+        self.assertEqual([q["number"] for q in self.store.list("demo")], [2, 1, 4, 3])
+
+    def test_start_here_needs_a_goal_and_a_reason(self):
+        with self.assertRaises(QuestionError):
+            self.add(start_here="unlocks everything")
+        with self.assertRaises(QuestionError):
+            self.add(goal="Release", start_here=" ")
+        self.add()
+        with self.assertRaises(QuestionError):
+            self.store.set_goal("demo", 1, start_here="unlocks everything")
+
+    def test_set_goal_keeps_the_wording_and_a_new_goal_drops_the_mark(self):
+        self.add(goal="Release", start_here="unlocks the rest")
+        question = self.store.set_goal("demo", 1, goal="  Docs  site ")
+        self.assertEqual((question["goal"], question["start_here"]), ("Docs site", None))
+        self.assertEqual((question["version"], question["entries"]), (1, []))
+        question = self.store.set_goal("demo", 1, goal="Release", start_here="unlocks Q2")
+        self.assertEqual(question["start_here"], "unlocks Q2")
+        self.assertIsNone(self.store.set_goal("demo", 1, clear_start_here=True)["start_here"])
+        self.assertIsNone(self.store.set_goal("demo", 1, goal="")["goal"])
+        with self.assertRaises(QuestionError):
+            self.store.set_goal("demo", 1)
+
+    def test_reword_can_change_the_goal_and_mark(self):
+        self.add(goal="Release")
+        self.add(goal="Release", start_here="unlocks Q1")
+        question = self.store.reword("demo", 1, "Clearer", goal="Release", start_here="unlocks Q2")
+        self.assertEqual((question["version"], question["start_here"]), (2, "unlocks Q2"))
+        self.assertIsNone(self.store.get("demo", 2)["start_here"])
+        question = self.store.reword("demo", 1, "Moved", goal="Docs")
+        self.assertEqual((question["goal"], question["start_here"]), ("Docs", None))
+        question = self.store.reword("demo", 1, "Same goal", title="New title")
+        self.assertEqual(question["goal"], "Docs")
+
+    def test_quick_means_recommended_few_options_and_never_reworded(self):
+        cases = {
+            "recommended": (dict(recommended="a"), True),
+            "no recommendation": (dict(), False),
+            "four options": (dict(options=["a", "b", "c", "d"], recommended="a"), False),
+        }
+        for name, (fields, quick) in cases.items():
+            with self.subTest(name):
+                number = self.add(**fields)["number"]
+                self.assertEqual(self.store.get("demo", number)["quick"], quick)
+                listed = next(q for q in self.store.list("demo") if q["number"] == number)
+                self.assertEqual(listed["quick"], quick)
+        self.add(recommended="a")
+        self.assertFalse(self.store.reword("demo", 4, "Clearer", title="T")["quick"])
 
     def test_lists_answered_questions_newest_answer_first(self):
         for _ in range(3):
@@ -153,12 +224,6 @@ class ListTest(DatabaseTest):
                 ("-%d hours" % hours_ago, number),
             )
         self.assertEqual([q["number"] for q in self.store.list("demo", "answered")], [1, 3, 2])
-
-    def test_priority_must_be_a_known_level(self):
-        with self.assertRaises(QuestionError):
-            self.add(priority="urgent")
-        self.add()
-        self.assertEqual(self.store.set_priority("demo", 1, "LATER")["priority"], "later")
 
     def test_upgrades_a_database_that_still_has_the_urgent_flag(self):
         path = os.path.join(self.tmp.name, "old.db")
@@ -189,6 +254,7 @@ class ListTest(DatabaseTest):
             self.assertEqual(title, "Which way?")
             self.assertEqual(store.folders()[0]["project"], "dataforge")
             self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+            self.assertIsNone(store.get("demo", 1)["goal"])
 
     def test_answers_older_than_a_week_are_archived_when_listing(self):
         for _ in range(3):
@@ -296,14 +362,36 @@ class MigrateTest(DatabaseTest):
     def test_a_fresh_database_ends_at_the_latest_version(self):
         self.assertEqual(_user_version(self.store.db), len(MIGRATIONS))
 
+    def test_adds_goals_to_a_database_from_before_them(self):
+        path = os.path.join(self.tmp.name, "old.db")
+        old = sqlite3.connect(path)
+        old.executescript(SCHEMA.replace("  goal TEXT,\n  start_here TEXT,\n", ""))
+        old.execute("PRAGMA user_version = 2")
+        old.execute("INSERT INTO projects (name) VALUES ('demo')")
+        old.execute(
+            "INSERT INTO questions (project, number, priority, created_at, updated_at)"
+            " VALUES ('demo', 1, 'now', 'x', 'x')"
+        )
+        old.execute(
+            "INSERT INTO versions (question_id, version, title, context, options, created_at)"
+            " VALUES (1, 1, 'Which way?', 'We need to pick one.', '[]', 'x')"
+        )
+        old.commit()
+        old.close()
+        with Store(connect(path)) as store:
+            question = store.get("demo", 1)
+            self.assertEqual((question["goal"], question["start_here"]), (None, None))
+            self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+
     def test_an_unversioned_database_that_already_has_the_changes_upgrades(self):
         # Databases from before user_version: current shape, but at version 0.
-        self.add(priority="later")
+        self.add(goal="Release", start_here="unlocks the rest")
         self.store.db.execute("INSERT INTO folders (folder, project) VALUES ('web', 'demo')")
         self.store.db.execute("PRAGMA user_version = 0")
         with Store(connect(os.environ["TEMPO_DB"])) as store:
             self.assertEqual(_user_version(store.db), len(MIGRATIONS))
-            self.assertEqual(store.get("demo", 1)["priority"], "later")
+            self.assertEqual(store.get("demo", 1)["goal"], "Release")
+            self.assertEqual(store.get("demo", 1)["start_here"], "unlocks the rest")
             self.assertEqual(store.folders()[0]["project"], "demo")
 
     def test_connecting_again_does_not_redo_the_steps(self):

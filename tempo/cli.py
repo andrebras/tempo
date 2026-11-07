@@ -13,7 +13,6 @@ import time
 from typing import Any
 
 from tempo.store import (
-    PRIORITIES,
     Entry,
     Question,
     QuestionError,
@@ -63,7 +62,6 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument(
         "--priority",
         default="soon",
-        choices=PRIORITIES,
         help="now: work waits on it; soon: needed this week (default); later: no rush",
     )
     add.add_argument("--number", type=int, help="Use this number (must be the next free or higher)")
@@ -103,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     priority = commands.add_parser("priority", help="Change how soon an answer is needed")
     priority.add_argument("number", type=_number)
-    priority.add_argument("priority", choices=PRIORITIES)
+    priority.add_argument("priority")
     priority.add_argument("--project")
     priority.set_defaults(run=run_priority)
 
@@ -157,7 +155,6 @@ def run_add(args: argparse.Namespace) -> None:
         args.context,
         args.options,
         recommended=args.recommended,
-        priority=args.priority,
         number=args.number,
     )
     if args.json:
@@ -187,7 +184,7 @@ def run_list(args: argparse.Namespace) -> None:
                 question["label"],
                 question["status"],
                 "v%d" % question["version"],
-                question["priority"],
+                question["goal"] or "",
                 question["title"],
             )
         )
@@ -212,8 +209,7 @@ def run_reword(args: argparse.Namespace) -> None:
 
 
 def run_priority(args: argparse.Namespace) -> None:
-    question = _store().set_priority(_project(args.project), args.number, args.priority)
-    print("%s priority: %s." % (question["label"], question["priority"]))
+    print("tempo: priorities are no longer used; nothing changed.", file=sys.stderr)
 
 
 def run_archive(args: argparse.Namespace) -> None:
@@ -416,7 +412,7 @@ def format_question(question: Question) -> str:
             question["label"],
             question["status"],
             question["version"],
-            ", " + question["priority"],
+            ", goal " + question["goal"] if question["goal"] else "",
         ),
         question["title"],
         "",
