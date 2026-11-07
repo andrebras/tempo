@@ -1,10 +1,17 @@
 import io
 import os
+import re
+import select
+import signal
+import subprocess
+import sys
+import time
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
+from unittest import mock
 
 from tempo import cli
-from tempo.store import Store, connect
+from tempo.store import CODE_ROOT, Store, connect
 from tempo.tui.model import NARROW, Board, detail_lines, layout
 from tempo.tui.text import cell_width, clip, plain, rich, wrap
 from tempo.tui.view import TextCanvas, draw
@@ -276,6 +283,128 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(list(layout(80, 6, "projects", projects=3)), ["projects"])
 
 
+try:
+    import curses
+    import fcntl
+    import pty
+    import struct
+    import termios
+except ImportError:
+    curses = None
+
+
+def _can_run_curses():
+    if curses is None:
+        return False
+    try:
+        curses.setupterm("xterm-256color", sys.stdout.fileno() if sys.stdout.isatty() else -1)
+    except (curses.error, OSError, ValueError):
+        return False
+    return True
+
+
+@unittest.skipUnless(_can_run_curses(), "needs curses, a pseudo-terminal and terminfo")
+class ScreenTest(DatabaseTest):
+    """The real curses screen in a pseudo-terminal (pty), as a tmux popup would run it."""
+
+    def start(self, height=24, width=80):
+        self.master, slave = pty.openpty()
+        self.addCleanup(os.close, self.master)
+        self.resize(height, width, slave)
+        env = dict(os.environ, TERM="xterm-256color", NO_COLOR="")
+        self.process = subprocess.Popen(
+            [sys.executable, "-m", "tempo", "tui"],
+            cwd=CODE_ROOT,
+            env=env,
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            start_new_session=True,
+        )
+        os.close(slave)
+        self.addCleanup(self.stop)
+        self.screen = b""
+
+    def stop(self):
+        if self.process.poll() is None:
+            self.process.kill()
+        self.process.wait(timeout=5)
+
+    def resize(self, height, width, fd=None):
+        fcntl.ioctl(
+            self.master if fd is None else fd,
+            termios.TIOCSWINSZ,
+            struct.pack("HHHH", height, width, 0, 0),
+        )
+
+    def see(self, text, seconds=10):
+        """Read what the screen draws until text shows, leaving out the terminal's control
+        codes (colors, cursor moves) that come between words."""
+        deadline = time.monotonic() + seconds
+        while text not in re.sub(
+            r"\x1b(\[[0-9;?]*[A-Za-z]|\([AB0])", "", self.screen.decode(errors="replace")
+        ):
+            left = deadline - time.monotonic()
+            if left <= 0:
+                self.fail("%r never showed; the screen drew: %r" % (text, self.screen[-2000:]))
+            ready, _, _ = select.select([self.master], [], [], left)
+            if ready:
+                try:
+                    self.screen += os.read(self.master, 65536)
+                except OSError:
+                    self.fail("the screen closed before %r showed" % text)
+
+    def finish(self, seconds=10):
+        """The exit code, once the screen closes; what it draws meanwhile is read, so it
+        never waits on a full terminal."""
+        deadline = time.monotonic() + seconds
+        while self.process.poll() is None and time.monotonic() < deadline:
+            ready, _, _ = select.select([self.master], [], [], 0.1)
+            if ready:
+                try:
+                    self.screen += os.read(self.master, 65536)
+                except OSError:
+                    break
+        return self.process.wait(timeout=max(0.1, deadline - time.monotonic()))
+
+    def test_the_screen_answers_and_quits_with_q(self):
+        self.add(title="Left or right?")
+        self.start()
+        self.see("Left or right?")
+        self.see("Projects")
+        os.write(self.master, b"b")
+        self.see("Answer Q1 with (b) Right?")
+        os.write(self.master, b"y")
+        self.see("Answered Q1")
+        os.write(self.master, b"q")
+        self.assertEqual(self.finish(), 0)
+        self.assertEqual(self.store.get("demo", 1)["answer"]["choice"], "b")
+        # The terminal is switched back from the full-screen view on the way out.
+        self.assertIn(b"\x1b[?1049l", self.screen)
+
+    def test_the_screen_follows_the_database_and_a_resize(self):
+        self.start()
+        self.see("No open questions")
+        self.add(title="Added by Claude")
+        self.see("Added by Claude")
+        self.resize(24, 50)
+        os.kill(self.process.pid, signal.SIGWINCH)
+        self.see("2/3")
+        os.write(self.master, b"\x1b")
+        self.assertEqual(self.finish(), 0)
+
+    def test_an_error_inside_the_screen_still_restores_the_terminal(self):
+        self.add(title="Left or right?")
+        self.start()
+        self.see("Left or right?")
+        # The next reload fails: the screen ends with the error, the terminal put back.
+        self.store.db.execute("ALTER TABLE questions RENAME TO gone")
+        self.assertNotEqual(self.finish(), 0)
+        restored = self.screen.rfind(b"\x1b[?1049l")
+        self.assertGreater(restored, 0)
+        self.assertIn(b"no such table", self.screen[restored:])
+
+
 class ViewTest(DatabaseTest):
     """The screen as text, drawn by the same code that draws it in the terminal."""
 
@@ -365,3 +494,40 @@ class ViewTest(DatabaseTest):
         canvas = TextCanvas(1, 6)
         canvas.put(0, 0, "数据库表")
         self.assertEqual(canvas.text(), "数据库")
+
+
+@unittest.skipUnless(curses is not None, "needs curses")
+class KeyNameTest(unittest.TestCase):
+    def test_keys_get_the_names_the_board_reads(self):
+        from tempo.tui.screen import key_name
+
+        self.assertEqual(key_name("j"), "j")
+        self.assertEqual(key_name("é"), "é")
+        self.assertEqual(key_name("\n"), "enter")
+        self.assertEqual(key_name("\x1b"), "esc")
+        self.assertEqual(key_name("\x04"), "ctrl-d")
+        self.assertEqual(key_name(curses.KEY_BTAB), "btab")
+        self.assertEqual(key_name(curses.KEY_NPAGE), "pgdn")
+        self.assertIsNone(key_name("\x01"))
+        self.assertIsNone(key_name(curses.KEY_F1))
+
+
+class CommandTest(DatabaseTest):
+    def test_tui_needs_a_terminal(self):
+        err = io.StringIO()
+        with mock.patch.object(sys.stdin, "isatty", return_value=False), redirect_stderr(err):
+            self.assertEqual(cli.main(["tui"]), 1)
+        self.assertEqual(err.getvalue(), "tempo: tui needs a terminal\n")
+
+    def test_tui_starts_on_the_folders_project_and_never_starts_the_page(self):
+        with (
+            mock.patch.object(sys.stdin, "isatty", return_value=True),
+            mock.patch.object(sys.stdout, "isatty", return_value=True),
+            mock.patch("tempo.tui.screen.run", return_value=0) as run,
+            mock.patch.object(cli, "start_server") as start,
+        ):
+            self.assertEqual(cli.main(["tui"]), 0)
+            self.assertEqual(cli.main(["tui", "--project", "shop"]), 0)
+        # TEMPO_PROJECT is set to demo, as `tempo list` would read it.
+        self.assertEqual([call.args for call in run.call_args_list], [("demo",), ("shop",)])
+        start.assert_not_called()

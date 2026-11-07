@@ -217,6 +217,12 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
     which.add_argument("--all", action="store_true", help="Count every project")
     status.set_defaults(run=run_status)
 
+    tui = commands.add_parser(
+        "tui", help="Answer in a full-screen terminal view, with panels like the page's"
+    )
+    tui.add_argument("--project", help="Start on this project; the folder's by default")
+    tui.set_defaults(run=run_tui)
+
 
 def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """The user's settings, from the terminal: the same ones the page's Settings show."""
@@ -456,6 +462,17 @@ def run_config(args: argparse.Namespace) -> None:
             "page off: sessions don't start the page; `tempo serve --background` starts it."
             " Claude points you to the terminal (`tempo show`, `tempo answer`)."
         )
+
+
+def run_tui(args: argparse.Namespace) -> int:
+    """The page's questions in the terminal (tempo/tui). It never starts the page."""
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print("tempo: tui needs a terminal", file=sys.stderr)
+        return 1
+    # Imported here, so the hooks and other commands never load curses.
+    from tempo.tui import screen
+
+    return screen.run(_project(args.project))
 
 
 def open_count(path: str, project: str | None = None, folder: str | None = None) -> int:
