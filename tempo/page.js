@@ -581,13 +581,17 @@ async function loadDetail(force) {
   const current = route();
   const detail = $("#detail");
   if (!current) return;
+  // A slow reply for a question the user has since left is dropped.
+  const hash = location.hash;
+  const moved = () => location.hash !== hash;
   let question;
   try {
     question = await api(`/api/questions/${encodeURIComponent(current.project)}/${current.number}`);
   } catch (error) {
-    detail.replaceChildren(el("p", { class: "error" }, error.message));
+    if (!moved()) detail.replaceChildren(el("p", { class: "error" }, error.message));
     return;
   }
+  if (moved()) return;
   const key = JSON.stringify([question.project, question.number, question.version,
                               question.status, question.entries.length, question.goal, question.start_here]);
   if (!force && key === state.current) return;

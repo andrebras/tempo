@@ -43,6 +43,8 @@ All notable changes to Tempo are listed here. The format follows
   you were typing and the option you picked are kept.
 - The timed refresh, every 4 seconds, no longer moves keyboard focus off the question list or
   the buttons on the empty screen. The list is redrawn only when it changes.
+- A slow reply for a question you have already left no longer replaces the question you opened
+  next, or clears the note you started there.
 
 ### Security
 
