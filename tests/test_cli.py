@@ -388,3 +388,97 @@ class ProjectNameTest(unittest.TestCase):
         for folder in [repo, os.path.join(repo, "sub"), worktree]:
             with self.subTest(folder=folder):
                 self.assertEqual(cli.project_name(folder), "shop")
+
+
+class StartServerTest(unittest.TestCase):
+    """What the SessionStart hook does with whatever already listens on the port."""
+
+    def setUp(self):
+        from tempo import server
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.current = {"app": "tempo", "version": server.version(), "root": server.ROOT, "pid": 42}
+        self.listening = True
+        self.patch("_db_path", return_value=os.path.join(tmp.name, "tempo.db"))
+        self.patch("_listening", side_effect=lambda port: self.listening)
+        self.fetch = self.patch("_fetch")
+        self.tempo_pid = self.patch("_tempo_pid", return_value=None)
+        self.kill = self.patch("kill", cli.os, side_effect=self.stopped)
+        self.popen = self.patch("Popen", cli.subprocess)
+        self.patch("sleep", cli.time)
+        self.serve()
+
+    def patch(self, name, target=cli, **kwargs):
+        patcher = mock.patch.object(target, name, **kwargs)
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    def stopped(self, pid, sig):
+        self.listening = False
+
+    def serve(self, health=None, page=None):
+        """What the server on the port answers; None stands for an error or no answer."""
+        body = json.dumps(health).encode() if health else None
+        self.fetch.side_effect = lambda port, path: {"/health": body, "/": page}[path]
+
+    def test_starts_when_the_port_is_free(self):
+        self.listening = False
+        self.assertTrue(cli.start_server(2204))
+        self.popen.assert_called_once()
+
+    def test_keeps_a_current_tempo(self):
+        self.serve(health=self.current)
+        self.assertFalse(cli.start_server(2204))
+        self.kill.assert_not_called()
+        self.popen.assert_not_called()
+
+    def test_replaces_a_tempo_of_another_version_or_folder(self):
+        for change in [{"version": "0.0.1"}, {"root": "/Users/me/Lab/open-questions"}]:
+            with self.subTest(change=change):
+                self.listening = True
+                self.kill.reset_mock()
+                self.serve(health={**self.current, **change})
+                self.assertTrue(cli.start_server(2204))
+                self.kill.assert_called_once_with(42, cli.signal.SIGTERM)
+
+    def test_keeps_an_old_server_whose_page_works(self):
+        self.serve(page=b"<title>Tempo</title>")
+        self.tempo_pid.return_value = 42
+        self.assertFalse(cli.start_server(2204))
+        self.kill.assert_not_called()
+
+    def test_replaces_a_broken_old_tempo(self):
+        self.tempo_pid.return_value = 42
+        self.assertTrue(cli.start_server(2204))
+        self.kill.assert_called_once_with(42, cli.signal.SIGTERM)
+        self.popen.assert_called_once()
+
+    def test_leaves_anything_it_cannot_show_is_tempo(self):
+        for health in [None, {"app": "other", "pid": 42}]:
+            with self.subTest(health=health):
+                self.serve(health=health)
+                self.assertFalse(cli.start_server(2204))
+                self.kill.assert_not_called()
+                self.popen.assert_not_called()
+
+    def test_does_not_start_while_the_old_server_holds_the_port(self):
+        self.serve(health={**self.current, "version": "0.0.1"})
+        self.kill.side_effect = None
+        self.assertFalse(cli.start_server(2204))
+        self.popen.assert_not_called()
+
+
+class TempoPidTest(unittest.TestCase):
+    def test_only_names_a_process_running_tempo_serve(self):
+        def ran(stdout):
+            return subprocess.CompletedProcess([], 0, stdout=stdout)
+
+        for command, pid in [
+            ("/usr/bin/python3 -m tempo serve --port 2204\n", 4242),
+            ("/usr/bin/python3 -m http.server 2204\n", None),
+        ]:
+            with self.subTest(command=command):
+                runs = [ran("4242\n"), ran(command)]
+                with mock.patch.object(cli.subprocess, "run", side_effect=runs):
+                    self.assertEqual(cli._tempo_pid(2204), pid)

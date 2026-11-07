@@ -8,6 +8,7 @@ import contextlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -158,7 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument(
         "--background",
         action="store_true",
-        help="Start detached; does nothing if the port is already serving",
+        help="Start detached; keeps a current Tempo already on the port, replaces a stale one",
     )
     serve.set_defaults(run=run_serve)
 
@@ -629,26 +630,109 @@ def format_question(question: Question) -> str:
 
 
 def start_server(port: int) -> bool:
-    """Start the page in the background unless something already listens on the port."""
-    import socket
+    """Start the page in the background, replacing a Tempo server that is old or broken.
 
-    with socket.socket() as probe:
-        probe.settimeout(0.3)
-        if probe.connect_ex(("127.0.0.1", port)) == 0:
-            return False
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    A Tempo server of this same version from this same folder is left running, and so
+    is anything on the port that cannot be shown to be Tempo.
+    """
+    from tempo.server import ROOT
+
+    if _listening(port) and not _stop_stale(port):
+        return False
     # The child gets its own copy of the log file handle, so ours can close. The
     # argument list is fixed and there is no shell, so nothing outside reaches it.
     with open(os.path.join(os.path.dirname(_db_path()), "server.log"), "a") as log:
         subprocess.Popen(  # noqa: S603
             [sys.executable, "-m", "tempo", "serve", "--port", str(port)],
-            cwd=root,
+            cwd=ROOT,
             stdout=log,
             stderr=log,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
     return True
+
+
+def _listening(port: int) -> bool:
+    import socket
+
+    with socket.socket() as probe:
+        probe.settimeout(0.3)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _stop_stale(port: int) -> bool:
+    """Stop the Tempo server on the port if it is old or broken; True once the port is free."""
+    from tempo import server
+
+    try:
+        health = json.loads(_fetch(port, "/health") or b"null")
+    except ValueError:
+        health = None
+    if isinstance(health, dict) and health.get("app") == "tempo":
+        if health.get("version") == server.version() and health.get("root") == server.ROOT:
+            return False
+        pid = health.get("pid")
+    elif _fetch(port, "/") is not None:
+        # The page works: an older Tempo without /health, or another program entirely.
+        return False
+    else:
+        pid = _tempo_pid(port)
+    if not isinstance(pid, int):
+        return False
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    except PermissionError:
+        return False
+    # A new server cannot bind the port until the old one has let go of it.
+    for _ in range(20):
+        if not _listening(port):
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def _fetch(port: int, path: str) -> bytes | None:
+    """The body of a GET on the local port, or None unless it answers 200 within a second."""
+    import http.client
+
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
+    try:
+        connection.request("GET", path)
+        response = connection.getresponse()
+        return response.read() if response.status == 200 else None
+    except (OSError, http.client.HTTPException):
+        return None
+    finally:
+        connection.close()
+
+
+def _tempo_pid(port: int) -> int | None:
+    """The process listening on the port, but only if its command is `python -m tempo serve`."""
+    try:
+        # lsof and ps are looked up on PATH on purpose. There is no shell, and the only
+        # values passed in are the port number and a pid made of digits only.
+        pids = subprocess.run(  # noqa: S603
+            ["lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        ).stdout.split()
+        if len(pids) != 1 or not pids[0].isdigit():
+            return None
+        command = subprocess.run(  # noqa: S603
+            ["ps", "-o", "command=", "-p", pids[0]],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return int(pids[0]) if "-m tempo serve" in command else None
 
 
 def project_name(cwd: str, record: bool = False) -> str:
