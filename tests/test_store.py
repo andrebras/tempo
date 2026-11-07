@@ -5,11 +5,13 @@ import tempfile
 import unittest
 from unittest import mock
 
+from tempo import store as store_module
 from tempo.store import (
     MIGRATIONS,
     SCHEMA,
     QuestionError,
     Store,
+    _add_column,
     _add_folder_paths,
     _migrate,
     branch_db,
@@ -706,6 +708,65 @@ class RenameTest(DatabaseTest):
                 self.store.link_folder(path, project)
 
 
+class RepoIdentityTest(DatabaseTest):
+    """A missing repo is offered only to a copy of it: same first commit, else same remote."""
+
+    def setUp(self):
+        super().setUp()
+        self.asked = []
+        self.see("/lab/open-questions", "c1", "git@github.com:me/open-questions.git")
+        self.gone = {"/lab/open-questions"}
+
+    def see(self, path, first_commit=None, remote=None):
+        def identity():
+            self.asked.append(path)
+            return first_commit, remote
+
+        if self.store.see_folder(path.rsplit("/", 1)[1], path, identity):
+            return [c["path"] for c in self.store.spot_rename(path, lambda p: p in self.gone)]
+        return None
+
+    def test_a_renamed_repo_with_the_same_first_commit_is_offered(self):
+        self.assertEqual(self.see("/lab/tempo", "c1", None), ["/lab/open-questions"])
+
+    def test_a_repo_renamed_on_github_still_matches_by_first_commit(self):
+        remote = "git@github.com:me/tempo.git"
+        self.assertEqual(self.see("/lab/tempo", "c1", remote), ["/lab/open-questions"])
+
+    def test_without_a_matching_first_commit_the_remote_matches(self):
+        remote = "git@github.com:me/open-questions.git"
+        self.assertEqual(self.see("/lab/tempo", None, remote), ["/lab/open-questions"])
+        self.assertEqual(self.see("/lab/rewritten", "c9", remote), ["/lab/open-questions"])
+
+    def test_an_unrelated_repo_is_never_offered_a_deleted_one(self):
+        self.assertEqual(self.see("/lab/shop", "c2", "git@github.com:me/shop.git"), [])
+        self.assertEqual(self.see("/lab/blog", None, None), [])
+        self.assertEqual(self.store.renames(), [])
+
+    def test_a_first_commit_match_wins_over_a_remote_match(self):
+        self.see("/lab/fork", "c3", "git@github.com:me/open-questions.git")
+        self.gone.add("/lab/fork")
+        self.assertEqual(self.see("/lab/tempo", "c1", None), ["/lab/open-questions"])
+        remote = "git@github.com:me/open-questions.git"
+        self.assertEqual(self.see("/lab/other", "c4", remote), ["/lab/fork", "/lab/open-questions"])
+
+    def test_a_folder_remembered_without_identity_is_offered_as_before(self):
+        self.store.see_folder("notes", "/lab/notes")
+        self.gone.add("/lab/notes")
+        self.assertEqual(self.see("/lab/shop", "c2", None), ["/lab/notes"])
+
+    def test_identity_is_asked_only_for_a_new_folder_or_a_new_path(self):
+        self.see("/lab/open-questions")
+        self.assertEqual(self.asked, ["/lab/open-questions"])
+        self.store.see_folder("api")
+        self.see("/lab/api", "c5")
+        self.assertEqual(self.asked, ["/lab/open-questions", "/lab/api"])
+        row = self.store.db.execute(
+            "SELECT folder, first_commit FROM folders WHERE path = '/lab/api'"
+        ).fetchone()
+        self.assertEqual(tuple(row), ("api", "c5"))
+
+
 class RaceTest(DatabaseTest):
     """Another connection (a second tab, the page and the tempo command) writes between
     this store's checks and its own write."""
@@ -869,6 +930,52 @@ class MigrateTest(DatabaseTest):
         with Store(connect(os.environ["TEMPO_DB"])) as store:
             self.assertIsNone(store.folders()[0]["project"])
             self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+
+
+class AdditionTest(DatabaseTest):
+    """A compatible change is made on every open, and leaves user_version alone."""
+
+    def note(self, db):
+        _add_column(db, "folders", "note", "TEXT")
+        db.execute("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY)")
+        self.locked.append(db.in_transaction)
+
+    def setUp(self):
+        super().setUp()
+        self.locked = []
+        patcher = mock.patch.object(store_module, "ADDITIONS", [self.note])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def columns(self, db):
+        return [row["name"] for row in db.execute("PRAGMA table_info(folders)")]
+
+    def test_an_existing_database_gets_it_without_a_new_version(self):
+        self.store.see_folder("web", "/work/web")
+        self.assertNotIn("note", self.columns(self.store.db))
+        for _ in range(2):  # Opening again finds it there and adds nothing.
+            with Store(connect(os.environ["TEMPO_DB"])) as store:
+                self.assertIn("note", self.columns(store.db))
+                self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+                self.assertEqual(store.folders()[0]["path"], "/work/web")
+                store.db.execute("SELECT * FROM notes")
+        self.assertEqual(self.locked, [True, True])
+
+    def test_an_unversioned_database_gets_it_before_the_steps(self):
+        path = os.path.join(self.tmp.name, "old.db")
+        old = sqlite3.connect(path)
+        old.executescript(SCHEMA.replace("seen_at TEXT,\n  path TEXT,", "seen_at TEXT,"))
+        old.close()
+        with Store(connect(path)) as store:
+            self.assertIn("note", self.columns(store.db))
+            self.assertIn("path", self.columns(store.db))
+            self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+
+    def test_a_newer_numbered_step_is_still_refused(self):
+        self.store.db.execute("PRAGMA user_version = %d" % (len(MIGRATIONS) + 1))
+        with self.assertRaisesRegex(QuestionError, "newer Tempo"):
+            connect(os.environ["TEMPO_DB"])
+        self.assertNotIn("note", self.columns(self.store.db))
 
 
 def _user_version(db):

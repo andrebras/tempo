@@ -56,6 +56,8 @@ Summaries = list[dict[str, Any]]
 Ids = list[int]
 # Questions moved by a join: {"from": old number, "to": new number}.
 Moves = list[dict[str, int]]
+# Gives a git folder's (first commit, remote address); either may be None.
+Identity = Callable[[], tuple[Optional[str], Optional[str]]]
 
 
 def setting(name: str) -> str | None:
@@ -144,7 +146,9 @@ CREATE TABLE IF NOT EXISTS folders (
   seen_at TEXT,
   path TEXT,
   renamed_from TEXT,
-  rename_answered_at TEXT
+  rename_answered_at TEXT,
+  first_commit TEXT,
+  remote TEXT
 );
 CREATE INDEX IF NOT EXISTS entries_undelivered ON entries (delivered_at) WHERE delivered_at IS NULL;
 """
@@ -265,10 +269,22 @@ def _add_renames(db: sqlite3.Connection) -> None:
             db.execute("ALTER TABLE folders ADD COLUMN %s TEXT" % column)
 
 
+# Two kinds of database change (CONTRIBUTING.md, "Changing the database"):
+#
+# - Compatible: a change older code can ignore, such as a new table, a new index or a new
+#   column that may be empty. It goes into SCHEMA, and a new column also into ADDITIONS.
+#   Both run on every open and add only what is missing; user_version stays the same, so
+#   a session still running an older Tempo keeps working on the database.
+# - Incompatible: a change older code would get wrong, such as a renamed or dropped column
+#   or a value whose meaning changed. It is a numbered step in MIGRATIONS, which raises
+#   user_version, and older code then refuses the database (see _migrate).
+#
 # Steps that bring older databases up to SCHEMA, in order. The database's user_version
 # says how many have run; never reorder or remove one, only add new ones at the end.
 # Databases made before user_version was used are at 0 whatever their shape, so each
-# step must also be safe on a database that already has its change.
+# step must also be safe on a database that already has its change. The first steps are
+# compatible ones made before ADDITIONS existed; they stay numbered, since existing
+# databases count them in their user_version.
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _add_priority,
     _fill_folder_projects,
@@ -278,13 +294,38 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
 ]
 
 
+# Compatible additions, run on every open after SCHEMA, in the same transaction. Each must
+# add only what is missing (use _add_column), and must work on any older database, since
+# it runs before the numbered steps. An index on a new column is made here too, after the
+# column, as SCHEMA runs before the column exists on an older database.
+def _add_repo_identity(db: sqlite3.Connection) -> None:
+    """A git folder keeps its repository's first commit and remote address, so a missing
+    folder is offered only to a new folder that is a copy of the same repository."""
+    _add_column(db, "folders", "first_commit", "TEXT")
+    _add_column(db, "folders", "remote", "TEXT")
+
+
+ADDITIONS: list[Callable[[sqlite3.Connection], None]] = [
+    _add_repo_identity,
+]
+
+
+def _add_column(db: sqlite3.Connection, table: str, column: str, kind: str) -> None:
+    """Add a column to a table unless it has it already. Only for fixed names from this
+    module: SQLite cannot take a table or column name as a parameter."""
+    columns = [row["name"] for row in db.execute("PRAGMA table_info(%s)" % table)]
+    if column not in columns:
+        db.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, kind))
+
+
 def _version(db: sqlite3.Connection) -> int:
     return db.execute("PRAGMA user_version").fetchone()[0]
 
 
 def _migrate(db: sqlite3.Connection) -> None:
-    """Bring the database up to SCHEMA: create what is missing, then run each step it has
-    not had yet, once, in its own transaction.
+    """Bring the database up to SCHEMA: create what is missing and make the compatible
+    additions, then run each numbered step it has not had yet, once, in its own
+    transaction.
 
     A database a newer Tempo has moved past these steps is refused before anything is
     read or written, since this code cannot know what the newer steps changed."""
@@ -300,6 +341,10 @@ def _migrate(db: sqlite3.Connection) -> None:
         for statement in SCHEMA.split(";"):
             if statement.strip():
                 db.execute(statement)
+        # Inside the same write lock: two sessions opening at once cannot both find a
+        # column missing and both add it.
+        for addition in ADDITIONS:
+            addition(db)
     for number, step in enumerate(MIGRATIONS, start=1):
         if _version(db) >= number:
             continue
@@ -617,28 +662,40 @@ class Store:
 
     # Projects and their folders, renamed in Settings
 
-    def see_folder(self, folder: str, path: str | None = None) -> bool:
+    def see_folder(
+        self, folder: str, path: str | None = None, identity: Identity | None = None
+    ) -> bool:
         """Remember a folder a session ran in; a new one is filed under its own name.
 
         A folder is matched by its path first, then by a row of the same name that has no
         path yet (from before paths were stored), which then gets this path. Returns True
         when the folder is new.
+
+        identity gives a git folder's first commit and remote address. It may be slow on a
+        long history, so it is asked only when the folder is new or gets its path, and
+        before the write lock is taken, so other sessions do not wait for git.
         """
         folder = _required(folder, "folder")
+        row = self._folder_row(folder, path)
+        fresh = path is not None and (row is None or row["path"] is None)
+        first_commit, remote = identity() if identity and fresh else (None, None)
         with self._transaction():
             row = self._folder_row(folder, path)
             if row is not None:
                 self.db.execute(
-                    "UPDATE folders SET path = ?, seen_at = ? WHERE rowid = ?",
-                    (path or row["path"], now(), row["rowid"]),
+                    "UPDATE folders SET path = ?, seen_at = ?,"
+                    " first_commit = COALESCE(?, first_commit), remote = COALESCE(?, remote)"
+                    " WHERE rowid = ?",
+                    (path or row["path"], now(), first_commit, remote, row["rowid"]),
                 )
                 return False
             # The name is the key, unless another folder of this name has it already.
             taken = self.db.execute("SELECT 1 FROM folders WHERE folder = ?", (folder,))
             key = path if path and taken.fetchone() else folder
             self.db.execute(
-                "INSERT INTO folders (folder, path, project, seen_at) VALUES (?, ?, ?, ?)",
-                (key, path, self._new_project(folder, path), now()),
+                "INSERT INTO folders (folder, path, project, seen_at, first_commit, remote)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (key, path, self._new_project(folder, path), now(), first_commit, remote),
             )
             return True
 
@@ -695,12 +752,29 @@ class Store:
         whose path is gone (no longer on disk). A gone folder stays on offer to each new
         folder until one is linked to it, so a banner the user kept apart, or one not
         answered yet, never hides it from the real renamed folder. Returns the
-        candidates; the folder keeps its own project until the user picks."""
-        candidates = [
+        candidates; the folder keeps its own project until the user picks.
+
+        A gone folder whose repository is known is offered only to a copy of it: one with
+        the same first commit or, when none has that, the same remote address. So a
+        deleted repository is not offered to every unrelated new one. A gone folder
+        remembered before Tempo stored these is offered to any new git folder, as before.
+        """
+        identities = {
+            row["path"]: (row["first_commit"], row["remote"])
+            for row in self.db.execute(
+                "SELECT path, first_commit, remote FROM folders WHERE path IS NOT NULL"
+            )
+        }
+        first_commit, remote = identities.get(path, (None, None))
+        missing = [
             folder
             for folder in self.folders()
             if folder["path"] and folder["path"] != path and gone(str(folder["path"]))
         ]
+        same = [f for f in missing if first_commit and identities[f["path"]][0] == first_commit]
+        if not same:
+            same = [f for f in missing if remote and identities[f["path"]][1] == remote]
+        candidates = [f for f in missing if f in same or not any(identities[f["path"]])]
         if candidates:
             self.db.execute(
                 "UPDATE folders SET renamed_from = ? WHERE path = ?",

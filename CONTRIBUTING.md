@@ -29,6 +29,7 @@ the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on fi
 | Test coverage of `tempo/`, report only: a per-file summary at the end, never a failure | [coverage.py](https://coverage.readthedocs.io) |
 | Lint the page's script (`tempo/page.js`) and its tests | [Biome](https://biomejs.dev), recommended rules |
 | Tests for the page's text renderer | `node --test`, built into Node.js |
+| The page's main flows in a real browser | `unittest`, driving headless Google Chrome |
 
 The Python tools are configured in `pyproject.toml`, Biome in `biome.json`. When a rule has to be silenced on one line, the
 line says why.
@@ -37,6 +38,35 @@ Use a scratch database (`TEMPO_DB`) and another port (`TEMPO_PORT`) when you try
 hand, so your real questions stay untouched. Code run from a worktree, or from the main
 checkout on any branch but `main`, does this by itself: it uses `.tempo-dev/questions.db`
 inside its folder and a port of its own.
+
+## Changing the database
+
+A Claude session keeps the Tempo it started with, so an older Tempo may still be reading
+and writing the database after a newer one has changed it. The database's `user_version`
+counts the numbered steps that changed it, and Tempo refuses a database whose number is
+higher than it knows. So a change raises that number only when it has to.
+
+- **Compatible change**: older code can ignore it. Examples are a new table, a new index
+  and a new column that may be empty. Add it to `SCHEMA` in `tempo/store.py`; for a new
+  column, also add a step to `ADDITIONS` that calls `_add_column`. Both run on every open
+  and add only what is missing, and `user_version` stays the same.
+- **Incompatible change**: older code would get it wrong. Examples are a renamed or dropped
+  column, a new required value, or a value whose meaning changed. Add a step at the end of
+  `MIGRATIONS`. It runs once and raises `user_version`, and older sessions then stop with a
+  message asking to restart them.
+
+Prefer a compatible change when one can do the job. `tests/test_previous_release.py`
+checks that the last release still works on a database the current code has opened.
+
+## Page tests in a browser
+
+`tests/test_page.py` runs the page in headless Google Chrome against the real server code
+and a throwaway database: answering, asking for more, a reword under a typed note,
+reopening, the timed refresh keeping focus, a server restart keeping the draft, the "new"
+dots, and a link to a missing question. `bin/ci` runs them with the other tests; to run only
+them, use `python3 -m unittest tests.test_page`. They take about two seconds. They skip,
+saying why, when Chrome isn't installed; set `CHROME` to the browser's path if it isn't
+found on its own. GitHub's Ubuntu runners have Chrome, so they always run there.
 
 ## Screenshots and demo GIF
 
@@ -55,7 +85,8 @@ hooks/            hook configuration
 tempo/            store (SQLite), cli (tempo), server, and the page (page.html and its
                   script, page.js)
 skills/           the skill that teaches Claude the workflow
-tests/            Python tests, and page.test.js for the page's script
+tests/            Python tests (test_page.py drives the page in Chrome), and page.test.js
+                  for the page's script
 ```
 
 ## Releasing
