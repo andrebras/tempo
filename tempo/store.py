@@ -26,6 +26,7 @@ import os
 import sqlite3
 import stat
 import string
+import time
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta, timezone
 from types import TracebackType
@@ -77,11 +78,25 @@ def db_path() -> str:
 
 
 def branch_db(root: str = CODE_ROOT) -> str | None:
-    """A throwaway database inside the code's folder when that folder is a git worktree,
-    so code still being built never touches the real questions; None otherwise."""
-    if os.path.isfile(os.path.join(root, ".git")):
-        return os.path.join(root, ".tempo-dev", "questions.db")
-    return None
+    """A throwaway database inside the code's folder when that folder is a git checkout
+    that isn't on main, so code still being built never touches (or migrates) the real
+    questions; None otherwise.
+
+    Only two kinds of code use the real database: the installed plugin, which has no .git,
+    and the main checkout on main. Any worktree, whatever its branch, and the main checkout
+    on another branch or on no branch, get their own."""
+    git = os.path.join(root, ".git")
+    if os.path.isdir(git):
+        try:
+            with open(os.path.join(git, "HEAD"), encoding="utf-8") as head:
+                on_main = head.read().strip() == "ref: refs/heads/main"
+        except OSError:
+            on_main = False
+        if on_main:
+            return None
+    elif not os.path.isfile(git):
+        return None
+    return os.path.join(root, ".tempo-dev", "questions.db")
 
 
 SCHEMA = """
@@ -171,11 +186,29 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     if path != ":memory:":
         _make_private(path)
     db.row_factory = sqlite3.Row
-    db.execute("PRAGMA journal_mode = WAL")
+    _use_wal(db)
     db.execute("PRAGMA foreign_keys = ON")
-    db.executescript(SCHEMA)
-    _migrate(db)
+    try:
+        _migrate(db)
+    except BaseException:
+        db.close()
+        raise
     return db
+
+
+def _use_wal(db: sqlite3.Connection) -> None:
+    """Switch the file to WAL mode, which then stays set. While another process is making
+    the same switch on a brand-new database, SQLite says it is locked without waiting, so
+    this tries again for up to two seconds."""
+    for _ in range(40):
+        try:
+            db.execute("PRAGMA journal_mode = WAL")
+            return
+        except sqlite3.OperationalError as error:
+            if "locked" not in str(error):
+                raise
+            time.sleep(0.05)
+    db.execute("PRAGMA journal_mode = WAL")
 
 
 def _make_private(path: str) -> None:
@@ -250,7 +283,23 @@ def _version(db: sqlite3.Connection) -> int:
 
 
 def _migrate(db: sqlite3.Connection) -> None:
-    """Run each step this database has not had yet, once, in its own transaction."""
+    """Bring the database up to SCHEMA: create what is missing, then run each step it has
+    not had yet, once, in its own transaction.
+
+    A database a newer Tempo has moved past these steps is refused before anything is
+    read or written, since this code cannot know what the newer steps changed."""
+    if _version(db) > len(MIGRATIONS):
+        raise QuestionError(
+            "The database was last changed by a newer Tempo (step %d; this one knows %d)."
+            " Update Tempo, or restart the session to use the installed version."
+            % (_version(db), len(MIGRATIONS))
+        )
+    # One statement at a time inside one write transaction, so processes opening a brand-new
+    # database at the same moment wait for each other (executescript would commit first).
+    with _Transaction(db):
+        for statement in SCHEMA.split(";"):
+            if statement.strip():
+                db.execute(statement)
     for number, step in enumerate(MIGRATIONS, start=1):
         if _version(db) >= number:
             continue
@@ -946,7 +995,12 @@ class _Transaction:
         value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.db.execute("COMMIT" if kind is None else "ROLLBACK")
+        if kind is None:
+            self.db.execute("COMMIT")
+        # SQLite rolls back by itself after some errors; a second rollback would fail and
+        # hide the error that caused it.
+        elif self.db.in_transaction:
+            self.db.execute("ROLLBACK")
 
 
 def _required(value: str | None, name: str) -> str:

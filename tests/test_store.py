@@ -613,6 +613,13 @@ class RaceTest(DatabaseTest):
     def answers(self, number):
         return [e for e in self.store.get("demo", number)["entries"] if e["kind"] == "answer"]
 
+    def test_an_error_after_sqlite_ended_the_transaction_is_the_one_raised(self):
+        # SQLite rolls back by itself after some errors, such as a full disk; rolling back
+        # again would hide the real error behind "no transaction is active".
+        with self.assertRaisesRegex(ValueError, "the real error"), self.store._transaction():
+            self.store.db.execute("ROLLBACK")
+            raise ValueError("the real error")
+
     def test_a_second_answer_at_the_same_moment_is_refused(self):
         self.add()
         self.meanwhile(lambda other: other.answer("demo", 1, "a"))
@@ -726,6 +733,23 @@ class MigrateTest(DatabaseTest):
             self.assertEqual(store.get("demo", 1)["goal"], "Release")
             self.assertEqual(store.get("demo", 1)["start_here"], "unlocks the rest")
             self.assertEqual(store.folders()[0]["project"], "demo")
+
+    def test_a_database_from_a_newer_tempo_is_refused_untouched(self):
+        # A newer Tempo ran a step this code doesn't know, and dropped a table on the way.
+        path = os.path.join(self.tmp.name, "newer.db")
+        newer = sqlite3.connect(path)
+        newer.executescript(SCHEMA)
+        newer.execute("DROP TABLE folders")
+        newer.execute("PRAGMA user_version = %d" % (len(MIGRATIONS) + 1))
+        newer.commit()
+        newer.close()
+        with self.assertRaisesRegex(QuestionError, "newer Tempo"):
+            connect(path)
+        check = sqlite3.connect(path)
+        self.addCleanup(check.close)
+        tables = [row[0] for row in check.execute("SELECT name FROM sqlite_master")]
+        self.assertNotIn("folders", tables)
+        self.assertEqual(_user_version(check), len(MIGRATIONS) + 1)
 
     def test_connecting_again_does_not_redo_the_steps(self):
         # Filling folder projects is a step; a second connect must leave this one alone.
@@ -852,7 +876,24 @@ class BranchDbTest(unittest.TestCase):
             branch_db(self.root), os.path.join(self.root, ".tempo-dev", "questions.db")
         )
 
-    def test_the_main_checkout_and_the_installed_plugin_get_none(self):
+    def head(self, text):
+        os.makedirs(os.path.join(self.root, ".git"), exist_ok=True)
+        with open(os.path.join(self.root, ".git", "HEAD"), "w") as head:
+            head.write(text)
+
+    def test_the_installed_plugin_and_the_main_checkout_on_main_get_none(self):
         self.assertIsNone(branch_db(self.root))
-        os.mkdir(os.path.join(self.root, ".git"))
+        self.head("ref: refs/heads/main\n")
         self.assertIsNone(branch_db(self.root))
+
+    def test_the_main_checkout_on_another_branch_or_no_branch_gets_its_own(self):
+        # Code being built on a branch must not migrate the real database.
+        for head in (
+            "ref: refs/heads/feature/new-step\n",
+            "9e813c1aa0f1d2c3b4a5968778695a4b3c2d1e0f\n",
+        ):
+            with self.subTest(head=head):
+                self.head(head)
+                self.assertEqual(
+                    branch_db(self.root), os.path.join(self.root, ".tempo-dev", "questions.db")
+                )
