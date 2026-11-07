@@ -21,6 +21,11 @@ All notable changes to Tempo are listed here. The format follows
 - A test runs the prompt and Stop hooks the way Claude Code does (`bin/tempo hook …` in its
   own process, with Claude Code's JSON on stdin) and checks that an answer from the page
   reaches Claude exactly once.
+- When a reply ends, the Stop hook also looks for follow-ups Claude was given more than five
+  minutes ago and never answered (no context or reword from Claude after them, on a question
+  of this project that is not archived). It sends Claude back once, listing them, to answer
+  each with `tempo reword N --context` (`tempo context N` on an answered question). Before, a
+  session could pass over a follow-up without a word.
 
 ### Fixed
 
@@ -99,6 +104,16 @@ All notable changes to Tempo are listed here. The format follows
   waits for the folder's project only.
 - A `tempo wait` whose session has ended stops at its next check. Before, it kept running for up
   to its timeout and could take an answer meant for a later session in the same project.
+- The Stop hook now catches more questions asked only in chat: questions with a dot inside
+  (`v0.5.4`, `README.md`, "e.g."), "Is it OK if…", "Would you prefer…", "Which do you prefer…",
+  "go ahead?", "Let me know if you want me to…", "Say whether I should…", and options written
+  "- a)" or "**A.**". It no longer counts a question Claude answers at once ("…? No, …") or a
+  sentence listing facts as "(a) … and (b) …".
+- Unrelated things no longer excuse a question asked only in chat. Before, any mention of
+  `tempo add` in a tool call (even a `grep`, or an add that failed) or any Tempo link anywhere
+  in the reply (even a numbered or table closing list) let it through. Now only a Bash command
+  that runs `tempo add`, `reword` or `context` and works counts, or a Tempo link in the same
+  paragraph as the question (for options, also the paragraph before).
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still

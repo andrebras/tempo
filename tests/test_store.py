@@ -209,6 +209,32 @@ class ThreadTest(DatabaseTest):
             self.assertEqual(len(entries), 1)
         self.assertEqual(self.store.undelivered("demo"), [])
 
+    def test_unanswered_follow_ups_reached_claude_a_while_ago_and_have_no_reply(self):
+        for _ in range(6):
+            self.add()
+        self.add(project="other")
+        self.store.answer("demo", 6, "a")
+        for number in (1, 2, 3, 4, 6):
+            self.store.follow_up("demo", number, "Why %d?" % number)
+        self.store.follow_up("other", 1, "Why?")
+        self.store.take_undelivered()
+        self.store.db.execute(
+            "UPDATE entries SET delivered_at = '2026-01-01T10:00:00Z' WHERE kind = 'followup'"
+        )
+        self.store.add_context("demo", 2, "Because.")  # Claude replied.
+        self.store.answer("demo", 3, "a")  # The user answered anyway.
+        self.store.follow_up("demo", 4, "And?")  # Asked again, not yet seen.
+        self.store.follow_up("demo", 5, "Hm?")
+        with self.store.delivering("demo"):
+            pass  # Q4's and Q5's new follow-ups reach Claude just now.
+        unanswered = self.store.unanswered_follow_ups("demo", before="2026-01-01T10:05:00Z")
+        self.assertEqual(
+            [(e["number"], e["body"]) for e in unanswered], [(1, "Why 1?"), (6, "Why 6?")]
+        )
+        self.assertEqual(
+            self.store.unanswered_follow_ups("demo", before="2026-01-01T09:00:00Z"), []
+        )
+
 
 class ListTest(DatabaseTest):
     def test_lists_whether_a_follow_up_is_waiting_on_claude(self):

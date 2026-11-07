@@ -12,6 +12,17 @@ from unittest import mock
 from tempo import cli
 from tests.helpers import DatabaseTest
 
+
+def bash(command, tool_id):
+    """A Bash tool call as a Claude Code transcript records it."""
+    return {"type": "tool_use", "id": tool_id, "name": "Bash", "input": {"command": command}}
+
+
+def result(tool_id, output, error=False):
+    """A tool call's result as a Claude Code transcript records it."""
+    return {"type": "tool_result", "tool_use_id": tool_id, "content": output, "is_error": error}
+
+
 # How a `tempo wait` process shows in ps.
 WAIT = "/usr/bin/python3 -m tempo wait --timeout 1800"
 
@@ -312,11 +323,60 @@ class CliTest(DatabaseTest):
                 reply = [("user", "Go"), ("assistant", [{"type": "text", "text": text}])]
                 self.assertEqual(self.stop(*reply), "")
 
+    def test_stop_catches_questions_in_their_many_forms(self):
+        # From the second bug hunt's replies (stop_detect.py, stop_detect2.py).
+        cases = [
+            "Should I go ahead and delete the old branch?",
+            "Which do you prefer:\n(a) Postgres\n(b) SQLite",
+            "Which do you prefer:\n- a) Postgres\n- b) SQLite",
+            "Which do you prefer?\n1. Postgres\n2. SQLite",
+            "Which do you prefer:\n**A.** Postgres\n**B.** SQLite",
+            "Shall we merge it now?",
+            "Let me know if you want me to push the branch.",
+            "Want me to open the PR?",
+            "I'll push it once you confirm: should I push to origin?",
+            "Next steps for you:\n- Say whether I should delete the branch.",
+            'Should I delete "old-branch" now?',
+            "Should I run `git push --force` now?",
+            "Is it OK if I delete the branch?",
+            "Would you prefer Postgres or SQLite?",
+            "Ready to merge — go ahead?",
+            "Should I merge? I recommend yes, the tests pass.",
+            # A dot inside the question: versions, file names, paths, abbreviations.
+            "Should I tag v0.5.4 now?",
+            "Should I edit README.md as well?",
+            "May I delete ~/.claude/tempo/server.log?",
+            "Do you want me to bump it to 0.6.0?",
+            "Should I open the PR, e.g. against main?",
+            "Should I tag v0.5.4 now? (y/n)",
+        ]
+        for text in cases:
+            with self.subTest(text):
+                out = self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
+                self.assertEqual(json.loads(out or "{}").get("decision"), "block")
+
+    def test_stop_lets_statements_and_questions_it_answers_itself_through(self):
+        cases = [
+            "I asked myself: should I refactor this? No, it's fine as is.",
+            'The docs say: "Can I use WAL mode?" Yes.',
+            "Fixed the bug where (a) the hook crashed and (b) the server hung.",
+            "Done. The test asks `Should I retry?` and returns.",
+            "Do you want to know why? Because the lock was missing.",
+            "Two bugs: (a) the race and (b) the leak. Both fixed.",
+            "Let me know if anything looks off.",
+            "Tell me if I missed something.",
+            "Let me know whether the page loads now.",
+        ]
+        for text in cases:
+            with self.subTest(text):
+                reply = [("user", "Go"), ("assistant", [{"type": "text", "text": text}])]
+                self.assertEqual(self.stop(*reply), "")
+
     def test_stop_lets_tempo_questions_and_old_replies_through(self):
         options = [{"type": "text", "text": "(a) Left (b) Right"}]
         linked = [{"type": "text", "text": "(a) Left (b) Right http://127.0.0.1:2204/#/demo/1"}]
-        added = [{"type": "tool_use", "input": {"command": "tempo add --title T"}}]
-        reworded = [{"type": "tool_use", "input": {"command": "tempo reword 3 --note N"}}]
+        added = [bash("tempo add --title T", "toolu_1")]
+        reworded = [bash("tempo reword 3 --note N", "toolu_2")]
         yes_no = [{"type": "text", "text": "May I clean up? Reply yes or no.\n- Q1: T http://x"}]
         heading = [{"type": "text", "text": "**Q5: Push?** http://127.0.0.1:2204/#/demo/5\nMay I?"}]
         cases = {
@@ -329,8 +389,21 @@ class CliTest(DatabaseTest):
             "after a tool result": [
                 ("user", "Q?"),
                 ("assistant", added),
-                ("user", [{"type": "tool_result", "content": "Added Q1"}]),
+                ("user", [result("toolu_1", "Added Q1")]),
                 ("assistant", options),
+            ],
+            "added from a path, after cd and a setting": [
+                ("user", "Q?"),
+                ("assistant", [bash("cd ~/x && TEMPO_PROJECT=x bin/tempo add --title T", "t3")]),
+                ("user", [result("t3", "Added Q1")]),
+                ("assistant", options),
+            ],
+            "linked in the same paragraph": [
+                ("user", "Q?"),
+                (
+                    "assistant",
+                    [{"type": "text", "text": "Added Q4 http://127.0.0.1:2204/#/demo/4. May I?"}],
+                ),
             ],
         }
         for name, replies in cases.items():
@@ -338,6 +411,35 @@ class CliTest(DatabaseTest):
                 self.assertEqual(self.stop(*replies), "")
         self.assertEqual(self.stop(("user", "Q?"), ("assistant", options), active=True), "")
         self.assertEqual(run("hook", "stop", stdin="{}")[1], "")
+
+    def test_stop_is_not_fooled_by_a_failed_or_unrelated_tempo_add_or_a_far_link(self):
+        ask = "Should I delete the old branch?"
+        closing = "http://127.0.0.1:2204/#/demo/3"
+        cases = {
+            "grep for tempo add": [bash("grep -rn 'tempo add' skills/", "t1"), result("t1", "")],
+            "failed tempo add": [
+                bash("tempo add --title 'Delete it?'", "t1"),
+                result("t1", "tempo: the following arguments are required: --context", True),
+            ],
+            "tempo add named in another tool": [
+                {"type": "tool_use", "id": "t1", "name": "Write", "input": {"content": "tempo add"}}
+            ],
+            "numbered closing list": "\n\nOpen questions:\n1. Q3 Pick a DB " + closing,
+            "closing list as a table": "\n\n| Q3 | Pick a DB | %s |" % closing,
+            "closing list after a blank line": "\n\nOpen questions:\n- Q3 Pick a DB " + closing,
+        }
+        for name, extra in cases.items():
+            with self.subTest(name):
+                if isinstance(extra, str):
+                    reply = [("assistant", [{"type": "text", "text": ask + extra}])]
+                else:
+                    uses = [block for block in extra if block["type"] == "tool_use"]
+                    results = [block for block in extra if block["type"] == "tool_result"]
+                    reply = [("assistant", uses)]
+                    reply += [("user", results)] if results else []
+                    reply += [("assistant", [{"type": "text", "text": ask}])]
+                out = self.stop(("user", "Go"), *reply)
+                self.assertEqual(json.loads(out or "{}").get("decision"), "block")
 
     def test_stop_hands_over_new_answers_once(self):
         self.add(title="Left or right?")
@@ -356,6 +458,31 @@ class CliTest(DatabaseTest):
         options = [("user", "Go"), ("assistant", [{"type": "text", "text": "(a) Up (b) Down"}])]
         self.assertIn("answered (a) Left", json.loads(self.stop(*options))["reason"])
         self.assertIn("tempo add", json.loads(self.stop(*options))["reason"])
+
+    def test_stop_raises_follow_ups_left_unanswered(self):
+        self.add(title="Ship it?")
+        self.add()
+        self.store.follow_up("demo", 1, "What is left?")
+        self.marker(os.getpid())  # A wait is running, so only the follow-up can block.
+        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
+        # New news is handed over first; the follow-up then gets a few minutes.
+        self.assertIn("asks for more: What is left?", json.loads(self.stop(*reply))["reason"])
+        self.assertEqual(self.stop(*reply), "")
+        self.store.db.execute("UPDATE entries SET delivered_at = '2026-01-01T10:00:00Z'")
+        out = json.loads(self.stop(*reply))
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("demo Q1 (Ship it?) asked: What is left?", out["reason"])
+        self.assertIn("`tempo reword 1 --context`", out["reason"])
+        self.assertEqual(self.stop(*reply, active=True), "")
+        self.store.reword("demo", 1, "Answered the follow-up", context="Only the docs.")
+        self.assertEqual(self.stop(*reply), "")
+        # On an answered question, the reply goes in the thread: a reword would reopen it.
+        self.store.answer("demo", 2, "a")
+        self.store.follow_up("demo", 2, "Sure?")
+        self.store.take_undelivered("demo")
+        self.store.db.execute("UPDATE entries SET delivered_at = '2026-01-01T10:00:00Z'")
+        self.assertIn("`tempo context 2`", json.loads(self.stop(*reply))["reason"])
+        self.assertIn("hook stop demo blocked: unanswered follow-ups 1", self.hook_log())
 
     def test_stop_asks_for_a_wait_while_questions_are_open(self):
         reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
