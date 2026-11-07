@@ -68,6 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     _change_commands(commands)
     _delivery_commands(commands)
     _user_commands(commands)
+    _config_commands(commands)
     _run_commands(commands)
     return parser
 
@@ -217,6 +218,19 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
     status.set_defaults(run=run_status)
 
 
+def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """The user's settings, from the terminal: the same ones the page's Settings show."""
+    config = commands.add_parser(
+        "config",
+        help="Your settings: show them, or change one, such as `tempo config page off`",
+    )
+    config.add_argument(
+        "name", nargs="?", choices=["page"], help="page: start the page with each session"
+    )
+    config.add_argument("value", nargs="?", choices=["on", "off"])
+    config.set_defaults(run=run_config)
+
+
 def _run_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Run by Claude Code and by Tempo itself: the hooks and the page."""
     hook = commands.add_parser("hook", help="Claude Code hook entry point (reads JSON on stdin)")
@@ -275,7 +289,7 @@ def run_add(args: argparse.Namespace) -> None:
     if args.json:
         print(json.dumps(question, indent=2))
     else:
-        print("Added %s in %s: %s" % (question["label"], question["project"], _url(question)))
+        print("Added %s in %s: %s" % (question["label"], question["project"], _pointer(question)))
 
 
 def run_show(args: argparse.Namespace) -> None:
@@ -428,6 +442,20 @@ def run_status(args: argparse.Namespace) -> None:
         count = open_count(db_path(), project, None if project else folder_path(os.getcwd()))
     if count:
         print("? %d" % count)
+
+
+def run_config(args: argparse.Namespace) -> None:
+    """Print the settings, or change the one named and print it."""
+    store = _store()
+    if args.value is not None:
+        store.set_start_page(args.value == "on")
+    if store.start_page():
+        print("page on: each session starts the page at http://127.0.0.1:%d/" % _port())
+    else:
+        print(
+            "page off: sessions don't start the page; `tempo serve --background` starts it."
+            " Claude points you to the terminal (`tempo show`, `tempo answer`)."
+        )
 
 
 def open_count(path: str, project: str | None = None, folder: str | None = None) -> int:
@@ -639,7 +667,9 @@ def run_hook(args: argparse.Namespace) -> int:
     # pass to the session when the hook exits 0.
     page = ""
     try:
-        if args.event == "session-start":
+        if args.event == "session-start" and not page_on():
+            page = ", page off"
+        elif args.event == "session-start":
             page = ", page started" if start_server(args.port) else ", page left running"
     except Exception as error:
         page = ", page not started"
@@ -674,10 +704,21 @@ def run_hook(args: argparse.Namespace) -> int:
 def session_note(project: str, port: int, path: str | None = None) -> str:
     """What every session is told at its start, so questions go through Tempo even when
     the skill isn't picked and nothing about Tempo is in CLAUDE.md. When the session's
-    folder (at path) may be a known one renamed or moved, Claude is asked to say so."""
-    link = "http://127.0.0.1:%d/" % port
+    folder (at path) may be a known one renamed or moved, Claude is asked to say so.
+    With the page turned off, questions are pointed to in the terminal instead."""
+    with Store(connect()) as store:
+        on = store.start_page()
+        questions = store.list(project, "open")
+        rename = next((r for r in store.renames() if path and r["path"] == path), None)
+    if on:
+        where = "at http://127.0.0.1:%d/" % port
+    else:
+        where = (
+            "in the terminal with `tempo show N` and `tempo answer N <letter>`. The page is"
+            " turned off, so never give page links"
+        )
     lines = [
-        "Tempo is installed: the user reads and answers questions at %s." % link,
+        "Tempo is installed: the user reads and answers questions %s." % where,
         "- Every choice or decision for the user goes in Tempo with `tempo add` (see the tempo"
         " skill for the format), never only in chat. That includes yes-or-no confirmations,"
         " requests for permission and 'say whether…' items in pending steps.",
@@ -686,21 +727,20 @@ def session_note(project: str, port: int, path: str | None = None) -> str:
         ' Mark one question in a goal `--start-here "unlocks …"` only when its answer'
         " really unlocks or sets the pattern for the others.",
         "- End every update with the open questions of this project, one line each:"
-        " number, title and link.",
-        "- An answer on the Tempo page never approves merging, publishing or installing:"
-        " record the question in Tempo and also ask for a one-line OK in chat.",
+        " number, title and %s." % ("link" if on else "`tempo show N`"),
+        "- An answer %s never approves merging, publishing or installing:"
+        " record the question in Tempo and also ask for a one-line OK in chat."
+        % ("on the Tempo page" if on else "in Tempo"),
     ]
-    with Store(connect()) as store:
-        questions = store.list(project, "open")
-        rename = next((r for r in store.renames() if path and r["path"] == path), None)
     if rename:
-        lines.append(rename_note(rename))
+        lines.append(rename_note(rename, on))
     if questions:
         lines.append("Open questions in %s:" % project)
         for q in questions:
             goal = " [%s%s]" % (q["goal"], ", start here" if q["start_here"] else "")
             lines.append(
-                "- %s %s%s %s" % (q["label"], q["title"], goal if q["goal"] else "", _url(q))
+                "- %s %s%s %s"
+                % (q["label"], q["title"], goal if q["goal"] else "", _pointer(q, on))
             )
     return "\n".join(lines)
 
@@ -758,26 +798,28 @@ def installed_version() -> str | None:
     return best
 
 
-def rename_note(rename: dict[str, Any]) -> str:
-    """Asks Claude to tell the user that this new folder may be a renamed or moved one."""
+def rename_note(rename: dict[str, Any], page: bool = True) -> str:
+    """Asks Claude to tell the user that this new folder may be a renamed or moved one.
+    Only the page can link it, so with the page off the user is told how to start it."""
     candidates = rename["candidates"]
+    shows = "shows" if page else "(started with `tempo serve --background`) shows"
     where = "This folder, `%s` (%s), is new to Tempo" % (rename["folder"], rename["shown"])
     if len(candidates) == 1:
         old = candidates[0]
         return (
             "- %s, and %s, filed under %s, no longer exists, so it looks renamed or moved."
-            ' Tell the user in chat: the Tempo page shows a banner with a "Link to %s" button,'
+            ' Tell the user in chat: the Tempo page %s a banner with a "Link to %s" button,'
             " or they can keep this folder as its own project. Until they pick, its questions"
             " go to the project %s."
-            % (where, old["shown"], old["project"], old["project"], rename["project"])
+            % (where, old["shown"], old["project"], shows, old["project"], rename["project"])
         )
     gone = ", ".join(str(old["shown"]) for old in candidates)
     return (
         "- %s, and several known folders no longer exist (%s), so it may be one of them"
-        " renamed or moved. Tell the user in chat: the Tempo page shows a banner with a"
+        " renamed or moved. Tell the user in chat: the Tempo page %s a banner with a"
         ' "Link to <project>" button for each missing folder, or they can keep this folder'
         " as its own project. Until they pick, its questions go to the project %s."
-        % (where, gone, rename["project"])
+        % (where, gone, shows, rename["project"])
     )
 
 
@@ -802,22 +844,23 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
         inbox, delivered = deliver_inbox(project)
         if inbox:
             return inbox, project, "delivered %d" % delivered
-        unrecorded = unrecorded_options(payload)
+        page = page_on()
+        unrecorded = unrecorded_options(payload, page)
         if unrecorded:
             return unrecorded, project, "blocked: unrecorded question"
         with Store(connect()) as store:
             cutoff = datetime.now(timezone.utc) - FOLLOW_UP_GRACE
             unanswered = store.unanswered_follow_ups(project, cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"))
             if unanswered:
-                reason = unanswered_note(store, unanswered)
+                reason = unanswered_note(store, unanswered, page)
                 return reason, project, "blocked: unanswered follow-ups %d" % len(unanswered)
             questions = store.list(project, "open")
         if questions and not wait_running(project):
             reason = (
                 "%s has open questions in Tempo, but no `tempo wait` is running, so answers"
-                " from the page would not reach you until the user writes in chat. Start"
+                "%s would not reach you until the user writes in chat. Start"
                 " `tempo wait --timeout 1800` with the Bash tool's run_in_background option,"
-                " then end the reply." % project
+                " then end the reply." % (project, " from the page" if page else "")
             )
             return reason, project, "blocked: no wait"
     except Exception as error:
@@ -829,7 +872,7 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
 FOLLOW_UP_GRACE = timedelta(minutes=5)
 
 
-def unanswered_note(store: Store, entries: Entries) -> str:
+def unanswered_note(store: Store, entries: Entries, page: bool = True) -> str:
     """Sends Claude back to answer follow-ups it was given but left without a reply."""
     lines = ["The user asked for more on these questions and has had no answer yet:"]
     for entry in entries:
@@ -847,8 +890,8 @@ def unanswered_note(store: Store, entries: Entries) -> str:
             )
         )
     lines.append(
-        "Answer each in the question itself, so the box the user reads on the page shows"
-        " it, then end the reply."
+        "Answer each in the question itself, so %s shows it, then end the reply."
+        % ("the box the user reads on the page" if page else "`tempo show`")
     )
     return "\n".join(lines)
 
@@ -886,6 +929,10 @@ QUOTED = re.compile(r"```.*?(?:```|\Z)|`[^`\n]*`|^\s*>.*$|\"[^\"\n]*\"|“[^”\
 # "| Q3 | Title | http://… |".
 LISTED = re.compile(r"^\s*(?:[-*]|\d+\.|\|)\s.*\bQ\d+\b.*127\.0\.0\.1:\d+/#/.*$", re.MULTILINE)
 TEMPO_LINK = re.compile(r"127\.0\.0\.1:\d+/#/")
+# With the page off there are no links: a question is named by its number, as in "Q3",
+# and the closing list is any list item or table row naming one.
+LISTED_NUMBER = re.compile(r"^\s*(?:[-*]|\d+\.|\|)\s.*\bQ\d+\b.*$", re.MULTILINE)
+TEMPO_NUMBER = re.compile(r"\bQ\d+\b")
 # A Bash command that runs `tempo add`, `reword` or `context`: first, or after `&&` or
 # `;`, with settings or a path before it, as in `cd x && TEMPO_PROJECT=y bin/tempo add`.
 TEMPO_RUN = re.compile(
@@ -894,7 +941,7 @@ TEMPO_RUN = re.compile(
 PARAGRAPH = re.compile(r"\n[ \t]*\n")
 
 
-def unrecorded_options(payload: dict[str, Any]) -> str | None:
+def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None:
     """Why the reply that just ended must not stop yet, or None.
 
     A reply that asks the user something (lettered options, a yes-or-no question or a
@@ -905,7 +952,7 @@ def unrecorded_options(payload: dict[str, Any]) -> str | None:
     text never count as asking. Runs once
     per reply: when Claude was already sent back (stop_hook_active), it lets the reply
     end. Any problem reading the transcript lets it end too, so the check can never trap
-    a session.
+    a session. With the page off, naming the question's number (Q5) counts as its link.
     """
     if payload.get("stop_hook_active"):
         return None
@@ -916,7 +963,8 @@ def unrecorded_options(payload: dict[str, Any]) -> str | None:
     if any(TEMPO_RUN.search(command) for command in commands):
         return None
     paragraphs = PARAGRAPH.split(QUOTED.sub(" ", text))
-    linked = [bool(TEMPO_LINK.search(LISTED.sub("", p))) for p in paragraphs]
+    link, listed = (TEMPO_LINK, LISTED) if page else (TEMPO_NUMBER, LISTED_NUMBER)
+    linked = [bool(link.search(listed.sub("", p))) for p in paragraphs]
     asks = any(ASK.search(p) and not linked[i] for i, p in enumerate(paragraphs))
     found = [_letters(p) for p in paragraphs]
     if {"a", "b"} <= set().union(*found):
@@ -927,9 +975,10 @@ def unrecorded_options(payload: dict[str, Any]) -> str | None:
             "This reply asks the user to decide something (lettered options, a yes-or-no"
             " question or a request for permission), but it is not in Tempo. Add it with"
             " `tempo add` (see the tempo skill; a yes-or-no question gets the options Yes"
-            " and No), then give the question in full with its link. If it is already in"
-            " Tempo, give its link in the body of the reply. Merging, publishing and"
+            " and No), then give the question in full with its %s. If it is already in"
+            " Tempo, give its %s in the body of the reply. Merging, publishing and"
             " installing still also need a one-line OK in chat."
+            % (("link", "link") if page else ("number", "number (such as Q5)"))
         )
     return None
 
@@ -1001,7 +1050,10 @@ def deliver_inbox(project: str | None) -> tuple[str, int]:
 def _describe_inbox(store: Store, entries: Entries) -> str:
     if not entries:
         return ""
-    lines = ["New from the user on the Tempo page (http://127.0.0.1:%d/):" % _port()]
+    if store.start_page():
+        lines = ["New from the user on the Tempo page (http://127.0.0.1:%d/):" % _port()]
+    else:
+        lines = ["New from the user in Tempo:"]
     for entry in entries:
         question = store.get(entry["project"], entry["number"])
         version = question["versions"][entry["version"] - 1]
@@ -1356,6 +1408,30 @@ def _store() -> Store:
     store = Store(connect())
     _opened.append(store)
     return store
+
+
+def page_on() -> bool:
+    """Whether sessions start the page (the user's `tempo config page` setting). Any
+    problem reading it counts as on, which is how Tempo worked before the setting."""
+    try:
+        with Store(connect()) as store:
+            return store.start_page()
+    except Exception as error:
+        print("tempo: page setting not read: %s" % error, file=sys.stderr)
+        return True
+
+
+def _pointer(question: Question, page: bool | None = None) -> str:
+    """Where the user finds a question: its link on the page, or with the page off, the
+    commands that show and answer it in the terminal."""
+    if page is None:
+        page = page_on()
+    if page:
+        return _url(question)
+    return "`tempo show %d`, answer with `tempo answer %d <letter>`" % (
+        question["number"],
+        question["number"],
+    )
 
 
 def _url(question: Question) -> str:
