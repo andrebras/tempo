@@ -355,10 +355,11 @@ def run_hook(args: argparse.Namespace) -> int:
         if reason:
             print(json.dumps({"decision": "block", "reason": reason}))
         return 0
-    project = setting("PROJECT") or project_name(cwd, record=True)
+    override = setting("PROJECT")
+    project = override or project_name(cwd, record=True)
     if args.event == "session-start":
         start_server(args.port)
-        text = session_note(project, args.port)
+        text = session_note(project, args.port, None if override else folder_path(cwd))
     else:
         text = take_inbox(project)
     if text:
@@ -369,9 +370,10 @@ def run_hook(args: argparse.Namespace) -> int:
     return 0
 
 
-def session_note(project: str, port: int) -> str:
+def session_note(project: str, port: int, path: str | None = None) -> str:
     """What every session is told at its start, so questions go through Tempo even when
-    the skill isn't picked and nothing about Tempo is in CLAUDE.md."""
+    the skill isn't picked and nothing about Tempo is in CLAUDE.md. When the session's
+    folder (at path) may be a known one renamed or moved, Claude is asked to say so."""
     link = "http://127.0.0.1:%d/" % port
     lines = [
         "Tempo is installed: the user reads and answers questions at %s." % link,
@@ -389,6 +391,9 @@ def session_note(project: str, port: int) -> str:
     ]
     with Store(connect()) as store:
         questions = store.list(project, "open")
+        rename = next((r for r in store.renames() if path and r["path"] == path), None)
+    if rename:
+        lines.append(rename_note(rename))
     if questions:
         lines.append("Open questions in %s:" % project)
         for q in questions:
@@ -397,6 +402,28 @@ def session_note(project: str, port: int) -> str:
                 "- %s %s%s %s" % (q["label"], q["title"], goal if q["goal"] else "", _url(q))
             )
     return "\n".join(lines)
+
+
+def rename_note(rename: dict[str, Any]) -> str:
+    """Asks Claude to tell the user that this new folder may be a renamed or moved one."""
+    candidates = rename["candidates"]
+    where = "This folder, `%s` (%s), is new to Tempo" % (rename["folder"], rename["shown"])
+    if len(candidates) == 1:
+        old = candidates[0]
+        return (
+            "- %s, and %s, filed under %s, no longer exists, so it looks renamed or moved."
+            ' Tell the user in chat: the Tempo page shows a banner with a "Link to %s" button,'
+            " or they can keep this folder as its own project. Until they pick, its questions"
+            " go to the project %s."
+            % (where, old["shown"], old["project"], old["project"], rename["project"])
+        )
+    gone = ", ".join(str(old["shown"]) for old in candidates)
+    return (
+        "- %s, and several known folders no longer exist (%s), so it may be one of them"
+        " renamed or moved. Tell the user in chat: the Tempo page shows a banner asking them"
+        " to pick this folder's project in Settings. Until they pick, its questions go to"
+        " the project %s." % (where, gone, rename["project"])
+    )
 
 
 def stop_reason(payload: dict[str, Any], cwd: str) -> str | None:
@@ -743,8 +770,8 @@ def project_name(cwd: str, record: bool = False) -> str:
     path = folder_path(cwd)
     folder = os.path.basename(path)
     with Store(connect()) as store:
-        if record:
-            store.see_folder(folder, path)
+        if record and store.see_folder(folder, path):
+            store.spot_rename(path, gone=lambda known: not os.path.exists(known))
         return store.project_for(folder, path)
 
 

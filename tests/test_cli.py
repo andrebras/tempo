@@ -374,6 +374,51 @@ class CliTest(DatabaseTest):
         self.assertFalse(os.path.exists(dead))
 
 
+class RenameNoteTest(DatabaseTest):
+    """A session starts in a folder Tempo has never seen while a known one is gone."""
+
+    def setUp(self):
+        super().setUp()
+        del os.environ["TEMPO_PROJECT"]
+        self.lab = os.path.realpath(self.tmp.name)
+        self.old = os.path.join(self.lab, "open-questions")
+        self.new = os.path.join(self.lab, "tempo")
+        os.makedirs(self.old)
+        self.store.see_folder("open-questions", self.old)
+        self.store.rename_project("open-questions", "Tempo")
+
+    def start(self, cwd):
+        with mock.patch.object(cli, "start_server"):
+            _, out, _ = run("hook", "session-start", stdin=json.dumps({"cwd": cwd}))
+        return json.loads(out)["hookSpecificOutput"]["additionalContext"]
+
+    def test_a_renamed_folder_is_offered_and_claude_is_told(self):
+        os.rename(self.old, self.new)
+        note = self.start(self.new)
+        self.assertIn("This folder, `tempo`", note)
+        self.assertIn("filed under Tempo, no longer exists, so it looks renamed or moved", note)
+        self.assertIn('"Link to Tempo" button', note)
+        # Not linked until the user says so.
+        self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
+        self.assertEqual(len(self.store.renames()), 1)
+
+    def test_several_missing_folders_ask_the_user_to_pick_in_settings(self):
+        shop = os.path.join(self.lab, "shop")
+        self.store.see_folder("shop", shop)
+        os.rename(self.old, self.new)
+        note = self.start(self.new)
+        self.assertIn("several known folders no longer exist", note)
+        self.assertIn("pick this folder's project in Settings", note)
+        self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
+
+    def test_no_missing_folder_starts_a_new_project_as_before(self):
+        os.makedirs(self.new)
+        note = self.start(self.new)
+        self.assertNotIn("is new to Tempo", note)
+        self.assertEqual(self.store.renames(), [])
+        self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
+
+
 class ProjectNameTest(DatabaseTest):
     def test_uses_the_main_checkout_folder_from_subfolders_and_worktrees(self):
         tmp = tempfile.TemporaryDirectory()
