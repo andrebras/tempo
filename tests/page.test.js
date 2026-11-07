@@ -49,7 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
-  noteOpened, questionFresh,
+  noteOpened, questionFresh, renderQuestion, state,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -248,4 +248,25 @@ test("opening the question since the change clears its dot, and a wait hides it"
 test("the record drops questions no longer open and projects that are gone", () => {
   const opened = { demo: { 1: day(1), 2: day(1) }, gone: { 1: day(1) } };
   assert.deepEqual(noteOpened(opened, ["demo"], [question(1, day(1))], "demo", null), { demo: { 1: day(1) } });
+});
+
+// The question screen.
+const openQuestion = (extra = {}) => ({
+  project: "demo", number: 1, label: "Q1", status: "open", version: 2, title: "Which way?",
+  goal: null, start_here: null, context: "We need to pick one.", answer: null, recommended: null,
+  options: [{ letter: "a", text: "Left" }, { letter: "b", text: "Right" }],
+  versions: [{ created_at: day(1), options: [] }, { created_at: day(2), options: [] }],
+  entries: [], created_at: day(1), ...extra,
+});
+
+test("while an answer is being sent, a redraw keeps the buttons disabled", () => {
+  const buttons = () => all(renderQuestion(openQuestion(), { text: "", choice: "a", version: 2 }), "BUTTON")
+    .map((button) => [button.textContent, "disabled" in button.attributes]);
+  assert.deepEqual(buttons(), [["Send answer", false], ["Ask for more context", false]]);
+  state.sending = "demo/1";
+  try {
+    assert.deepEqual(buttons(), [["Send answer", true], ["Ask for more context", true]]);
+  } finally {
+    state.sending = null;
+  }
 });

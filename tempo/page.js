@@ -1,6 +1,8 @@
 const state = {
   status: "open", project: storedProject(), seen: storedSeen(), opened: storedOpened(),
   current: null, shown: null, back: null, missing: null,
+  // The question ("project/number") whose answer, follow-up or reopen is on its way.
+  sending: null,
 };
 
 // The page shows one project at a time and remembers the last one per browser.
@@ -666,17 +668,22 @@ function renderQuestion(question, draft) {
       question.answer.body ? (chosen ? " · " : "") + question.answer.body : ""));
   }
   const error = el("p", { class: "error", id: "action-error", hidden: true });
-  // Buttons stay disabled while a request runs, so a double click can't send twice.
+  // Buttons stay disabled while a request runs, so a double click can't send twice, even
+  // when the timed refresh redraws the question meanwhile.
+  const id = `${question.project}/${question.number}`;
+  const busy = state.sending === id;
   const post = (path, body) => {
+    state.sending = id;
     document.querySelectorAll("#detail .actions button").forEach((button) => { button.disabled = true; });
     return api(`/api/questions/${encodeURIComponent(question.project)}/${question.number}/${path}`, body)
+      .finally(() => { state.sending = null; })
       .catch((problem) => {
         // The page may have been redrawn while the request ran, so the failure goes to
         // what is on screen now, naming the question if it is another one.
         document.querySelectorAll("#detail .actions button").forEach((button) => { button.disabled = false; });
         if ($("#send")) $("#send").disabled = !document.querySelector("input[name=choice]:checked");
         const line = $("#action-error") || error;
-        const elsewhere = state.shown !== `${question.project}/${question.number}`;
+        const elsewhere = state.shown !== id;
         line.textContent = elsewhere ? `${question.label}: ${problem.message}` : problem.message;
         line.hidden = false;
         throw problem;
@@ -689,7 +696,8 @@ function renderQuestion(question, draft) {
     // moves to the Open tab with it; otherwise the next refresh drops it.
     const reopen = () => { setStatus("open"); return refresh(); };
     parts.push(el("div", { class: "actions" },
-      el("button", { onclick: () => post("reopen", {}).then(reopen, () => {}) }, "Reopen to answer again")), error);
+      el("button", { disabled: busy, onclick: () => post("reopen", {}).then(reopen, () => {}) },
+        "Reopen to answer again")), error);
   } else if (question.status === "open") {
     parts.push(el("div", { class: "options", role: "radiogroup" },
       question.options.map((option) => el("label", {},
@@ -702,12 +710,12 @@ function renderQuestion(question, draft) {
       placeholder: "A note with your answer, or what you need to know more about" });
     note.value = draft.text;
     parts.push(note, el("div", { class: "actions" },
-      el("button", { class: "primary", id: "send", disabled: !draft.choice, onclick: () => {
+      el("button", { class: "primary", id: "send", disabled: busy || !draft.choice, onclick: () => {
         const picked = document.querySelector("input[name=choice]:checked");
         post("answer", { choice: picked ? picked.value : null, body: note.value })
           .then(() => goToNextOpen(question), () => {});
       } }, reopened ? "Send new answer" : "Send answer"),
-      el("button", { onclick: () => post("followup", { body: note.value }).then(refresh, () => {}) },
+      el("button", { disabled: busy, onclick: () => post("followup", { body: note.value }).then(refresh, () => {}) },
         "Ask for more context")),
       el("p", { class: "hint" }, "Pick an option to answer. To send only a note, use Ask for more context: the question stays open."),
       error);
@@ -816,7 +824,7 @@ function start() {
   window.addEventListener("hashchange", () => refresh(true));
   // Answering needs a picked option; a note alone goes through "Ask for more context".
   $("#detail").addEventListener("change", (event) => {
-    if (event.target.name === "choice" && $("#send")) $("#send").disabled = false;
+    if (event.target.name === "choice" && $("#send") && !state.sending) $("#send").disabled = false;
   });
   $("#search").addEventListener("input", () => refresh());
   $("#all-projects").addEventListener("click", () => {
@@ -838,6 +846,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
-  noteOpened, questionFresh,
+  noteOpened, questionFresh, renderQuestion, state,
 };
 else start();

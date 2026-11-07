@@ -24,6 +24,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- While an answer, follow-up or reopen is being sent, the page's buttons stay disabled even
+  when the timed refresh redraws the question. Before, a redraw enabled them again, so a
+  second click could send the answer twice.
 - Several sessions, hooks or commands opening a brand-new database at the same moment no
   longer fail now and then with "database is locked". When a write fails in a way that makes
   SQLite undo it by itself, the error you see is that one, not "no transaction is active".
