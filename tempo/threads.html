@@ -42,6 +42,13 @@
   .msg.user .body { background: var(--accent-soft); border-radius: var(--radius); padding: 10px 14px; }
   .msg.claude .body { background: var(--panel); border: 1px solid var(--line);
     border-radius: var(--radius); padding: 10px 14px; }
+  details.steps { margin-top: 6px; font-size: .85rem; color: var(--muted); }
+  details.steps summary { cursor: pointer; }
+  .step { border-left: 2px solid var(--line); padding: 2px 0 2px 10px; margin: 6px 0; }
+  .step code { font: .8rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+  .step.error { border-left-color: var(--bad); }
+  .step .out { font: .78rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 4px 0 0;
+    white-space: pre-wrap; max-height: 12em; overflow: auto; }
   form { border-top: 1px solid var(--line); padding: 12px 16px; display: grid; gap: 8px;
     max-width: 80ch; width: 100%; margin: 0 auto; }
   textarea, input { font: inherit; color: inherit; background: var(--panel);
@@ -76,7 +83,8 @@
   </main>
 </div>
 <script>
-const state = { current: null, threads: [] };
+// opened: the replies whose Details are open, kept across the refresh every few seconds.
+const state = { current: null, threads: [], opened: new Set() };
 const $ = (id) => document.getElementById(id);
 
 function remembered(key) {
@@ -117,6 +125,22 @@ function label(status) {
   return { working: "Claude is working…", waiting: "Your turn", failed: "Failed" }[status];
 }
 
+// What Claude did on the way to a reply: closed until the user opens it.
+function steps(message) {
+  const list = message.steps || [];
+  if (!list.length) return null;
+  const summary = el("summary", {}, "Details · " + list.length + (list.length === 1 ? " step" : " steps"));
+  const details = el("details", { className: "steps", open: state.opened.has(message.id) }, summary);
+  details.ontoggle = () => {
+    if (details.open) state.opened.add(message.id); else state.opened.delete(message.id);
+  };
+  details.append(...list.map((step) =>
+    el("div", { className: "step" + (step.error ? " error" : "") },
+      el("strong", {}, step.tool), " ", el("code", {}, step.input),
+      step.result ? el("pre", { className: "out" }, step.result) : null)));
+  return details;
+}
+
 async function renderThread() {
   const folder = $("folder");
   if (!state.current) {
@@ -131,7 +155,8 @@ async function renderThread() {
   for (const message of thread.messages) {
     nodes.push(el("div", { className: "msg " + message.author },
       el("div", { className: "who" }, message.author === "user" ? "You" : "Claude"),
-      el("div", { className: "body" }, message.body)));
+      el("div", { className: "body" }, message.body),
+      steps(message)));
   }
   if (thread.status === "working") nodes.push(el("p", { className: "hint" }, "Claude is working…"));
   const box = $("messages");
