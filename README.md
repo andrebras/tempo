@@ -91,16 +91,21 @@ with an alias: `alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo`.
 
 ### A badge in the tmux status bar
 
-`tempo status` prints `? 3` when three questions, in all projects, are waiting for you, and
-nothing when none are (`--project NAME` counts one project). It only reads the database, so it
+`tempo status` prints `? 3` when three questions of the current folder's project are waiting
+for you, and nothing when none are, just like the page shows one project at a time. In a
+pane in `~/Lab/shop` it counts shop's questions, not another project's. `--project NAME`
+counts one project by name and `--all` counts every project. It only reads the database, so it
 is quick and safe to run every few seconds, and it never starts the page. To show it in tmux,
 add this to `~/.tmux.conf` (use the full path of `bin/tempo`, because tmux runs it outside
 your shell and its aliases):
 
 ```tmux
 set -g status-interval 5
-set -g status-right '#(~/.claude/plugins/marketplaces/tempo/bin/tempo status) %H:%M'
+set -g status-right '#(cd "#{pane_current_path}" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status) %H:%M'
 ```
+
+tmux fills in `#{pane_current_path}`, the folder of the pane you are in, so the badge follows
+you from project to project.
 
 Then reload it with `tmux source-file ~/.tmux.conf`.
 

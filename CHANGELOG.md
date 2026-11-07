@@ -6,6 +6,13 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- `tempo status` counts the questions of the current folder's project, as the page shows one
+  project at a time, instead of every project. `--all` counts every project. The README's tmux
+  line now runs it in the folder of the pane you are in, so a pane in one project never shows
+  another project's questions.
+
 ### Fixed
 
 - Running the tests (`bin/ci`, which `bin/release` also runs) no longer starts a real page
