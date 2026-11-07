@@ -24,6 +24,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- After Claude rewords a question you have picked an option on, the page clears the pick.
+  The same letter may now name another option, so a pick kept from the old wording could
+  answer something you didn't choose. The note you were typing is kept.
 - While an answer, follow-up or reopen is being sent, the page's buttons stay disabled even
   when the timed refresh redraws the question. Before, a redraw enabled them again, so a
   second click could send the answer twice.

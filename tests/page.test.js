@@ -49,7 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
-  noteOpened, questionFresh, renderQuestion, state,
+  noteOpened, questionFresh, keptDraft, renderQuestion, state,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -250,13 +250,21 @@ test("the record drops questions no longer open and projects that are gone", () 
   assert.deepEqual(noteOpened(opened, ["demo"], [question(1, day(1))], "demo", null), { demo: { 1: day(1) } });
 });
 
-// The question screen.
+// The question screen. A redraw keeps what the user picked and typed, but a pick is kept
+// only for the wording it was made on.
 const openQuestion = (extra = {}) => ({
   project: "demo", number: 1, label: "Q1", status: "open", version: 2, title: "Which way?",
   goal: null, start_here: null, context: "We need to pick one.", answer: null, recommended: null,
   options: [{ letter: "a", text: "Left" }, { letter: "b", text: "Right" }],
   versions: [{ created_at: day(1), options: [] }, { created_at: day(2), options: [] }],
   entries: [], created_at: day(1), ...extra,
+});
+
+test("a pick made on an older wording is dropped; the note stays", () => {
+  assert.deepEqual(keptDraft({ text: "hi", choice: "b", version: 1 }, openQuestion()),
+    { text: "hi", choice: null, version: 2 });
+  assert.deepEqual(keptDraft({ text: "hi", choice: "b", version: 2 }, openQuestion()),
+    { text: "hi", choice: "b", version: 2 });
 });
 
 test("while an answer is being sent, a redraw keeps the buttons disabled", () => {

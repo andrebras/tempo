@@ -1,6 +1,6 @@
 const state = {
   status: "open", project: storedProject(), seen: storedSeen(), opened: storedOpened(),
-  current: null, shown: null, back: null, missing: null,
+  current: null, shown: null, shownVersion: null, back: null, missing: null,
   // The question ("project/number") whose answer, follow-up or reopen is on its way.
   sending: null,
 };
@@ -114,7 +114,15 @@ async function checkServer() {
 // What the user is typing for the question on screen, so a reload doesn't lose it. Kept
 // for this tab only; loadDetail takes it back when it draws the same question.
 function typedDraft() {
-  return { text: $("#note").value, choice: document.querySelector("input[name=choice]:checked")?.value };
+  return { text: $("#note").value, choice: document.querySelector("input[name=choice]:checked")?.value,
+           version: state.shownVersion };
+}
+
+// A draft to draw a question with. The note is always kept, but a pick only on the wording
+// it was made on: after a reword the same letter may name another option.
+function keptDraft(draft, question) {
+  const reworded = draft.version && draft.version !== question.version;
+  return { ...draft, choice: reworded ? null : draft.choice, version: question.version };
 }
 
 function keepDraft() {
@@ -628,15 +636,16 @@ async function loadDetail(force) {
   // Keep what the user is typing when the same question refreshes underneath them, or
   // what they had typed before the page reloaded.
   const id = `${question.project}/${question.number}`;
-  const draft = state.shown === id && $("#note")
+  const draft = keptDraft(state.shown === id && $("#note")
     ? typedDraft()
-    : takeDraft(id) || { text: "", choice: null };
+    : takeDraft(id) || { text: "", choice: null }, question);
   // A redraw of the same question keeps the note box focused, with the cursor where it was.
   const old = $("#note");
   const cursor = state.shown === id && old && document.activeElement === old
     && [old.selectionStart, old.selectionEnd, old.selectionDirection];
   state.current = key;
   state.shown = id;
+  state.shownVersion = question.version;
   detail.replaceChildren(renderQuestion(question, draft));
   if (cursor && $("#note")) {
     $("#note").focus();
@@ -846,6 +855,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
-  noteOpened, questionFresh, renderQuestion, state,
+  noteOpened, questionFresh, keptDraft, renderQuestion, state,
 };
 else start();
