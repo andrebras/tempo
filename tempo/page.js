@@ -298,7 +298,7 @@ function renderProjects(data) {
       return saveRow(
         el("div", {}, el("strong", {}, project.name),
           el("span", { class: "meta" }, count(project.questions, "question")),
-          renderFolders(project, data.projects.map((other) => other.name))),
+          renderFolders(project)),
         input,
         () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
         (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
@@ -317,25 +317,12 @@ function joinNotice(from, to, moved) {
   return `Moved ${count(moved.length, "question")} from ${from} to ${to}: now ${numbers}.`;
 }
 
-// The folders a project covers, each with its full path (wrapped when long) and a menu to
-// file it under another project. Folders remembered before paths were stored get theirs
-// the next time a session runs there, and only then can be moved.
-function renderFolders(project, projects) {
+// The folders a project covers, each with its full path (wrapped when long). Only
+// folders still on disk come from the server; a renamed one is linked from the banner.
+function renderFolders(project) {
   if (!project.folders.length) return null;
   return el("ul", { class: "folders", "aria-label": "Folders" }, project.folders.map((folder) =>
-    el("li", {}, folder.folder, " ", el("span", { class: "path", title: folder.path || false },
-      folder.shown || "path not known yet"), folder.path && moveMenu(folder, project.name, projects))));
-}
-
-function moveMenu(folder, current, projects) {
-  const names = [...new Set([...projects, folder.folder])].sort((a, b) => a.localeCompare(b));
-  const error = el("span", { class: "error", hidden: true });
-  const select = el("select", { class: "move", "aria-label": `Project for ${folder.shown}`,
-    onchange: () => api("/api/folders/link", { path: folder.path, project: select.value }).then(
-      (settings) => { renderSettings(settings); renderRenames(settings.renames); },
-      (problem) => { error.textContent = problem.message; error.hidden = false; }) },
-  names.map((name) => el("option", { value: name, selected: name === current }, name)));
-  return [select, error];
+    el("li", {}, folder.folder, " ", el("span", { class: "path", title: folder.path }, folder.shown))));
 }
 
 // Keep the page on a renamed project, and the way back pointing at the same question.
@@ -659,5 +646,7 @@ function start() {
   setInterval(() => { refresh(false); checkServer(); }, 4000);
 }
 
-if (typeof module === "object") module.exports = { rich, inline, openFor, joinNotice, serverChanged };
+if (typeof module === "object") module.exports = {
+  rich, inline, openFor, joinNotice, serverChanged, renderFolders,
+};
 else start();
