@@ -240,6 +240,10 @@ def _link_folder(request: Handler, store: Store, args: list[str], body: dict[str
     request._save_setting(store, lambda: _link(store, body))
 
 
+def _start_page(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    request._save_setting(store, lambda: _set_start_page(store, body))
+
+
 def _keep_folder(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
     request._save_setting(store, lambda: _keep(store, body))
 
@@ -261,6 +265,7 @@ ROUTES: list[tuple[str, tuple[str | None, ...], Run]] = [
     ("POST", ("api", "projects", ANY, "rename"), _rename),
     ("POST", ("api", "folders", "link"), _link_folder),
     ("POST", ("api", "folders", "keep"), _keep_folder),
+    ("POST", ("api", "settings", "page"), _start_page),
 ]
 
 
@@ -327,8 +332,9 @@ def _commit() -> str | None:
 
 def _settings(store: Store) -> dict[str, Any]:
     """What the Settings screen shows: projects with their folders, and new folders that
-    may be renamed ones. Only folders still on disk are listed; a folder that no longer
-    exists, or whose path isn't known yet, stays in the database but is hidden."""
+    may be renamed ones, and whether each session starts the page. Only folders still on
+    disk are listed; a folder that no longer exists, or whose path isn't known yet, stays
+    in the database but is hidden."""
     projects = [
         dict(project, folders=[folder for folder in project["folders"] if _on_disk(folder)])
         for project in store.project_summaries()
@@ -336,6 +342,7 @@ def _settings(store: Store) -> dict[str, Any]:
     return {
         "projects": projects,
         "renames": store.renames(),
+        "start_page": store.start_page(),
     }
 
 
@@ -352,6 +359,15 @@ def _link(store: Store, body: Any) -> dict[str, Any]:
 def _keep(store: Store, body: Any) -> dict[str, Any]:
     """The banner's "keep it apart": the folder stays its own project."""
     store.keep_folder(_text(body, "path") or "")
+    return {}
+
+
+def _set_start_page(store: Store, body: Any) -> dict[str, Any]:
+    """Settings' "Start the page with each session" switch, the same as `tempo config page`."""
+    on = body.get("on")
+    if not isinstance(on, bool):
+        raise QuestionError("on must be true or false")
+    store.set_start_page(on)
     return {}
 
 
