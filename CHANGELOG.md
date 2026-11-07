@@ -8,6 +8,8 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Changed
 
+- Follow-ups from the page now tell Claude to answer them in the question itself with
+  `tempo reword`, as the skill says, so the answer shows in the box the user reads.
 - The empty screen says "Nothing is waiting on you" (or "No answered questions"), without the
   project name, which the header already shows.
 - The empty screen's width follows the font (70 characters) instead of a fixed 460 pixels,
