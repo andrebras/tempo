@@ -604,9 +604,11 @@ function renderQuestion(question, draft) {
   const refresh = () => { state.current = null; state.shown = null; return Promise.all([loadDetail(true), loadList()]); };
   if (question.status === "answered") {
     // Answered questions are read-only; reopening is a deliberate step, so an old tab
-    // can't add a second answer by accident.
+    // can't add a second answer by accident. The question is open again, so the page
+    // moves to the Open tab with it; otherwise the next refresh drops it.
+    const reopen = () => { setStatus("open"); return refresh(); };
     parts.push(el("div", { class: "actions" },
-      el("button", { onclick: () => post("reopen", {}).then(refresh, () => {}) }, "Reopen to answer again")), error);
+      el("button", { onclick: () => post("reopen", {}).then(reopen, () => {}) }, "Reopen to answer again")), error);
   } else if (question.status === "open") {
     parts.push(el("div", { class: "options", role: "radiogroup" },
       question.options.map((option) => el("label", {},
