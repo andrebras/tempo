@@ -42,9 +42,24 @@ function priorityBadge(question) {
   return el("span", { class: `badge ${question.priority}` }, question.priority);
 }
 
+// After "Ask for more", until Claude replies: "sent" while no session has picked the
+// follow-up up, "seen" once one has. The list gets it from the server; a full question
+// works it out from its thread.
 function waitingOnClaude(question) {
+  if (question.waiting !== undefined) return question.waiting;
   const last = question.entries[question.entries.length - 1];
-  return last && last.kind === "followup";
+  if (last?.kind !== "followup") return null;
+  return last.delivered ? "seen" : "sent";
+}
+
+function waitBadge(question) {
+  const waiting = waitingOnClaude(question);
+  if (!waiting) return null;
+  if (waiting === "sent") {
+    return el("span", { class: "badge wait", title: "No Claude session has picked this up yet" }, "Sent to Claude");
+  }
+  return el("span", { class: "badge wait working", title: "A Claude session has your message" },
+    "Claude is on it", el("span", { class: "dots", "aria-hidden": "true" }, el("i"), el("i"), el("i")));
 }
 
 async function loadList() {
@@ -88,7 +103,8 @@ async function loadList() {
                           class: `prio-${question.priority}${active ? " active" : ""}`,
                           title: question.priority },
       el("span", { class: "label" }, question.label),
-      el("span", { class: "title" }, question.title)));
+      el("span", { class: "title" }, question.title),
+      waitBadge(question)));
   }
   return shown;
 }
@@ -348,7 +364,7 @@ function renderQuestion(question, draft) {
   const parts = [
     el("div", { class: "eyebrow" }, `${question.project} · ${question.label} · ${question.status}${reworded}`,
        priorityBadge(question),
-       waitingOnClaude(question) && el("span", { class: "badge wait" }, "waiting on Claude")),
+       waitBadge(question)),
     el("h2", {}, question.title),
     el("div", { class: "context" }, rich(question.context)),
   ];

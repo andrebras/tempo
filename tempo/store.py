@@ -384,7 +384,13 @@ class Store:
         # Every list, on the page or from the command, first moves old answers to Archived.
         self.archive_old()
         sql = (
-            "SELECT q.*, v.title, v.context, v.version FROM questions q"
+            "SELECT q.*, v.title, v.context, v.version,"
+            # Whether the user's last word is a follow-up Claude hasn't answered yet: 'sent'
+            # until a session picks it up, 'seen' once one has, else NULL.
+            " (SELECT CASE WHEN e.kind = 'followup' AND e.author = 'user' THEN"
+            " CASE WHEN e.delivered_at IS NULL THEN 'sent' ELSE 'seen' END END"
+            " FROM entries e WHERE e.question_id = q.id ORDER BY e.id DESC LIMIT 1) AS waiting"
+            " FROM questions q"
             " JOIN versions v ON v.question_id = q.id"
             " AND v.version = (SELECT MAX(version) FROM versions WHERE question_id = q.id)"
             " WHERE 1 = 1"
@@ -413,6 +419,7 @@ class Store:
             item["title"] = row["title"]
             item["context"] = row["context"]
             item["version"] = row["version"]
+            item["waiting"] = row["waiting"]
             rows.append(item)
         return rows
 

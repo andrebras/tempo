@@ -4,6 +4,14 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- "Waiting on Claude" now shows in two steps, in the question header and on its row in the
+  list: "Sent to Claude" until a session picks the follow-up up, then "Claude is on it" with
+  moving dots (still when Reduce motion is on).
+
 ## [0.3.3] - 2026-11-07
 
 ### Added
