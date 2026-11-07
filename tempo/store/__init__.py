@@ -56,6 +56,7 @@ from tempo.store.schema import (
     branch_db,
     connect,
     db_path,
+    default_db,
     setting,
 )
 
@@ -93,6 +94,7 @@ __all__ = [
     "branch_db",
     "connect",
     "db_path",
+    "default_db",
     "now",
     "setting",
     "shown_path",

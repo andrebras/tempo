@@ -4,6 +4,19 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Running the tests (`bin/ci`, which `bin/release` also runs) no longer starts a real page
+  server. One test did, on port 2204 and on the test's throwaway database: during the 0.6.0
+  release it replaced your page for a few minutes, so answers given then were lost, and it
+  kept running after the tests ended. The tests now use a port of their own, and any test
+  that would start a real server fails instead.
+- A Tempo page from 0.5 or older, whose `/health` does not say which database it uses, is no
+  longer replaced by code on a test or branch database. It is taken to be on the real
+  database, and only code on the real database replaces it.
+
 ## [0.6.0] - 2026-11-07
 
 ### Added

@@ -32,6 +32,11 @@ def db_path() -> str:
     if chosen:
         # Settings such as Claude Code's env block pass "~" and relative paths as written.
         return os.path.abspath(os.path.expanduser(chosen))
+    return default_db()
+
+
+def default_db() -> str:
+    """The real questions' database, the one used when nothing chooses another."""
     path, old = os.path.expanduser(DEFAULT_DB), os.path.expanduser(OLD_DEFAULT_DB)
     if not os.path.exists(path) and os.path.exists(old):
         return old

@@ -10,6 +10,7 @@ import tempfile
 import unittest
 
 from tempo.store import CODE_ROOT, Store, connect
+from tests import TEST_PORT
 
 TEMPO = os.path.join(CODE_ROOT, "bin", "tempo")
 SESSION = "5f0c9a1e-3b7d-4c2a-9e61-0d8f2b4a7c35"
@@ -31,7 +32,7 @@ class HooksEndToEndTest(unittest.TestCase):
             for key, value in os.environ.items()
             if not key.startswith(("TEMPO_", "OQ_")) and key != "PYTHONPATH"
         }
-        self.env.update(HOME=home, TEMPO_DB=self.db)
+        self.env.update(HOME=home, TEMPO_DB=self.db, TEMPO_PORT=str(TEST_PORT))
         self.reply("Carry on", "Done: the tests pass.")
 
     def reply(self, prompt, text):
