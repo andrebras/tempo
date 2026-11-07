@@ -33,6 +33,22 @@ async function api(path, body) {
   return data;
 }
 
+// The server this page first talked to. Its code and the page's code match; after a
+// restart (often an update) the data may change shape, so the page reloads itself.
+let firstServer = null;
+
+function serverChanged(first, now) {
+  return Boolean(first && now && (first.pid !== now.pid || first.started !== now.started));
+}
+
+async function checkServer() {
+  try {
+    const now = await api("/health");
+    if (!firstServer) firstServer = now;
+    else if (serverChanged(firstServer, now)) location.reload();
+  } catch { /* restarting or down: try again on the next tick */ }
+}
+
 function route() {
   const match = location.hash.match(/^#\/(.+)\/(\d+)$/);
   return match ? { project: decodeURIComponent(match[1]), number: Number(match[2]) } : null;
@@ -639,8 +655,9 @@ function start() {
   });
 
   refresh(true);
-  setInterval(() => refresh(false), 4000);
+  checkServer();
+  setInterval(() => { refresh(false); checkServer(); }, 4000);
 }
 
-if (typeof module === "object") module.exports = { rich, inline, openFor, joinNotice };
+if (typeof module === "object") module.exports = { rich, inline, openFor, joinNotice, serverChanged };
 else start();

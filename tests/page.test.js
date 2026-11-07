@@ -47,7 +47,7 @@ class Element extends Node {
 globalThis.Node = Node;
 globalThis.document = { createElement: (tag) => new Element(tag) };
 
-const { rich, inline, openFor, joinNotice } = require("../tempo/page.js");
+const { rich, inline, openFor, joinNotice, serverChanged } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
 // inline() returns plain strings for its text parts; inside elements they are Text nodes.
@@ -141,4 +141,13 @@ test("joinNotice says how many questions moved and their new numbers", () => {
     joinNotice("tempo", "Tempo", [{ from: 1, to: 28 }, { from: 2, to: 29 }]),
     "Moved 2 questions from tempo to Tempo: now Q28–Q29.",
   );
+});
+
+test("serverChanged notices a restarted server, not a missing answer", () => {
+  const first = { pid: 1, started: "2026-11-07T11:03:27Z" };
+  assert.equal(serverChanged(first, { ...first }), false);
+  assert.equal(serverChanged(first, { ...first, pid: 2 }), true);
+  assert.equal(serverChanged(first, { ...first, started: "2026-11-07T12:00:00Z" }), true);
+  assert.equal(serverChanged(null, first), false);
+  assert.equal(serverChanged(first, null), false);
 });
