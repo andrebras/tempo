@@ -16,6 +16,12 @@ All notable changes to Tempo are listed here. The format follows
   and Deny buttons, and the thread list says "Needs your OK". Claude waits for the answer;
   with no answer in 10 minutes, the call is denied.
 
+### Changed
+
+- A session start replaces the page only when it runs an older version of Tempo, or is
+  broken. A page of the same or a newer version keeps running, whatever folder it runs
+  from, so the installed plugin and a checkout no longer keep replacing each other's page.
+
 ## [0.5.0] - 2026-11-07
 
 ### Added

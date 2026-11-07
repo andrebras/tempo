@@ -485,14 +485,24 @@ class StartServerTest(unittest.TestCase):
         self.kill.assert_not_called()
         self.popen.assert_not_called()
 
-    def test_replaces_a_tempo_of_another_version_or_folder(self):
-        for change in [{"version": "0.0.1"}, {"root": "/Users/me/Lab/open-questions"}]:
+    def test_replaces_an_older_tempo(self):
+        for change in [{"version": "0.0.1"}, {"version": None}, {"version": "dev"}]:
             with self.subTest(change=change):
                 self.listening = True
                 self.kill.reset_mock()
                 self.serve(health={**self.current, **change})
                 self.assertTrue(cli.start_server(2204))
                 self.kill.assert_called_once_with(42, cli.signal.SIGTERM)
+
+    def test_keeps_a_tempo_of_the_same_or_a_newer_version_from_another_folder(self):
+        # With the installed plugin and a checkout both in use, neither keeps replacing
+        # the other's page.
+        for change in [{"root": "/Users/me/Lab/tempo"}, {"version": "99.0.0", "root": "/x"}]:
+            with self.subTest(change=change):
+                self.serve(health={**self.current, **change})
+                self.assertFalse(cli.start_server(2204))
+                self.kill.assert_not_called()
+                self.popen.assert_not_called()
 
     def test_keeps_an_old_server_whose_page_works(self):
         self.serve(page=b"<title>Tempo</title>")
@@ -519,6 +529,19 @@ class StartServerTest(unittest.TestCase):
         self.kill.side_effect = None
         self.assertFalse(cli.start_server(2204))
         self.popen.assert_not_called()
+
+
+class OlderTest(unittest.TestCase):
+    def test_compares_versions_by_number(self):
+        self.assertTrue(cli._older("0.4.0", "0.5.0"))
+        self.assertTrue(cli._older("0.9.0", "0.10.0"))
+        self.assertFalse(cli._older("0.5.0", "0.5.0"))
+        self.assertFalse(cli._older("0.10.0", "0.9.0"))
+
+    def test_an_unknown_running_version_is_older_but_an_unknown_own_one_replaces_nothing(self):
+        self.assertTrue(cli._older(None, "0.5.0"))
+        self.assertTrue(cli._older("dev", "0.5.0"))
+        self.assertFalse(cli._older("0.4.0", None))
 
 
 class TempoPidTest(unittest.TestCase):
