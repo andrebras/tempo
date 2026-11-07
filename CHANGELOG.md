@@ -11,6 +11,10 @@ All notable changes to Tempo are listed here. The format follows
 - Each reply in a thread has a "Details" toggle, closed at first, that lists the steps
   Claude took on the way: each tool it used, a short summary of what it gave the tool, and
   the start of the result.
+- When a thread's Claude needs approval for a tool call (for example a network command
+  outside the `acceptEdits` permission mode), the request shows in the thread with Allow
+  and Deny buttons, and the thread list says "Needs your OK". Claude waits for the answer;
+  with no answer in 10 minutes, the call is denied.
 
 ## [0.5.0] - 2026-11-07
 
