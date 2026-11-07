@@ -53,7 +53,10 @@ the hooks do nothing but write their line in the log.
 
 A Claude session keeps the plugin version it started with, hooks included. After you update
 Tempo, restart open sessions, for example with `claude --continue`, so they use the new
-hooks.
+hooks. When a session's hooks are older than the installed plugin (as listed in
+`~/.claude/plugins/installed_plugins.json`), the SessionStart and UserPromptSubmit hooks say
+so once in that session, so Claude can ask you to restart it. Code run from a git checkout
+or worktree never says this.
 
 ## The page server
 

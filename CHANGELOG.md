@@ -12,6 +12,12 @@ All notable changes to Tempo are listed here. The format follows
   code) and for each hook run (event, project and what happened, such as "delivered 2" or
   "blocked: no wait"), so you can see afterwards what Tempo did. It never holds request bodies or
   answer text, and it moves to `server.log.1` once it passes about 1 MB.
+- A session whose Tempo is older than the installed plugin says so once: its SessionStart
+  or UserPromptSubmit hook asks Claude to tell you to restart the session
+  (`claude --continue`). Sessions keep the hooks they started with, so before this an old
+  session kept running old code without saying so. Code run from a git checkout stays quiet.
+- A test runs the previous release's `tempo add`, `list` and prompt hook against a database
+  migrated by the current code, so a release that breaks older sessions fails CI.
 
 ### Fixed
 
