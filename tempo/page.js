@@ -235,7 +235,9 @@ function renderProjects(data) {
   return el("section", { class: "card" },
     el("h3", {}, "Projects"),
     el("p", {}, "A project's name is what you see everywhere. Renaming it takes its questions and the "
-      + "git folders it covers along. To join two projects, rename one to the other's name; that works while only one of them has questions."),
+      + "git folders it covers along. To join two projects, rename one to the other's name. If both have questions, "
+      + "the renamed one's questions move after the other's and get new numbers; each keeps a note of its old one."),
+    data.notice && el("p", { class: "meta", role: "status" }, data.notice),
     data.projects.length ? data.projects.map((project) => {
       const input = el("input", { value: project.name, "aria-label": `New name for ${project.name}` });
       const folders = project.folders.length
@@ -247,9 +249,18 @@ function renderProjects(data) {
         () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
         (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
           renamed(project.name, name);
-          return result;
+          return { ...result, notice: joinNotice(project.name, name, result.moved || []) };
         }), "Rename");
     }) : el("p", { class: "empty" }, "No projects yet. One appears when Claude asks its first question."));
+}
+
+// Says where a joined project's questions went, e.g. "Moved 5 questions from tempo to
+// Tempo: now Q28–Q32." Nothing when no numbers changed.
+function joinNotice(from, to, moved) {
+  if (!moved.length) return null;
+  const first = moved[0].to, last = moved[moved.length - 1].to;
+  const numbers = first === last ? `Q${first}` : `Q${first}–Q${last}`;
+  return `Moved ${count(moved.length, "question")} from ${from} to ${to}: now ${numbers}.`;
 }
 
 // Keep the page on a renamed project, and the way back pointing at the same question.
@@ -567,5 +578,5 @@ function start() {
   setInterval(() => refresh(false), 4000);
 }
 
-if (typeof module === "object") module.exports = { rich, inline, openFor };
+if (typeof module === "object") module.exports = { rich, inline, openFor, joinNotice };
 else start();

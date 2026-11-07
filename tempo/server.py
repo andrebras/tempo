@@ -84,7 +84,9 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
             if len(parts) == 5 and parts[:2] == ["api", "questions"]:
                 self._question_action(store, parts[2], parts[3], parts[4], body)
             elif len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "rename":
-                self._save_setting(store, lambda: store.rename_project(parts[2], body.get("name")))
+                self._save_setting(
+                    store, lambda: {"moved": store.rename_project(parts[2], body.get("name"))}
+                )
             else:
                 self._json(404, {"error": "Not found"})
 
@@ -104,12 +106,12 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
             else:
                 self._json(404, {"error": "Not found"})
 
-        def _save_setting(self, store: Store, change: Callable[[], object]) -> None:
-            """Make a change from Settings and answer with the new Settings state."""
+        def _save_setting(self, store: Store, change: Callable[[], dict[str, Any]]) -> None:
+            """Make a change from Settings and answer with the new Settings state, plus
+            whatever the change reports."""
 
             def run() -> dict[str, Any]:
-                change()
-                return _settings(store)
+                return {**change(), **_settings(store)}
 
             self._handle(run)
 

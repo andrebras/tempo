@@ -46,6 +46,8 @@ Names = list[str]
 Folders = list[dict[str, str]]
 Summaries = list[dict[str, Any]]
 Ids = list[int]
+# Questions moved by a join: {"from": old number, "to": new number}.
+Moves = list[dict[str, int]]
 
 
 def setting(name: str) -> str | None:
@@ -508,11 +510,13 @@ class Store:
             for name in sorted(set(counts) | set(folders), key=str.lower)
         ]
 
-    def rename_project(self, old: str, new: str | None) -> None:
+    def rename_project(self, old: str, new: str | None) -> Moves:
         """Give a project a new name: its questions, numbering and folders move with it.
 
-        Joining two projects is fine as long as only one of them has questions; otherwise
-        both would have a Q1.
+        Joining a project into one that already has questions moves its questions after
+        the other's, in their order, and notes each one's old number in its thread.
+        Returns those moves as {"from": old number, "to": new number}; empty when the
+        numbers stay the same.
         """
         new = (new or "").strip()
         if not new:
@@ -521,19 +525,18 @@ class Store:
             raise QuestionError("The project is already called %s" % new)
         if not any(project["name"] == old for project in self.project_summaries()):
             raise QuestionError("There is no project called %s" % old)
-        if self._question_count(new) and self._question_count(old):
-            raise QuestionError(
-                "%s already has questions, so their numbers would clash; pick another name" % new
-            )
+        moves: Moves = []
         with self._transaction():
-            if self._question_count(old) or self._has_project_row(old):
+            if self._question_count(new) and self._question_count(old):
+                moves = self._renumber_into(old, new)
+            elif self._question_count(old) or self._has_project_row(old):
                 self.db.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", (new,))
                 self.db.execute(
                     "UPDATE projects SET next_number = MAX(next_number, ?) WHERE name = ?",
                     (self._next_number(old), new),
                 )
                 self.db.execute("UPDATE questions SET project = ? WHERE project = ?", (new, old))
-                self.db.execute("DELETE FROM projects WHERE name = ?", (old,))
+            self.db.execute("DELETE FROM projects WHERE name = ?", (old,))
             moved = self.db.execute(
                 "UPDATE folders SET project = ? WHERE project = ?", (new, old)
             ).rowcount
@@ -543,6 +546,32 @@ class Store:
                 self.db.execute(
                     "INSERT OR IGNORE INTO folders (folder, project) VALUES (?, ?)", (old, new)
                 )
+        return moves
+
+    def _renumber_into(self, old: str, new: str) -> Moves:
+        """Move old's questions after new's, keeping their order, and note where they came from."""
+        start = self._next_number(new)
+        rows = self.db.execute(
+            "SELECT * FROM questions WHERE project = ? ORDER BY number", (old,)
+        ).fetchall()
+        moves = []
+        for position, row in enumerate(rows):
+            number = start + position
+            self.db.execute(
+                "UPDATE questions SET project = ?, number = ? WHERE id = ?",
+                (new, number, row["id"]),
+            )
+            self._insert_entry(
+                row,
+                "context",
+                "claude",
+                "Moved from %s Q%d when %s joined %s." % (old, row["number"], old, new),
+            )
+            moves.append({"from": row["number"], "to": number})
+        self.db.execute(
+            "UPDATE projects SET next_number = ? WHERE name = ?", (start + len(rows), new)
+        )
+        return moves
 
     def undelivered(self, project: str | None = None) -> Entries:
         sql = (
