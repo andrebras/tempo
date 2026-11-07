@@ -942,8 +942,16 @@ class CliTest(DatabaseTest):
         self.assertNotIn("127.0.0.1", note)
         self.assertIn("never give page links", note)
         self.assertIn("- Q1 Which way? `tempo show 1`, answer with `tempo answer 1 <letter>`", note)
-        self.assertIn("number, title and `tempo show N`", note)
+        self.assertIn("the number, then the title, as in `- Q3 Pick a colour`", note)
         self.assertIn("hook session-start demo note sent, page off", self.hook_log())
+
+    def test_the_session_note_asks_for_linked_question_numbers(self):
+        with mock.patch.object(cli, "start_server"):
+            _, out, _ = run("hook", "session-start", stdin="{}")
+        note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("the number as a link to the question, then the title", note)
+        self.assertIn("`- [Q3](http://127.0.0.1:2204/#/shop/3) Pick a colour`", note)
+        self.assertIn("Never print a bare link.", note)
 
     def test_with_the_page_off_serve_still_starts_it(self):
         self.store.set_start_page(False)

@@ -8,11 +8,15 @@ description: Records every question Claude needs the user to decide on in the Te
 Questions for the user live in a SQLite database, not only in chat. The user reads and answers
 them on a local page at http://127.0.0.1:2204/ (started by this plugin's SessionStart hook,
 which also lists the project's open questions). End every update with those open questions,
-one line each: number, title and link. If a reply asks the user something (lettered options,
+one line each: the number as a link to the question, then the title, as in
+`- [Q3](http://127.0.0.1:2204/#/shop/3) Pick a colour`. Never print the bare link: the user
+clicks the number. With the page off, write the number and title only (`- Q3 Pick a colour`).
+If a reply asks the user something (lettered options,
 a yes-or-no question, "May I…?", "Should I…?") without running `tempo add` (or `tempo reword`
 or `tempo context`) or linking the question in the body of the reply, the Stop hook sends you
 back once to add it. A link on a list item that names a Q number, as in the closing list, doesn't
-count: to point at a question already in Tempo, put its link in a sentence or a heading.
+count: to point at a question already in Tempo, link its number in a sentence or a heading,
+as in `**[Q5](http://127.0.0.1:2204/#/shop/5): Pick a colour?**`.
 
 The user can turn the page off (`tempo config page off`, or in the page's Settings). Then
 sessions don't start it, and the SessionStart note says so. In that mode, never give page
@@ -63,8 +67,9 @@ tempo add --title "Where should the export button go?" \
 ```
 
 The command prints the number and a link (with the page off, the commands to show and answer
-it). In chat, give the question in full with its options and the link (or those commands), so
-the user can answer in either place. `tempo add` refuses incomplete questions
+it). In chat, give the question in full with its options, its number linked to the page as in
+`**[Q5](http://127.0.0.1:2204/#/shop/5): Where should the export button go?**` (with the page
+off, the plain number), so the user can answer in either place. `tempo add` refuses incomplete questions
 and reused numbers: fix the question, don't work around the check.
 
 Every choice you leave to the user goes into Tempo, however small, including the ones that
@@ -131,7 +136,7 @@ question: it shows at the bottom of the thread, below the options, where it is e
 
 When answering needs research (reading code, docs, past decisions), hand it to a subagent and
 have it run `tempo reword` itself. Then tell the user in chat that the question
-was updated, with its link (or `tempo show N` with the page off).
+was updated, with its number linked to it (the plain number with the page off).
 
 ## Other commands
 

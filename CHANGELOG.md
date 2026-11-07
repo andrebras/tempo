@@ -8,6 +8,10 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Added
 
+- Claude now links the question number instead of printing the page address: the closing
+  list reads `- [Q3](…) Pick a colour`, and a question in a reply is headed
+  `**[Q3](…): Pick a colour?**`, so you click Q3 in the terminal. With the page off, the
+  number is plain text.
 - `tempo config page off` stops sessions from starting the page, for when you answer from the
   terminal. Claude then points you to `tempo show N` and `tempo answer N <letter>` instead of
   page links. `tempo serve --background` still starts the page on demand, and
