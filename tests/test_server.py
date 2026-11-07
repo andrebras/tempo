@@ -128,6 +128,34 @@ class ServerTest(DatabaseTest):
         self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
         self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
 
+    def test_offers_a_renamed_folder_on_every_screen_and_links_it(self):
+        self.store.see_folder("open-questions", "/lab/open-questions")
+        self.store.see_folder("tempo", "/lab/tempo")
+        self.store.spot_rename("/lab/tempo", gone=lambda path: path == "/lab/open-questions")
+        _, data = self.request("GET", "/api/questions")
+        [rename] = json.loads(data)["renames"]
+        self.assertEqual(rename["candidates"][0]["project"], "open-questions")
+        status, data = self.request(
+            "POST", "/api/folders/link", {"path": "/lab/tempo", "project": "open-questions"}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)["renames"], [])
+        self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "open-questions")
+
+    def test_keeps_a_new_folder_apart(self):
+        self.store.see_folder("open-questions", "/lab/open-questions")
+        self.store.see_folder("tempo", "/lab/tempo")
+        self.store.spot_rename("/lab/tempo", gone=lambda path: True)
+        status, data = self.request("POST", "/api/folders/keep", {"path": "/lab/tempo"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)["renames"], [])
+        _, data = self.request("GET", "/api/questions")
+        self.assertEqual(json.loads(data)["renames"], [])
+        status, data = self.request(
+            "POST", "/api/folders/link", {"path": "/nowhere", "project": "x"}
+        )
+        self.assertEqual(status, 400)
+
     def test_reports_settings_errors(self):
         self.add(project="other")
         status, data = self.request("POST", "/api/projects/demo/rename", {"name": " "})
@@ -168,6 +196,7 @@ class ServerTest(DatabaseTest):
         self.store.see_folder("onzehq")
         for path, body in [
             ("/api/projects/demo/rename", {"name": "Hijacked"}),
+            ("/api/folders/link", {"path": "/x/onzehq", "project": "Hijacked"}),
         ]:
             with self.subTest(path=path):
                 status, _ = self.request("POST", path, body, origin="https://evil.example")

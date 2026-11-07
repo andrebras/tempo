@@ -65,7 +65,15 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
                 project = query.get("project", [None])[0]
                 # Projects whose folders have no questions yet are listed too.
                 projects = [summary["name"] for summary in store.project_summaries()]
-                self._json(200, {"questions": store.list(project, status), "projects": projects})
+                # New folders that may be renamed ones: the banner shows on every screen.
+                self._json(
+                    200,
+                    {
+                        "questions": store.list(project, status),
+                        "projects": projects,
+                        "renames": store.renames(),
+                    },
+                )
             elif len(parts) == 4 and parts[:2] == ["api", "questions"]:
                 self._handle(lambda: store.get(parts[2], _int(parts[3])))
             elif parts == ["api", "settings"]:
@@ -87,6 +95,10 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
                 self._save_setting(
                     store, lambda: {"moved": store.rename_project(parts[2], body.get("name"))}
                 )
+            elif parts == ["api", "folders", "link"]:
+                self._save_setting(store, lambda: _link(store, body))
+            elif parts == ["api", "folders", "keep"]:
+                self._save_setting(store, lambda: _keep(store, body))
             else:
                 self._json(404, {"error": "Not found"})
 
@@ -202,8 +214,21 @@ def _commit() -> str | None:
 
 
 def _settings(store: Store) -> dict[str, Any]:
-    """What the Settings screen shows: projects with their folders."""
-    return {"projects": store.project_summaries()}
+    """What the Settings screen shows: projects with their folders, and new folders that
+    may be renamed ones."""
+    return {"projects": store.project_summaries(), "renames": store.renames()}
+
+
+def _link(store: Store, body: Any) -> dict[str, Any]:
+    """File a folder under a project, from the rename banner or Settings."""
+    store.link_folder(str(body.get("path") or ""), body.get("project"))
+    return {}
+
+
+def _keep(store: Store, body: Any) -> dict[str, Any]:
+    """The banner's "keep it apart": the folder stays its own project."""
+    store.keep_folder(str(body.get("path") or ""))
+    return {}
 
 
 def _parts(path: str) -> list[str]:
