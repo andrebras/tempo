@@ -24,6 +24,19 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- The skill no longer mentions answers "given with `tempo`": there is no command to answer
+  a question, only the page and chat.
+- A project can't be named `.` or `..` any more, with `--project`, `TEMPO_PROJECT` or a
+  rename. The page could not open such a project's questions, because the browser reads
+  those names in a link as steps between folders.
+- `tempo show 12b` shows Q12, so the short code the user names an answer with works there
+  too. It failed with "invalid _number value".
+- After Claude rewords a question you have picked an option on, the page clears the pick.
+  The same letter may now name another option, so a pick kept from the old wording could
+  answer something you didn't choose. The note you were typing is kept.
+- While an answer, follow-up or reopen is being sent, the page's buttons stay disabled even
+  when the timed refresh redraws the question. Before, a redraw enabled them again, so a
+  second click could send the answer twice.
 - Several sessions, hooks or commands opening a brand-new database at the same moment no
   longer fail now and then with "database is locked". When a write fails in a way that makes
   SQLite undo it by itself, the error you see is that one, not "no transaction is active".
@@ -70,6 +83,22 @@ All notable changes to Tempo are listed here. The format follows
   answer naming an option its question no longer had) dropped it without a word. It is now
   marked delivered only once its text is ready, and an option that is missing shows as its
   letter alone.
+- A `tempo wait` that was killed no longer counts as running when the computer gives its process
+  number to another program. The Stop hook now checks that the process really runs `tempo wait`,
+  so it asks Claude to start a new wait instead of trusting a dead one.
+- A `tempo wait` started by an older install, which leaves no marker file, now counts as
+  running. Before, the Stop hook only looked for markers, so it sent Claude back after every
+  reply to start a wait that was already running. Such a wait counts for the project it names
+  with `--project` or `TEMPO_PROJECT`, else for its folder's project.
+- A running `tempo wait` follows its folder's project when the project is renamed or joined
+  into another in Settings. Before, it kept waiting under the old name, so it missed every
+  answer and the Stop hook no longer saw it as running.
+- One session no longer takes other sessions' news. `tempo inbox --all-projects` now only shows
+  every project's answers and follow-ups, without marking them seen, and `tempo wait` no longer
+  waits for every project: `--all-projects` is still accepted for one release, with a note, and
+  waits for the folder's project only.
+- A `tempo wait` whose session has ended stops at its next check. Before, it kept running for up
+  to its timeout and could take an answer meant for a later session in the same project.
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still

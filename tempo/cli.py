@@ -9,6 +9,7 @@ import json
 import os
 import re
 import signal
+import string
 import subprocess
 import sys
 import time
@@ -87,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     add.set_defaults(run=run_add)
 
     show = commands.add_parser("show", help="Show a question with its whole thread")
-    show.add_argument("number", type=_number)
+    show.add_argument("number", type=_code, help="A number such as 12, Q12, or 12b for an option")
     show.add_argument("--project")
     show.add_argument("--json", action="store_true")
     show.set_defaults(run=run_show)
@@ -147,14 +148,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     inbox = commands.add_parser("inbox", help="Print answers and follow-ups not yet seen")
     inbox.add_argument("--project")
-    inbox.add_argument("--all-projects", action="store_true")
+    inbox.add_argument(
+        "--all-projects",
+        action="store_true",
+        help="Show every project's news without marking it seen, so its sessions still get it",
+    )
     inbox.set_defaults(run=run_inbox)
 
     wait = commands.add_parser(
         "wait", help="Block until the user answers or follows up, print it, then exit"
     )
     wait.add_argument("--project")
-    wait.add_argument("--all-projects", action="store_true")
+    # Waiting for every project took other sessions' news; the option is still accepted,
+    # with a note, for one release.
+    wait.add_argument("--all-projects", action="store_true", help=argparse.SUPPRESS)
     wait.add_argument("--timeout", type=int, default=0, help="Seconds; 0 waits forever")
     wait.add_argument("--interval", type=float, default=2.0)
     wait.set_defaults(run=run_wait)
@@ -189,6 +196,12 @@ def _start_here_arguments(parser: argparse.ArgumentParser) -> None:
 PRIORITY_GONE = (
     "tempo: priorities are no longer used, so the priority was ignored."
     " Give each question a --goal instead (see `tempo goal --help`)."
+)
+
+
+WAIT_ALL_GONE = (
+    "tempo: wait --all-projects is no longer used, because it took news meant for other"
+    " sessions. This waits for this folder's project only."
 )
 
 
@@ -295,19 +308,40 @@ def run_set_next(args: argparse.Namespace) -> None:
 
 
 def run_inbox(args: argparse.Namespace) -> None:
-    text = take_inbox(None if args.all_projects else _project(args.project))
+    if args.all_projects:
+        # Taking every project's news would keep it from the sessions it is meant for.
+        store = _store()
+        text = _describe_inbox(store, store.undelivered())
+        if text:
+            text += "\n(This is only shown: each project's sessions still receive it.)"
+    else:
+        text = take_inbox(_project(args.project))
     print(text or "Nothing new from the user.")
 
 
 def run_wait(args: argparse.Namespace) -> int:
-    project = None if args.all_projects else _project(args.project)
+    if args.all_projects:
+        print(WAIT_ALL_GONE, file=sys.stderr)
+    named = args.project or setting("PROJECT")
+    # Without a name, the folder's project is looked up again on every check, so a
+    # project renamed or joined in Settings while the wait runs is followed.
+    path = None if named else folder_path(os.getcwd())
+    project = _folder_project(path) if path else named
     deadline = time.time() + args.timeout if args.timeout else None
+    # The session's shell. When it is gone, the wait is an orphan: news it took would
+    # reach nobody, and could be meant for a later session in the same project.
+    parent = os.getppid()
     # A marker tells the Stop hook that a wait is running for this project.
     marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
-    with open(marker, "w", encoding="utf-8") as file:
-        json.dump({"pid": os.getpid(), "project": project}, file)
+    _write_marker(marker, project)
     try:
         while True:
+            current = _folder_project(path) if path else project
+            if current != project:
+                project = current
+                _write_marker(marker, project)
+            if os.getppid() != parent:
+                return 0
             text = take_inbox(project)
             if text:
                 print(text)
@@ -321,11 +355,32 @@ def run_wait(args: argparse.Namespace) -> int:
             os.remove(marker)
 
 
+def _folder_project(path: str) -> str:
+    with Store(connect()) as store:
+        return store.project_for(os.path.basename(path), path)
+
+
+def _write_marker(marker: str, project: str | None) -> None:
+    """Write the wait marker whole, so the Stop hook never reads half of one."""
+    with open(marker + ".tmp", "w", encoding="utf-8") as file:
+        json.dump({"pid": os.getpid(), "project": project}, file)
+    os.replace(marker + ".tmp", marker)
+
+
 def wait_running(project: str) -> bool:
     """Whether a `tempo wait` covering the project is running. Markers left by waits
-    that were killed are removed."""
+    that were killed are removed, and so are those whose pid has since been given to a
+    process that is not a wait.
+
+    A wait that left no marker here (one from an install older than markers, or one
+    whose database, and so its markers, are in another folder) counts for the project it
+    names with --project, else for its folder's project, or for every project when its
+    folder cannot be found.
+    """
     folder = os.path.dirname(_db_path())
+    waits = _wait_processes()
     running = False
+    marked: set[int] = set()
     for name in os.listdir(folder):
         if not (name.startswith("wait-") and name.endswith(".json")):
             continue
@@ -333,15 +388,102 @@ def wait_running(project: str) -> bool:
         try:
             with open(path, encoding="utf-8") as file:
                 marker = json.load(file)
-            alive = _alive(int(marker["pid"]))
+            pid = int(marker["pid"])
+            alive = _alive(pid) if waits is None else pid in waits
         except (OSError, ValueError, KeyError, TypeError):
             alive = False
         if alive:
+            marked.add(pid)
             running = running or marker.get("project") in (None, project)
         else:
             with contextlib.suppress(OSError):
                 os.remove(path)
-    return running
+    unmarked = {pid: command for pid, command in (waits or {}).items() if pid not in marked}
+    return running or any(
+        _unmarked_project(pid, command) in (None, project) for pid, command in unmarked.items()
+    )
+
+
+def _unmarked_project(pid: int, command: str) -> str | None:
+    """The project a wait without a marker serves, or None when that cannot be told."""
+    named = re.search(r"--project[= ](\S+)", command)
+    if named:
+        return named.group(1)
+    override = _process_project_setting(pid)
+    if override:
+        return override
+    cwd = _process_cwd(pid)
+    return project_name(cwd) if cwd else None
+
+
+def _process_project_setting(pid: int) -> str | None:
+    """TEMPO_PROJECT (or OQ_PROJECT) as another process of this user sees it, or None."""
+    try:
+        with open("/proc/%d/environ" % pid, "rb") as file:  # Linux
+            env = dict(
+                item.split("=", 1) for item in file.read().decode().split("\0") if "=" in item
+            )
+        return env.get("TEMPO_PROJECT") or env.get("OQ_PROJECT")
+    except OSError:
+        pass
+    try:
+        # ps -E adds the process's environment after its command (macOS). ps is looked up
+        # on PATH on purpose; the only value passed in is a number.
+        listing = subprocess.run(  # noqa: S603
+            ["ps", "-E", "-o", "command=", "-p", str(pid)],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = re.search(r"\s(?:TEMPO|OQ)_PROJECT=(.*?)(?=\s[A-Za-z_][A-Za-z0-9_]*=|$)", listing)
+    return found.group(1) if found else None
+
+
+def _process_cwd(pid: int) -> str | None:
+    """The folder a process runs in, or None when it cannot be found."""
+    with contextlib.suppress(OSError):
+        return os.readlink("/proc/%d/cwd" % pid)  # Linux
+    try:
+        # lsof is looked up on PATH on purpose; the only value passed in is a number.
+        listing = subprocess.run(  # noqa: S603
+            ["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return next((line[1:] for line in listing.splitlines() if line.startswith("n/")), None)
+
+
+# How a `tempo wait` process shows in ps: bin/tempo runs `python3 -m tempo wait …`.
+WAIT_COMMAND = re.compile(r"(?:^|\s)-m tempo wait(?:\s|$)")
+
+
+def _wait_processes() -> dict[int, str] | None:
+    """The `tempo wait` processes running, as their commands by pid, or None when ps
+    cannot be run."""
+    try:
+        # ps is looked up on PATH on purpose; the arguments are fixed and there is no shell.
+        listing = subprocess.run(
+            ["ps", "-A", "-o", "pid=,command="],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    waits = {}
+    for line in listing.splitlines():
+        pid, _, command = line.strip().partition(" ")
+        if pid.isdigit() and WAIT_COMMAND.search(command):
+            waits[int(pid)] = command
+    return waits
 
 
 def _alive(pid: int) -> bool:
@@ -962,6 +1104,11 @@ def _project(value: str | None, record: bool = False) -> str:
 
 def _number(value: str) -> int:
     return int(value.upper().lstrip("Q"))
+
+
+def _code(value: str) -> int:
+    """The question number in a short code such as "12b", the way the user names an answer."""
+    return _number(value.rstrip(string.ascii_letters) or value)
 
 
 def _port() -> int:

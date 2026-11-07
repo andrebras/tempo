@@ -59,6 +59,18 @@ class ActivityTest(DatabaseTest):
 
 
 class AddTest(DatabaseTest):
+    def test_a_project_named_dot_or_dot_dot_is_refused(self):
+        # The page's links could not reach it: the browser reads them as folder steps.
+        for name in (".", "..", " .. "):
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(QuestionError, "can't be called"):
+                    self.add(project=name)
+                with self.assertRaisesRegex(QuestionError, "can't be called"):
+                    self.store.set_next(name, 5)
+        self.add()
+        with self.assertRaisesRegex(QuestionError, "can't be called"):
+            self.store.rename_project("demo", "..")
+
     def test_numbers_questions_per_project(self):
         self.assertEqual(self.add()["label"], "Q1")
         self.assertEqual(self.add()["label"], "Q2")

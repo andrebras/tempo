@@ -12,6 +12,9 @@ from unittest import mock
 from tempo import cli
 from tests.helpers import DatabaseTest
 
+# How a `tempo wait` process shows in ps.
+WAIT = "/usr/bin/python3 -m tempo wait --timeout 1800"
+
 
 def run(*argv, stdin=""):
     out, err = io.StringIO(), io.StringIO()
@@ -40,6 +43,15 @@ class FakeClock:
 
 
 class CliTest(DatabaseTest):
+    def setUp(self):
+        super().setUp()
+        # The `tempo wait` processes running, by pid, with their commands: none unless a
+        # test adds one, so waits running on this computer for real never count.
+        self.waits = {}
+        waits = mock.patch.object(cli, "_wait_processes", side_effect=lambda: dict(self.waits))
+        waits.start()
+        self.addCleanup(waits.stop)
+
     def test_add_prints_the_number_and_link(self):
         code, out, _ = run(
             "add", "--title", "T", "--context", "C", "--option", "x", "--option", "y"
@@ -127,6 +139,15 @@ class CliTest(DatabaseTest):
         code, out, _ = run("show", "q1")
         self.assertEqual(code, 0)
         self.assertIn("(a) Left", out)
+
+    def test_show_takes_the_short_code_of_an_option(self):
+        # The user names an answer as "1b"; show gives that question.
+        self.add()
+        for code in ("1b", "Q1B"):
+            with self.subTest(code=code):
+                status, out, _ = run("show", code)
+                self.assertEqual(status, 0)
+                self.assertIn("(b) Right", out)
 
     def test_user_prompt_hook_delivers_answers_once(self):
         self.add(title="Left or right?")
@@ -501,10 +522,13 @@ class CliTest(DatabaseTest):
         # It checked the inbox every 0.25 seconds until the second was up, without waiting.
         self.assertEqual(clock.slept, [0.25] * 4)
 
-    def marker(self, pid, project="demo"):
+    def marker(self, pid, project="demo", wait=True):
+        """Leave a wait marker for the pid; with wait, the pid also runs `tempo wait`."""
         path = os.path.join(self.tmp.name, "wait-%d.json" % pid)
         with open(path, "w") as file:
             json.dump({"pid": pid, "project": project}, file)
+        if wait:
+            self.waits[pid] = WAIT
         return path
 
     def test_wait_leaves_a_marker_while_it_runs(self):
@@ -514,11 +538,75 @@ class CliTest(DatabaseTest):
             seen.append(cli.wait_running("demo"))
             return "Answered"
 
+        self.waits[os.getpid()] = WAIT  # The wait runs in this process.
         with mock.patch.object(cli, "take_inbox", side_effect=inbox):
             run("wait", "--timeout", "5")
+        self.waits.clear()
         self.assertEqual(seen, [True])
         self.assertFalse(cli.wait_running("demo"))
         self.assertEqual([n for n in os.listdir(self.tmp.name) if n.startswith("wait-")], [])
+
+    def test_inbox_for_every_project_shows_news_without_taking_it(self):
+        self.add(project="blog")
+        self.store.answer("blog", 1, "a")
+        _, out, _ = run("inbox", "--all-projects")
+        self.assertIn("blog Q1 (Which way?) answered (a) Left", out)
+        self.assertIn("only shown", out)
+        self.assertEqual(len(self.store.undelivered("blog")), 1)
+
+    def test_wait_no_longer_waits_for_every_project(self):
+        # One session's wait took other sessions' news; the option stays for one release.
+        self.add(project="blog")
+        self.store.answer("blog", 1, "a")
+        self.add()
+        self.store.follow_up("demo", 1, "Hm?")
+        code, out, err = run("wait", "--all-projects", "--timeout", "5", "--interval", "0.1")
+        self.assertEqual(code, 0)
+        self.assertIn("demo Q1 (Which way?) asks for more: Hm?", out)
+        self.assertNotIn("blog", out)
+        self.assertIn("--all-projects is no longer used", err)
+        self.assertEqual(len(self.store.undelivered("blog")), 1)
+
+    def test_wait_ends_when_its_session_is_gone(self):
+        # Once the session's shell is gone, the wait belongs to the system (pid 1), and news
+        # it took would reach nobody.
+        self.add()
+        parents = iter([4242, 4242, 1])
+
+        def meanwhile(seconds):
+            self.store.follow_up("demo", 1, "Hm?")
+
+        with (
+            mock.patch.object(cli.os, "getppid", lambda: next(parents)),
+            mock.patch.object(cli.time, "sleep", meanwhile),
+        ):
+            code, out, _ = run("wait", "--timeout", "5", "--interval", "0.1")
+        self.assertEqual((code, out), (0, ""))
+        self.assertEqual(len(self.store.undelivered("demo")), 1)
+
+    def test_wait_follows_its_folder_when_the_project_is_renamed(self):
+        del os.environ["TEMPO_PROJECT"]
+        self.store.see_folder("shop", "/x/shop")
+        self.add(project="shop")
+        self.waits[os.getpid()] = WAIT  # The wait runs in this process.
+        seen = []
+
+        def meanwhile(seconds):
+            # The user renames the project in Settings, then follows up under the new name.
+            if not seen:
+                self.store.rename_project("shop", "Shop")
+            else:
+                self.store.follow_up("Shop", 1, "Why?")
+            seen.append(cli.wait_running("Shop"))
+
+        with (
+            mock.patch.object(cli, "folder_path", return_value="/x/shop"),
+            mock.patch.object(cli.time, "sleep", meanwhile),
+        ):
+            _, out, _ = run("wait", "--timeout", "5", "--interval", "0.1")
+        self.assertIn("Shop Q1 (Which way?) asks for more: Why?", out)
+        # Its marker named the new project from the first check after the rename.
+        self.assertEqual(seen, [False, True])
 
     def test_wait_running_matches_the_project_and_drops_dead_markers(self):
         self.marker(os.getpid(), project="other")
@@ -527,9 +615,46 @@ class CliTest(DatabaseTest):
         self.assertTrue(cli.wait_running("demo"))
         ended = subprocess.Popen(["true"])
         ended.wait()
-        dead = self.marker(ended.pid)
+        dead = self.marker(ended.pid, wait=False)
         self.assertTrue(cli.wait_running("demo"))
         self.assertFalse(os.path.exists(dead))
+
+    def test_a_marker_whose_pid_now_runs_something_else_is_dropped(self):
+        # A killed wait's pid can be given to another process, which is alive but no wait.
+        reused = self.marker(os.getpid(), wait=False)
+        self.assertFalse(cli.wait_running("demo"))
+        self.assertFalse(os.path.exists(reused))
+
+    def test_a_wait_that_left_no_marker_counts_for_its_folder_or_named_project(self):
+        # An install from before markers, or one using another folder, runs `tempo wait`
+        # without leaving a marker here.
+        del os.environ["TEMPO_PROJECT"]
+        self.marker(4242, project="other")
+        self.assertFalse(cli.wait_running("demo"))
+        folders = {4343: "/x/demo", 4444: "/x/other", 4545: None, 4747: "/x/other"}
+        overrides = {4747: "ONZE HQ"}
+        with (
+            mock.patch.object(cli, "_process_cwd", side_effect=folders.get),
+            mock.patch.object(cli, "_process_project_setting", side_effect=overrides.get),
+        ):
+            self.waits[4444] = WAIT
+            self.assertFalse(cli.wait_running("demo"))
+            self.waits[4343] = WAIT
+            self.assertTrue(cli.wait_running("demo"))
+            self.assertFalse(cli.wait_running("shop"))
+            self.waits[4646] = WAIT + " --project shop"
+            self.assertTrue(cli.wait_running("shop"))
+            self.assertFalse(cli.wait_running("ONZE HQ"))
+            self.waits[4747] = WAIT  # Run with TEMPO_PROJECT="ONZE HQ".
+            self.assertTrue(cli.wait_running("ONZE HQ"))
+            # A wait whose folder cannot be found counts for every project.
+            self.waits[4545] = WAIT
+            self.assertTrue(cli.wait_running("blog"))
+
+    def test_without_ps_a_marker_counts_while_its_process_lives(self):
+        self.marker(os.getpid(), wait=False)
+        with mock.patch.object(cli, "_wait_processes", return_value=None):
+            self.assertTrue(cli.wait_running("demo"))
 
 
 class GitTest(DatabaseTest):
@@ -915,3 +1040,38 @@ class TempoPidTest(unittest.TestCase):
                 runs = [ran("4242\n"), ran(command)]
                 with mock.patch.object(cli.subprocess, "run", side_effect=runs):
                     self.assertEqual(cli._tempo_pid(2204), pid)
+
+
+class WaitProcessesTest(unittest.TestCase):
+    def test_lists_the_processes_running_tempo_wait(self):
+        sleep = [sys.executable, "-c", "import time; time.sleep(30)"]
+        wait = subprocess.Popen([*sleep, "-m", "tempo", "wait", "--timeout", "1800"])
+        other = subprocess.Popen([*sleep, "-m", "tempo", "serve"])
+        for process in (wait, other):
+            self.addCleanup(process.wait)
+            self.addCleanup(process.kill)
+        waits = cli._wait_processes()
+        self.assertIn("-m tempo wait --timeout 1800", waits[wait.pid])
+        self.assertNotIn(other.pid, waits)
+        self.assertNotIn(os.getpid(), waits)
+
+    def test_none_when_ps_cannot_run(self):
+        with mock.patch.object(cli.subprocess, "run", side_effect=OSError):
+            self.assertIsNone(cli._wait_processes())
+
+    def test_finds_a_process_folder(self):
+        folder = cli._process_cwd(os.getpid())
+        self.assertEqual(os.path.realpath(folder), os.path.realpath(os.getcwd()))
+        self.assertIsNone(cli._process_cwd(-1))
+
+    def test_finds_a_process_project_setting(self):
+        env = dict(os.environ, TEMPO_PROJECT="ONZE HQ")
+        process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], env=env)
+        self.addCleanup(process.wait)
+        self.addCleanup(process.kill)
+        self.assertEqual(cli._process_project_setting(process.pid), "ONZE HQ")
+        plain = {k: v for k, v in os.environ.items() if not k.endswith("_PROJECT")}
+        other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], env=plain)
+        self.addCleanup(other.wait)
+        self.addCleanup(other.kill)
+        self.assertIsNone(cli._process_project_setting(other.pid))

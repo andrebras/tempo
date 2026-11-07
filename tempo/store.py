@@ -333,7 +333,7 @@ class Store:
         start_here: str | None = None,
         number: int | None = None,
     ) -> Question:
-        project = _required(project, "project")
+        project = _project_name(_required(project, "project"))
         title = _required(title, "title")
         context = _required(context, "context")
         lettered = _letter(options)
@@ -367,7 +367,7 @@ class Store:
         return self.get(project, number)
 
     def set_next(self, project: str, number: int) -> None:
-        project = _required(project, "project")
+        project = _project_name(_required(project, "project"))
         with self._transaction():
             self.db.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", (project,))
             current = self._next_number(project)
@@ -792,6 +792,7 @@ class Store:
         new = (new or "").strip()
         if not new:
             raise QuestionError("A project needs a name")
+        _project_name(new)
         if new == old:
             raise QuestionError("The project is already called %s" % new)
         if not any(project["name"] == old for project in self.project_summaries()):
@@ -1047,6 +1048,14 @@ def _required(value: str | None, name: str) -> str:
     if not value:
         raise QuestionError("A question needs a %s" % name)
     return value
+
+
+def _project_name(name: str) -> str:
+    """A project's name as given, unless it is "." or "..": the page's links could not reach
+    such a project, since a browser reads them as steps between folders."""
+    if name in (".", ".."):
+        raise QuestionError('A project can\'t be called "%s"' % name)
+    return name
 
 
 def _letter(options: Sequence[str | None] | None) -> Options:
