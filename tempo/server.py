@@ -8,7 +8,6 @@ this page's own origin.
 from __future__ import annotations
 
 import contextlib
-import functools
 import json
 import os
 import subprocess
@@ -21,7 +20,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from tempo import log
-from tempo.store import QuestionError, Store, connect
+from tempo.store import QuestionError, Store, connect, db_path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The plugin folder this code runs from; /health names it so a stale server can be spotted.
@@ -35,6 +34,13 @@ MAX_BODY = 1_000_000
 def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
     allowed_hosts = {"127.0.0.1:%d" % port, "localhost:%d" % port}
     allowed_origins = {"http://" + host for host in allowed_hosts}
+    # Read once, when the server starts. A checkout updated under a running server must
+    # not make it claim the new version, or serve the new page against its old code.
+    about = health()
+    with open(PAGE, "rb") as file:
+        page = file.read()
+    with open(SCRIPT, "rb") as file:
+        script = file.read()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "tempo"
@@ -46,7 +52,7 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
                 return
             # Answered without the database, so a broken database cannot hide the server.
             if _parts(urlparse(self.path).path) == ["health"]:
-                self._json(200, health())
+                self._json(200, about)
                 return
             self._safely(self._get)
 
@@ -71,11 +77,9 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
             url = urlparse(self.path)
             parts = _parts(url.path)
             if parts == []:
-                with open(PAGE, "rb") as page:
-                    self._send(200, page.read(), "text/html; charset=utf-8")
+                self._send(200, page, "text/html; charset=utf-8")
             elif parts == ["page.js"]:
-                with open(SCRIPT, "rb") as script:
-                    self._send(200, script.read(), "text/javascript; charset=utf-8")
+                self._send(200, script, "text/javascript; charset=utf-8")
             elif parts == ["api", "questions"]:
                 query = parse_qs(url.query)
                 status = query.get("status", ["open"])[0]
@@ -224,14 +228,15 @@ def version() -> str | None:
 _STARTED = time.gmtime()
 
 
-@functools.cache
 def health() -> dict[str, Any]:
-    """Who this server is, worked out once on the first /health request."""
+    """Who this server is: its code, and the database it shows, so a session on another
+    database leaves it alone."""
     return {
         "app": "tempo",
         "version": version(),
         "commit": _commit(),
         "root": ROOT,
+        "db": db_path(),
         "pid": os.getpid(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", _STARTED),
     }

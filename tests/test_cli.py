@@ -576,12 +576,18 @@ class StartServerTest(unittest.TestCase):
 
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        self.current = {"app": "tempo", "version": server.version(), "root": server.ROOT, "pid": 42}
         self.listening = True
         self.folder = tmp.name
         database = mock.patch.dict(os.environ, {"TEMPO_DB": os.path.join(tmp.name, "tempo.db")})
         database.start()
         self.addCleanup(database.stop)
+        self.current = {
+            "app": "tempo",
+            "version": server.version(),
+            "root": server.ROOT,
+            "pid": 42,
+            "db": cli.db_path(),
+        }
         self.patch("_listening", side_effect=lambda port: self.listening)
         self.fetch = self.patch("_fetch")
         self.tempo_pid = self.patch("_tempo_pid", return_value=None)
@@ -639,6 +645,14 @@ class StartServerTest(unittest.TestCase):
                 self.kill.assert_not_called()
                 self.popen.assert_not_called()
 
+    def test_keeps_a_tempo_on_another_database_even_an_older_one(self):
+        # A worktree's server on the real page's port, or the real one on a worktree's:
+        # replacing it would switch the page to another set of questions.
+        self.serve(health={**self.current, "version": "0.0.1", "db": "/branch/questions.db"})
+        self.assertFalse(cli.start_server(2204))
+        self.kill.assert_not_called()
+        self.popen.assert_not_called()
+
     def test_keeps_an_old_server_whose_page_works(self):
         self.serve(page=b"<title>Tempo</title>")
         self.tempo_pid.return_value = 42
@@ -664,6 +678,41 @@ class StartServerTest(unittest.TestCase):
         self.kill.side_effect = None
         self.assertFalse(cli.start_server(2204))
         self.popen.assert_not_called()
+
+
+class PortTest(unittest.TestCase):
+    """Code on a branch database serves its page on a port of its own."""
+
+    def setUp(self):
+        environ = mock.patch.dict(os.environ)
+        environ.start()
+        self.addCleanup(environ.stop)
+        for key in ("TEMPO_PORT", "OQ_PORT", "TEMPO_DB", "OQ_DB"):
+            os.environ.pop(key, None)
+
+    def branch(self, path):
+        return mock.patch("tempo.cli.branch_db", return_value=path)
+
+    def test_the_real_database_uses_the_default_port(self):
+        with self.branch(None):
+            self.assertEqual(cli._port(), 2204)
+
+    def test_a_branch_database_gets_its_own_steady_port(self):
+        ports = set()
+        for path in ("/a/.tempo-dev/questions.db", "/b/.tempo-dev/questions.db"):
+            with self.branch(path):
+                port = cli._port()
+                self.assertEqual(cli._port(), port)
+                self.assertNotIn(port, (2204, 2205))
+                ports.add(port)
+        self.assertEqual(len(ports), 2)
+
+    def test_an_explicit_database_or_port_wins(self):
+        with self.branch("/a/.tempo-dev/questions.db"):
+            with mock.patch.dict(os.environ, {"TEMPO_DB": "/elsewhere/questions.db"}):
+                self.assertEqual(cli._port(), 2204)
+            with mock.patch.dict(os.environ, {"TEMPO_PORT": "3000"}):
+                self.assertEqual(cli._port(), 3000)
 
 
 class OlderTest(unittest.TestCase):

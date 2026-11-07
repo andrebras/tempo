@@ -60,10 +60,13 @@ or worktree never says this.
 
 ## The page server
 
-The page is served by a small web server on `127.0.0.1`, port 2204 by default. Every new
-session checks what is running on that port:
+The page is served by a small web server on `127.0.0.1`, port 2204 by default. Tempo code
+that uses a branch database (see [Environment variables](#environment-variables)) serves its
+own page on another port, between 22100 and 22999, worked out from the database's path, so
+it never takes the real page's place. Every new session checks what is running on its port:
 
 - Nothing: Tempo starts its server in the background.
+- A Tempo server that shows another database: it is left alone, whatever its version.
 - A Tempo server of the same version or a newer one: it is kept, whatever folder it runs
   from. So when sessions run different versions of Tempo, the newest one wins.
 - A Tempo server that reports an older version: Tempo stops it and starts its own.
@@ -75,8 +78,9 @@ session checks what is running on that port:
 To tell, Tempo asks the server for `/health`. That address answers without opening the
 database, so a broken database can't hide the server. It returns JSON with `app`
 (`"tempo"`), `version`, `commit` (the git commit, when Tempo runs from a git checkout),
-`root` (the folder the server's code runs from), `pid` (its process number) and `started`
-(when it started, in UTC).
+`root` (the folder the server's code runs from), `db` (the database it shows), `pid` (its
+process number) and `started` (when it started, in UTC). All of it is worked out when the
+server starts.
 
 The page asks for `/health` too, every few seconds. When the server it first talked to has
 been replaced (its `pid` or `started` changed), usually after an update, the page reloads
@@ -169,13 +173,18 @@ them.
 | Setting | Default | Variable |
 | --- | --- | --- |
 | Database | `~/.claude/tempo/questions.db` | `TEMPO_DB` |
-| Port | `2204` | `TEMPO_PORT` |
+| Port | `2204`, or a port of its own for code on a branch database | `TEMPO_PORT` |
 | Project | The project the current git repository's folder is filed under, named after the folder until renamed (worktrees count as the same folder) | `TEMPO_PROJECT`, or `--project` on a command; both win over Settings |
 
 The page log is written next to the database. The database sits outside the plugin folder, so
 it survives plugin updates and reinstalls. The variables' old names (`OQ_DB`, `OQ_PORT`,
 `OQ_PROJECT`) still work; when both are set, the `TEMPO_` one wins. If only the old database
 at `~/.claude/open-questions/questions.db` exists, Tempo keeps using it where it is.
+
+Tempo code that runs from a git worktree uses a branch database instead,
+`.tempo-dev/questions.db` inside the worktree, unless `TEMPO_DB` is set, so code still being
+built never touches your real questions. Its page gets a port of its own too, unless
+`TEMPO_PORT` is set.
 
 The page log, `server.log`, also gets one line for each change made through the page (the
 time in UTC, the method, the path and the status code, such as

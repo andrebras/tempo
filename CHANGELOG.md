@@ -21,6 +21,19 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- Tempo works in a repository that pins a Python version that isn't installed, through asdf,
+  pyenv or mise. Its hooks and commands failed there with exit code 126, because the version
+  manager picked Python by the session's folder. The `tempo` command now looks up Python from
+  the plugin's folder, then tries the system's and Homebrew's, uses the first that is 3.9 or
+  newer, and says so plainly when none is.
+- Tempo code running from a git worktree serves its page on a port of its own, worked out
+  from its database's path, instead of taking port 2204. Before, a worktree's page could
+  replace the real one, so the page showed the worktree's throwaway questions. `/health`
+  now names the database a server shows, and a session never replaces a server on another
+  database, whatever its version.
+- The page's server reads its version and its page files once, when it starts. Before, a
+  server started from a git checkout that was then updated reported the new version, so a
+  newer session never replaced it, and it served the new page script against its old code.
 - Two answers sent to one question at the same moment (a double click, two tabs, or the page
   and the `tempo` command) no longer both save; the second is refused as already answered.
   An answer, follow-up or reopen also checks the question again inside its write, so it

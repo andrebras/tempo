@@ -1,4 +1,19 @@
 #!/bin/sh
-# Runs the tempo command from this checkout with whichever python3 is installed.
+# Runs the tempo command from this checkout with a Python 3.9 or newer.
+#
+# Version managers (asdf, pyenv, mise) pick Python by the current folder, and the
+# session's folder may pin one that isn't installed. So python3 is looked up from this
+# plugin's folder, and its real path is used from the current folder; then the system's
+# Python and Homebrew's are tried. The command itself runs in the current folder, which
+# names the project.
 root="$(cd "$(dirname "$0")/.." && pwd)"
-PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m tempo "$@"
+probe='import sys; sys.version_info >= (3, 9) and print(sys.executable)'
+for python in python3 /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+  found="$(cd "$root" && "$python" -c "$probe" 2>/dev/null)" || found=""
+  if [ -n "$found" ] && [ -x "$found" ]; then
+    PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec "$found" -m tempo "$@"
+  fi
+done
+echo "tempo: needs Python 3.9 or newer, and found none that runs." >&2
+echo "tempo: tried python3 (from $root), /usr/bin/python3 and Homebrew's python3." >&2
+exit 1
