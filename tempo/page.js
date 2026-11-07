@@ -240,11 +240,10 @@ function renderProjects(data) {
     data.notice && el("p", { class: "meta", role: "status" }, data.notice),
     data.projects.length ? data.projects.map((project) => {
       const input = el("input", { value: project.name, "aria-label": `New name for ${project.name}` });
-      const folders = project.folders.length
-        ? ` · ${project.folders.length === 1 ? "folder" : "folders"} ${project.folders.join(", ")}` : "";
       return saveRow(
         el("div", {}, el("strong", {}, project.name),
-          el("span", { class: "meta" }, count(project.questions, "question") + folders)),
+          el("span", { class: "meta" }, count(project.questions, "question")),
+          renderFolders(project.folders)),
         input,
         () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
         (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
@@ -261,6 +260,15 @@ function joinNotice(from, to, moved) {
   const first = moved[0].to, last = moved[moved.length - 1].to;
   const numbers = first === last ? `Q${first}` : `Q${first}–Q${last}`;
   return `Moved ${count(moved.length, "question")} from ${from} to ${to}: now ${numbers}.`;
+}
+
+// The folders a project covers, each with its full path (wrapped when long). Folders
+// remembered before paths were stored get theirs the next time a session runs there.
+function renderFolders(folders) {
+  if (!folders.length) return null;
+  return el("ul", { class: "folders", "aria-label": "Folders" }, folders.map((folder) =>
+    el("li", {}, folder.folder, " ", el("span", { class: "path", title: folder.path || false },
+      folder.shown || "path not known yet"))));
 }
 
 // Keep the page on a renamed project, and the way back pointing at the same question.
