@@ -18,8 +18,6 @@ itself.
 - 🎛️ [Usage](#usage)
 - ⚙️ [How it works](#how-it-works)
 - 🔒 [Security](#security)
-- 🤝 [Contributing](#contributing)
-- 📄 [License](#license)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
