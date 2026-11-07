@@ -116,6 +116,10 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
                 self._handle(lambda: threads.start(body.get("folder"), body.get("body")))
             elif len(parts) == 3:
                 self._handle(lambda: threads.reply(_int(parts[2]), body.get("body")))
+            elif len(parts) == 5 and parts[3] == "permissions":
+                self._handle(
+                    lambda: threads.decide(_int(parts[2]), _int(parts[4]), body.get("allow"))
+                )
             else:
                 self._json(404, {"error": "Not found"})
 
