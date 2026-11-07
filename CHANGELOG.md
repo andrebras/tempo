@@ -51,6 +51,13 @@ All notable changes to Tempo are listed here. The format follows
   their project: the next session in a folder of that name fills in its path. Settings shows
   the path under each project's folders. An older Tempo still running on the same database
   keeps working.
+- Tempo spots a folder that was renamed or moved. When a session runs in a folder Tempo has
+  never seen while the path of a known folder no longer exists, Tempo no longer quietly
+  starts a new project and leaves it at that. A banner on every screen of the page offers to
+  link the new folder to the missing folder's project in one click, or to keep it as its own
+  project. When several known folders are missing, the banner asks you to pick in Settings,
+  where each folder now has a menu to file it under any project. The session is told too,
+  so Claude mentions it in chat. Each missing folder is offered once only.
 - Tests can no longer open the real database: a test that does not pick its own fails.
 
 ## [0.4.0] - 2026-11-07
