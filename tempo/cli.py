@@ -211,7 +211,9 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
     status = commands.add_parser(
         "status", help="Print a short badge for the tmux status bar, such as '? 3'"
     )
-    status.add_argument("--project", help="Count one project; every project by default")
+    which = status.add_mutually_exclusive_group()
+    which.add_argument("--project", help="Count this project instead of the folder's")
+    which.add_argument("--all", action="store_true", help="Count every project")
     status.set_defaults(run=run_status)
 
 
@@ -415,36 +417,61 @@ def run_reply(args: argparse.Namespace) -> None:
 
 
 def run_status(args: argparse.Namespace) -> None:
-    """Print "? N" when N questions wait on the user, else nothing. tmux runs this every few
-    seconds, so it reads the file as it is: it never creates, migrates or writes the
-    database, and prints nothing (not even an error) when it can't read it."""
-    count = open_count(db_path(), args.project)
+    """Print "? N" when N questions of the current folder's project wait on the user, else
+    nothing. tmux runs this every few seconds, so it reads the file as it is: it never
+    creates, migrates or writes the database, and prints nothing (not even an error) when it
+    can't read it."""
+    if args.all:
+        count = open_count(db_path())
+    else:
+        project = args.project or setting("PROJECT")
+        count = open_count(db_path(), project, None if project else folder_path(os.getcwd()))
     if count:
         print("? %d" % count)
 
 
-def open_count(path: str, project: str | None = None) -> int:
-    """How many questions are open, in one project or all; 0 when the file can't be read."""
+def open_count(path: str, project: str | None = None, folder: str | None = None) -> int:
+    """How many questions are open: in one project, in the project a folder (its full
+    path) is filed under, or in all of them. 0 when the file can't be read."""
     if not os.path.isfile(path):
         return 0
     from urllib.parse import quote
 
-    sql = "SELECT COUNT(*) FROM questions WHERE status = 'open'"
-    params: list[str] = []
-    if project:
-        sql += " AND project = ?"
-        params.append(project)
     try:
         # mode=rw never creates the file. Not mode=ro: a WAL database that no one has open
         # has no -shm file, and a read-only connection can't make one, so it can't read.
         db = sqlite3.connect("file:%s?mode=rw" % quote(path), uri=True, timeout=1)
         try:
             db.execute("PRAGMA query_only = ON")
+            if folder:
+                project = _filed_under(db, folder)
+            sql = "SELECT COUNT(*) FROM questions WHERE status = 'open'"
+            params = [project] if project else []
+            if project:
+                sql += " AND project = ?"
             return int(db.execute(sql, params).fetchone()[0])
         finally:
             db.close()
     except sqlite3.Error:
         return 0
+
+
+def _filed_under(db: sqlite3.Connection, path: str) -> str:
+    """The project a folder is filed under, read as Store.project_for does but without
+    opening a Store, which would create or migrate the database."""
+    name = folder_name(path)
+    for sql, value in (
+        ("SELECT project FROM folders WHERE path = ?", path),
+        ("SELECT project FROM folders WHERE folder = ? AND path IS NULL", name),
+    ):
+        try:
+            row = db.execute(sql, (value,)).fetchone()
+        except sqlite3.OperationalError:
+            # An old database without folders, or without their paths.
+            continue
+        if row and row[0]:
+            return str(row[0])
+    return name
 
 
 def _folder_project(path: str) -> str:
