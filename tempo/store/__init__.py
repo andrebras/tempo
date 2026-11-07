@@ -17,9 +17,10 @@ A question can name its goal: the piece of work its answer moves forward. Within
 one question may be marked "start here", with the reason, when its answer unlocks or sets
 the pattern for the others.
 
-The code is in parts: common (shared shapes, the error, the clock), schema (where the
-database is, its tables and migrations), questions, and projects (with their folders).
-Store, below, puts the parts' methods together. Everything is imported from here, as
+The code is in parts: common (shared shapes, the error, the clock, the connection),
+schema (where the database is, its tables and migrations), questions, projects (with
+their folders) and delivery (handing the user's words to Claude). Store, below, puts the
+parts' methods together. Everything is imported from here, as
 `from tempo.store import Store, connect`.
 """
 
@@ -39,6 +40,7 @@ from tempo.store.common import (
     Summaries,
     now,
 )
+from tempo.store.delivery import DeliveryStore
 from tempo.store.projects import ProjectStore, shown_path
 from tempo.store.questions import ARCHIVE_AFTER, QUICK_OPTIONS
 from tempo.store.schema import (
@@ -58,7 +60,7 @@ from tempo.store.schema import (
 )
 
 
-class Store(ProjectStore):
+class Store(ProjectStore, DeliveryStore):
     """The questions database: open it with `with Store(connect()) as store:`."""
 
 
