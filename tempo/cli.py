@@ -1159,9 +1159,15 @@ def repo_identity(repo: str) -> tuple[str | None, str | None]:
     """The repo's first commit and the address of its origin remote, either None when
     git cannot tell (no commit yet, no remote, or no git). A renamed copy keeps both, so
     they tell a renamed repo from an unrelated one. Merged histories can have several
-    first commits; with --reverse the oldest comes first."""
+    first commits; with --reverse the oldest comes first.
+
+    A user name and password or token in the address (https://me:token@host/…) are
+    left out, so they are never copied into the database."""
     first_commit = _git_line(repo, "rev-list", "--max-parents=0", "--reverse", "HEAD")
-    return first_commit, _git_line(repo, "config", "--get", "remote.origin.url")
+    remote = _git_line(repo, "config", "--get", "remote.origin.url")
+    if remote:
+        remote = re.sub(r"^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@", r"\1", remote)
+    return first_commit, remote
 
 
 def _git_line(cwd: str, *args: str) -> str | None:

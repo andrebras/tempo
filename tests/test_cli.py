@@ -905,6 +905,12 @@ class RepoIdentityNoteTest(GitTest):
         self.assertNotIn("is new to Tempo", note)
         self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
 
+    def test_a_token_in_the_remote_address_is_not_kept(self):
+        url = "https://me:secret@github.com/me/open-questions.git"
+        subprocess.run(["git", "-C", self.old, "remote", "set-url", "origin", url], check=True)
+        _, remote = cli.repo_identity(self.old)
+        self.assertEqual(remote, "https://github.com/me/open-questions.git")
+
 
 class ProjectNameTest(GitTest):
     def test_uses_the_main_checkout_folder_from_subfolders_and_worktrees(self):
