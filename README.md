@@ -13,13 +13,21 @@ you, it saves the question with all the context you need, instead of letting it 
 in chat. You answer on a local page whenever it suits you, and Claude picks the answer up by
 itself.
 
+- 🎬 [See it in action](#see-it-in-action)
+- 📦 [Install](#install)
+- 🎛️ [Usage](#usage)
+- ⚙️ [How it works](#how-it-works)
+- 🔒 [Security](#security)
+- 🤝 [Contributing](#contributing)
+- 📄 [License](#license)
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshot-light.png">
   <img alt="The Tempo page: a list of open questions on the left, and on the right the question &quot;Where should the new Export orders button go?&quot; with its context and three lettered options, the recommended one picked." src="docs/screenshot-light.png" width="1280">
 </picture>
 
-## 🎬 See it in action
+## See it in action
 
 ![Answering on the Tempo page: an option is picked and sent, and the page moves on to the next question. There, a note is typed and "Ask for more context" is pressed; Claude rewords the question and the thread shows both steps.](docs/demo.gif)
 
@@ -27,7 +35,7 @@ You pick an option and send it, and the page moves on to the next question. On t
 ask for more context; Claude rewords the question, and the thread shows what you asked and what
 changed.
 
-## 📦 Install
+## Install
 
 ```bash
 claude plugin marketplace add andrebras/tempo
@@ -39,7 +47,7 @@ You need Python 3.9 or newer (macOS ships with one) and Git. Tempo has no other 
 To try it for one session without installing it, clone the repo and run
 `claude --plugin-dir ./tempo`.
 
-## 🎛️ Usage
+## Usage
 
 There's nothing to run. When a Claude Code session starts, Tempo starts its page at
 <http://127.0.0.1:2204/>. When Claude needs a decision, it adds a question and links to it in
@@ -55,7 +63,7 @@ chat. On the page you can:
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too.
 
-## ⚙️ How it works
+## How it works
 
 ```
  Claude ──tempo add / context / reword──▶  SQLite  ◀──answer / follow-up── Page (127.0.0.1:2204)
@@ -74,7 +82,7 @@ answer. Each answer is delivered once, and only to sessions of its own project.
 
 Commands, settings and environment variables are listed in [docs/reference.md](docs/reference.md).
 
-## 🔒 Security
+## Security
 
 The page only listens on `127.0.0.1`. It refuses requests addressed to any other host name, and
 only accepts answers sent as JSON from the page itself, so other websites open in your browser
@@ -84,11 +92,11 @@ and answer your questions.
 Please report security issues privately through
 [GitHub security advisories](https://github.com/andrebras/tempo/security/advisories/new).
 
-## 🤝 Contributing
+## Contributing
 
 Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to run the
 checks and the tests.
 
-## 📄 License
+## License
 
 [MIT](LICENSE)
