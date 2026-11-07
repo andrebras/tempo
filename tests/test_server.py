@@ -231,3 +231,12 @@ class ServerTest(DatabaseTest):
                 status, _ = self.request("POST", "/api/threads", {"folder": ROOT, "body": "Hi"})
             self.assertEqual(status, 200)
             send.assert_called_once()
+
+    def test_answers_a_permission_request(self):
+        with (
+            mock.patch.dict("os.environ", {"TEMPO_THREADS": "1"}),
+            mock.patch.object(threads, "decide", return_value={"id": 3}) as decide,
+        ):
+            status, _ = self.request("POST", "/api/threads/3/permissions/7", {"allow": True})
+        self.assertEqual(status, 200)
+        decide.assert_called_once_with(3, 7, True)
