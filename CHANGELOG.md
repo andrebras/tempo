@@ -47,6 +47,8 @@ All notable changes to Tempo are listed here. The format follows
   next, or clears the note you started there.
 - A link to a question that doesn't exist (for example one renumbered when two projects were
   joined) says "Question not found". Before, it opened another question without saying so.
+- When Claude changes the question you are typing a note on, the note box keeps focus and the
+  cursor stays where it was.
 
 ### Security
 

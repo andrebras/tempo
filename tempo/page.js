@@ -615,9 +615,17 @@ async function loadDetail(force) {
   const draft = state.shown === id && $("#note")
     ? typedDraft()
     : takeDraft(id) || { text: "", choice: null };
+  // A redraw of the same question keeps the note box focused, with the cursor where it was.
+  const old = $("#note");
+  const cursor = state.shown === id && old && document.activeElement === old
+    && [old.selectionStart, old.selectionEnd, old.selectionDirection];
   state.current = key;
   state.shown = id;
   detail.replaceChildren(renderQuestion(question, draft));
+  if (cursor && $("#note")) {
+    $("#note").focus();
+    $("#note").setSelectionRange(...cursor);
+  }
 }
 
 function renderQuestion(question, draft) {
