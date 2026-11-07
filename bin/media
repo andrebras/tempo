@@ -1,0 +1,621 @@
+#!/usr/bin/env python3
+"""Make the README's pictures: docs/screenshot-light.png, docs/screenshot-dark.png and
+docs/demo.gif.
+
+It fills a throwaway database with made-up questions for three invented projects, runs the
+page from this checkout on a free port, and drives headless Google Chrome through the Chrome
+DevTools Protocol (CDP, the commands Chrome takes over a pipe), so the pictures come out the
+same way every time. Your own questions are never touched.
+
+Needs Python 3.9 or newer, Google Chrome, and ffmpeg (`brew install ffmpeg`), which turns
+the recorded frames into the GIF. Set CHROME to the browser's path if it isn't installed in
+/Applications.
+
+    bin/media              # all three files
+    bin/media --keep DIR   # also keep the database, the frames and the server log in DIR
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import contextlib
+import fcntl
+import json
+import os
+import shutil
+import socket
+import sqlite3
+import subprocess  # nosec B404
+import sys
+import tempfile
+import time
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DOCS = ROOT / "docs"
+CHROME_APP = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# The real page's ports; the demo never uses them.
+RESERVED_PORTS = {2204, 2205}
+WIDTH, HEIGHT = 1280, 800
+GIF_WIDTH = 1040
+GIF_LIMIT = 1_000_000
+STAMP = "%Y-%m-%dT%H:%M:%SZ"
+
+# The demo questions. "age" is how many hours ago each was asked, so the list shows a mix.
+ORDERS = "Orders export"
+CHECKOUT = "Checkout v2"
+QUESTIONS = [
+    {
+        "project": "acme-shop",
+        "goal": ORDERS,
+        "age": 9,
+        "title": 'Where should the new "Export orders" button go?',
+        "context": (
+            "Shop owners asked to download their orders as a CSV file (a spreadsheet-friendly"
+            " text file). The export itself works; it only needs a place in the admin.\n\n"
+            "The Orders page already has a crowded toolbar: search, date filter, status filter"
+            ' and "New order". Most owners export once a month for their accountant, so it'
+            " doesn't need to be the most visible action."
+        ),
+        "options": [
+            'In the Orders toolbar, next to "New order"',
+            'In a "More" menu (three dots) at the end of the Orders toolbar',
+            'On the Reports page, as a new "Orders export" card',
+        ],
+        "recommended": "b",
+    },
+    {
+        "project": "acme-shop",
+        "goal": ORDERS,
+        "age": 8,
+        "title": "Which columns should the orders export include?",
+        "context": (
+            "The export can hold any field an order has. More columns make the file harder to"
+            " read; fewer may leave out what an owner needs."
+        ),
+        "options": [
+            "Only the basics: order number, date, customer and total",
+            "The basics plus tax and shipping, split out",
+            "Every field, one column each",
+            "Let the owner pick the columns each time",
+        ],
+        "recommended": "b",
+    },
+    {
+        "project": "acme-shop",
+        "goal": CHECKOUT,
+        "age": 6,
+        "title": "Which payment providers should the new checkout support at launch?",
+        "context": (
+            "Today the shop takes cards only. Owners have asked for wallets and bank transfers."
+            " Each provider adds a setup screen and its own refund flow."
+        ),
+        "options": [
+            "Cards only, as today",
+            "Cards and the two big wallets",
+            "Cards, wallets and bank transfers",
+            "Cards, wallets, bank transfers and buy-now-pay-later",
+        ],
+    },
+    {
+        "project": "acme-shop",
+        "goal": CHECKOUT,
+        "age": 5,
+        "title": "How long should a cart stay saved for a visitor who isn't logged in?",
+        "context": (
+            "Carts are kept in the browser. A longer time brings back more returning visitors,"
+            " but shows them prices and stock that may have changed."
+        ),
+        "options": ["One day", "One week", "One month", "Until the browser is cleared"],
+        "recommended": "b",
+    },
+    {
+        "project": "acme-shop",
+        "age": 26,
+        "title": "Should product images be served from a CDN (content delivery network)?",
+        "context": (
+            "A CDN keeps copies of the images close to visitors, so pages load faster abroad."
+            " It costs a monthly fee and one more service to look after."
+        ),
+        "options": ["Yes, for all images", "Only for the large product photos", "Not yet"],
+    },
+    {
+        "project": "garden-planner",
+        "goal": "Seed calendar",
+        "age": 20,
+        "title": "Should the seed calendar start the week on Monday or Sunday?",
+        "context": "Most users are in Europe, but the largest single group is in the US.",
+        "options": ["Monday", "Sunday", "Follow the phone's setting"],
+        "recommended": "c",
+    },
+    {
+        "project": "pocket-weather",
+        "age": 30,
+        "title": "Which unit should new users see first for wind speed?",
+        "context": "The app guesses the country from the phone's region setting.",
+        "options": ["km/h everywhere", "mph in the US and UK, km/h elsewhere", "Beaufort scale"],
+        "recommended": "b",
+    },
+]
+# Asked of the cart question before the pictures, so it shows as waiting on Claude.
+CART_FOLLOWUP = "Do we know how many visitors come back after a week?"
+# Added by "Claude" after the page was first opened, so these show a "new" dot.
+PAYMENTS_CONTEXT = (
+    "Two thirds of the owners who asked want wallets; bank transfers came up mostly in the"
+    " Netherlands and Germany."
+)
+NEW_GARDEN = {
+    "title": "Should frost warnings be on by default?",
+    "context": "A warning needs the user's location, which the app doesn't ask for yet.",
+    "options": ["On, asking for the location", "Off, offered after the first planting"],
+}
+# The GIF's story: answer Q1, then ask for more on Q2, which Claude rewords.
+NOTE = "What does the accountant's software need?"
+REWORD = {
+    "title": "Which columns should the orders export include for the accountant?",
+    "context": (
+        "Owners send the export to their accountant once a month. Accounting software"
+        " imports a CSV file when it has the order number, date, customer, total, and tax"
+        " and shipping in separate columns. Extra columns are ignored."
+    ),
+    "note": "Added what accounting software needs from the file.",
+}
+# The page has drawn its list and a question.
+LOADED = "document.querySelector('#detail h2') && document.querySelector('#list a')"
+# A mouse pointer drawn into the page: headless Chrome draws none.
+POINTER = """
+(() => {
+  const pointer = document.createElement("div");
+  pointer.id = "demo-pointer";
+  pointer.innerHTML = '<svg width="22" height="30" viewBox="0 0 22 30">'
+    + '<path d="M2 2 L2 24 L8 18.5 L12 28 L16 26.3 L12 17 L20 17 Z" fill="#111"'
+    + ' stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  pointer.style.cssText = "position:fixed;left:0;top:0;z-index:2147483647;"
+    + "pointer-events:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))";
+  document.body.append(pointer);
+})()
+"""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Make the README's screenshots and GIF.")
+    parser.add_argument("--keep", metavar="DIR", help="Work in DIR and keep what is made there")
+    args = parser.parse_args()
+    chrome = find_chrome()
+    if not shutil.which("ffmpeg"):
+        return fail("ffmpeg is missing: install it with 'brew install ffmpeg'")
+    if not chrome:
+        return fail("Google Chrome is missing: install it, or set CHROME to its path")
+    if args.keep:
+        work = Path(args.keep).resolve()
+        if work.exists() and any(work.iterdir()):
+            return fail("%s is not empty; pick a new folder" % work)
+        work.mkdir(parents=True, exist_ok=True)
+        make(work, chrome)
+    else:
+        with tempfile.TemporaryDirectory(prefix="tempo-media-") as folder:
+            make(Path(folder), chrome)
+    for name in ("screenshot-light.png", "screenshot-dark.png", "demo.gif"):
+        print("Wrote docs/%s (%d KB)" % (name, (DOCS / name).stat().st_size // 1000))
+    return 0
+
+
+def fail(message: str) -> int:
+    print("bin/media: %s" % message, file=sys.stderr)
+    return 1
+
+
+def find_chrome() -> str | None:
+    named = os.environ.get("CHROME")
+    if named:
+        return named
+    if os.path.exists(CHROME_APP):
+        return CHROME_APP
+    return shutil.which("google-chrome") or shutil.which("chromium")
+
+
+def free_port() -> int:
+    while True:
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = int(probe.getsockname()[1])
+        if port not in RESERVED_PORTS:
+            return port
+
+
+def make(work: Path, chrome: str) -> None:
+    port = free_port()
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("TEMPO_", "OQ_"))}
+    env.update(TEMPO_DB=str(work / "questions.db"), TEMPO_PORT=str(port))
+    demo = Demo(work, env, port)
+    demo.fill()
+    with open(work / "server.log", "w") as log:
+        server = subprocess.Popen(  # noqa: S603
+            [str(ROOT / "bin" / "tempo"), "serve", "--port", str(port)],
+            env=env,
+            cwd=work,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+        try:
+            demo.wait_for_server()
+            demo.post("acme-shop", 4, "followup", {"body": CART_FOLLOWUP})
+            demo.backdate()
+            with Browser(chrome, work / "chrome") as browser:
+                demo.browser = browser
+                demo.screenshots()
+                demo.gif()
+        finally:
+            server.terminate()
+            server.wait()
+
+
+class Demo:
+    def __init__(self, work: Path, env: dict[str, str], port: int) -> None:
+        self.work = work
+        self.env = env
+        self.url = "http://127.0.0.1:%d/" % port
+        self.browser: Browser
+        self.frames: list[tuple[Path, int]] = []
+
+    # The database
+
+    def tempo(self, *args: str) -> None:
+        subprocess.run(  # noqa: S603
+            [str(ROOT / "bin" / "tempo"), *args],
+            env=self.env,
+            cwd=self.work,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+
+    def fill(self) -> None:
+        for question in QUESTIONS:
+            args = ["add", "--project", question["project"]]
+            args += ["--title", question["title"], "--context", question["context"]]
+            for option in question["options"]:
+                args += ["--option", option]
+            if question.get("recommended"):
+                args += ["--recommended", question["recommended"]]
+            if question.get("goal"):
+                args += ["--goal", question["goal"]]
+            self.tempo(*args)
+
+    def backdate(self) -> None:
+        """Move every question back to its age, so the list shows how long each has been
+        open and anything done after the page first loads counts as new."""
+        now = datetime.now(timezone.utc)
+        db = sqlite3.connect(self.env["TEMPO_DB"])
+        with db:
+            for question in QUESTIONS:
+                ids = db.execute(
+                    "SELECT q.id FROM questions q JOIN versions v ON v.question_id = q.id"
+                    " WHERE q.project = ? AND v.title = ?",
+                    (question["project"], question["title"]),
+                ).fetchone()
+                asked = (now - timedelta(hours=question["age"])).strftime(STAMP)
+                later = (now - timedelta(hours=question["age"] - 1)).strftime(STAMP)
+                db.execute(
+                    "UPDATE questions SET created_at = ?, updated_at = ? WHERE id = ?",
+                    (asked, asked, ids[0]),
+                )
+                db.execute(
+                    "UPDATE versions SET created_at = ? WHERE question_id = ?", (asked, ids[0])
+                )
+                db.execute(
+                    "UPDATE entries SET created_at = ? WHERE question_id = ?", (later, ids[0])
+                )
+        db.close()
+
+    def wait_for_server(self) -> None:
+        for _ in range(100):
+            try:
+                with urllib.request.urlopen(self.url + "health", timeout=1):  # noqa: S310
+                    return
+            except OSError:
+                time.sleep(0.1)
+        raise SystemExit("bin/media: the page did not start; run with --keep DIR to see its log")
+
+    def post(self, project: str, number: int, action: str, body: dict[str, str]) -> None:
+        request = urllib.request.Request(  # noqa: S310
+            "%sapi/questions/%s/%d/%s" % (self.url, project, number, action),
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json", "Origin": self.url.rstrip("/")},
+        )
+        with urllib.request.urlopen(request, timeout=5):  # noqa: S310
+            pass
+
+    # The page
+
+    def run(self, script: str) -> object:
+        result = self.browser.send(
+            "Runtime.evaluate", expression=script, returnByValue=True, awaitPromise=True
+        )
+        if "exceptionDetails" in result:
+            raise PageError("the page failed: %s" % result["exceptionDetails"])
+        return result["result"].get("value")
+
+    def shows(self, condition: str) -> bool:
+        """Whether the condition holds; false while the page is still loading."""
+        try:
+            return bool(self.run("Boolean(%s)" % condition))
+        except PageError:
+            return False
+
+    def wait(self, condition: str, timeout: float = 10) -> None:
+        end = time.monotonic() + timeout
+        while not self.shows(condition):
+            if time.monotonic() > end:
+                raise SystemExit("bin/media: the page never showed %s" % condition)
+            time.sleep(0.05)
+        # Let transitions (0.15 s on the page) finish before a picture is taken.
+        time.sleep(0.3)
+
+    def open(self, route: str) -> None:
+        self.browser.send("Page.navigate", url=self.url + route)
+        self.wait(LOADED)
+
+    def reload(self, condition: str = "true") -> None:
+        # Mark the page first, so the wait can't see it before the reload starts.
+        self.run("window.demoStale = true")
+        self.browser.send("Page.reload")
+        self.wait("!window.demoStale && %s && %s" % (LOADED, condition))
+
+    def center(self, selector: str) -> tuple[float, float]:
+        box = self.run(
+            "(() => { const r = document.querySelector(%s).getBoundingClientRect();"
+            " return [r.left + r.width / 2, r.top + r.height / 2]; })()" % json.dumps(selector)
+        )
+        assert isinstance(box, list)  # noqa: S101
+        return float(box[0]), float(box[1])
+
+    def click(self, selector: str) -> None:
+        x, y = self.center(selector)
+        for kind in ("mousePressed", "mouseReleased"):
+            self.browser.send(
+                "Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left", clickCount=1
+            )
+
+    def theme(self, scheme: str) -> None:
+        self.browser.send(
+            "Emulation.setEmulatedMedia",
+            features=[
+                {"name": "prefers-color-scheme", "value": scheme},
+                # Holds the "waiting on Claude" dots still, so every run looks the same.
+                {"name": "prefers-reduced-motion", "value": "reduce"},
+            ],
+        )
+
+    def picture(self, path: Path) -> None:
+        shot = self.browser.send("Page.captureScreenshot", format="png")
+        path.write_bytes(base64.b64decode(shot["data"]))
+
+    def first_visit(self) -> None:
+        """Open the page once, as a returning user would have, then have "Claude" add
+        context to one question and ask a new one elsewhere, so both get a "new" dot."""
+        self.theme("light")
+        self.open("#/acme-shop/1")
+        self.tempo("context", "3", "--project", "acme-shop", PAYMENTS_CONTEXT)
+        args = ["add", "--project", "garden-planner", "--goal", "Seed calendar"]
+        args += ["--title", NEW_GARDEN["title"], "--context", NEW_GARDEN["context"]]
+        for option in NEW_GARDEN["options"]:
+            args += ["--option", option]
+        self.tempo(*args)
+        self.reload("document.querySelector('#list .dot') && document.querySelector('#chips .dot')")
+
+    def screenshots(self) -> None:
+        self.first_visit()
+        self.click("#detail input[value=b]")
+        self.wait("document.querySelector('#detail input[value=b]').checked")
+        for scheme in ("light", "dark"):
+            self.theme(scheme)
+            time.sleep(0.3)
+            self.picture(DOCS / ("screenshot-%s.png" % scheme))
+        self.theme("light")
+
+    # The GIF
+
+    def frame(self, hold: int) -> None:
+        """Record what is on screen now, shown for 'hold' milliseconds."""
+        path = self.work / "frames" / ("%03d.png" % len(self.frames))
+        path.parent.mkdir(exist_ok=True)
+        self.picture(path)
+        self.frames.append((path, hold))
+
+    def point(self, x: float, y: float) -> None:
+        self.run(
+            "document.getElementById('demo-pointer').style.transform = 'translate(%dpx, %dpx)'"
+            % (x - 2, y - 2)
+        )
+
+    def move(self, selector: str, steps: int = 8) -> None:
+        """Glide the drawn pointer to an element, recording each step."""
+        start = self.run(
+            "(() => { const m = new DOMMatrix(getComputedStyle("
+            "document.getElementById('demo-pointer')).transform); return [m.e + 2, m.f + 2]; })()"
+        )
+        assert isinstance(start, list)  # noqa: S101
+        x, y = self.center(selector)
+        for step in range(1, steps + 1):
+            t = step / steps
+            eased = t * t * (3 - 2 * t)
+            self.point(start[0] + (x - start[0]) * eased, start[1] + (y - start[1]) * eased)
+            self.frame(40)
+        self.browser.send("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y)
+
+    def type(self, text: str) -> None:
+        for at in range(0, len(text), 2):
+            self.browser.send("Input.insertText", text=text[at : at + 2])
+            self.frame(60)
+
+    def gif(self) -> None:
+        # Start without the option the screenshots picked: the page keeps it as a draft.
+        self.run("document.querySelector('input[name=choice]:checked').checked = false")
+        self.reload()
+        self.run(POINTER)
+        self.point(860, 250)
+        self.frame(700)
+        # Pick the recommended option and send it; the page moves on to Q2.
+        self.move("#detail input[value=b] + .letter")
+        self.click("#detail input[value=b]")
+        self.wait("document.querySelector('#detail input[value=b]').checked", timeout=5)
+        self.frame(500)
+        self.move("#send")
+        self.click("#send")
+        self.wait("location.hash === '#/acme-shop/2' && document.querySelector('#note')")
+        self.frame(1300)
+        # Ask for more context with a note.
+        self.move("#note")
+        self.click("#note")
+        self.type(NOTE)
+        self.frame(400)
+        self.move("#detail .actions button:not(.primary)")
+        self.click("#detail .actions button:not(.primary)")
+        self.wait("document.querySelector('#detail .eyebrow .wait')")
+        self.frame(1600)
+        # Claude rewords the question, the way a session does.
+        args = ["reword", "2", "--project", "acme-shop", "--note", REWORD["note"]]
+        self.tempo(*args, "--title", REWORD["title"], "--context", REWORD["context"])
+        self.run("refresh(false)")
+        title = json.dumps(REWORD["title"])
+        self.wait("document.querySelector('#detail h2').textContent === %s" % title)
+        self.frame(1300)
+        # Scroll the question's pane down to the thread, which shows the request and the
+        # reword. (On a wide window each pane scrolls on its own.)
+        bottom = self.run("(d => d.scrollHeight - d.clientHeight)($('#detail'))")
+        assert isinstance(bottom, (int, float))  # noqa: S101
+        for step in range(1, 11):
+            t = step / 10
+            self.run("$('#detail').scrollTop = %d" % (bottom * t * t * (3 - 2 * t)))
+            self.frame(50)
+        self.frame(2200)
+        self.encode()
+
+    def encode(self) -> None:
+        listing = self.work / "frames.txt"
+        lines = []
+        for path, hold in self.frames:
+            lines += ["file '%s'" % path, "duration %.3f" % (hold / 1000)]
+        # The concat format needs the last file twice for its duration to count.
+        lines.append("file '%s'" % self.frames[-1][0])
+        listing.write_text("\n".join(lines) + "\n")
+        out = DOCS / "demo.gif"
+        ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+        # Fewer colours make a smaller file; the first that fits is kept.
+        for colors in (128, 96, 64, 48):
+            gif = (
+                "scale=%d:-1:flags=lanczos,split[a][b];"
+                "[a]palettegen=max_colors=%d:stats_mode=full[p];"
+                "[b][p]paletteuse=dither=none:diff_mode=rectangle" % (GIF_WIDTH, colors)
+            )
+            command = [ffmpeg, "-v", "error", "-y", "-f", "concat", "-safe", "0"]
+            command += ["-i", str(listing), "-vf", gif, "-fps_mode", "vfr", "-loop", "0", str(out)]
+            subprocess.run(command, check=True)  # noqa: S603
+            if out.stat().st_size <= GIF_LIMIT:
+                return
+        raise SystemExit("bin/media: the GIF is still over %d bytes" % GIF_LIMIT)
+
+
+def high(fd: int) -> int:
+    """The same pipe end on a file number of 10 or more; the old number is closed."""
+    moved = fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC, 10)
+    os.close(fd)
+    return moved
+
+
+class PageError(Exception):
+    pass
+
+
+class Browser:
+    """Headless Chrome on one tab, driven over --remote-debugging-pipe: JSON messages, each
+    ended by a NUL byte, written to Chrome's file 3 and read from its file 4."""
+
+    def __init__(self, chrome: str, profile: Path) -> None:
+        self.chrome = chrome
+        self.profile = profile
+        self.next_id = 0
+        self.buffer = b""
+
+    def __enter__(self) -> Browser:
+        to_chrome, self.writer = os.pipe()
+        self.reader, from_chrome = os.pipe()
+        # Chrome's ends move to file numbers 10 and up first, so putting them on 3 and 4 can't
+        # overwrite one with the other. Python's own pipe ends close when Chrome starts.
+        to_chrome, from_chrome = (high(to_chrome), high(from_chrome))
+
+        def descriptors() -> None:
+            os.dup2(to_chrome, 3)
+            os.dup2(from_chrome, 4)
+
+        self.process = subprocess.Popen(  # noqa: S603
+            [
+                self.chrome,
+                "--headless=new",
+                "--remote-debugging-pipe",
+                "--user-data-dir=%s" % self.profile,
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--hide-scrollbars",
+                "--force-device-scale-factor=1",
+                "--window-size=%d,%d" % (WIDTH, HEIGHT),
+                "--lang=en-US",
+            ],
+            preexec_fn=descriptors,
+            close_fds=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        os.close(to_chrome)
+        os.close(from_chrome)
+        target = self.send("Target.createTarget", session=False, url="about:blank")
+        self.session = self.send(
+            "Target.attachToTarget", session=False, targetId=target["targetId"], flatten=True
+        )["sessionId"]
+        self.send("Page.enable")
+        self.send(
+            "Emulation.setDeviceMetricsOverride",
+            width=WIDTH,
+            height=HEIGHT,
+            deviceScaleFactor=1,
+            mobile=False,
+        )
+        self.send("Emulation.setTimezoneOverride", timezoneId="Europe/Amsterdam")
+        self.send("Emulation.setLocaleOverride", locale="en-US")
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        with contextlib.suppress(SystemExit, OSError):
+            self.send("Browser.close", session=False)
+        self.process.wait(timeout=10)
+        os.close(self.writer)
+        os.close(self.reader)
+
+    def send(self, method: str, session: bool = True, **params: object) -> dict:
+        self.next_id += 1
+        message: dict[str, object] = {"id": self.next_id, "method": method, "params": params}
+        if session:
+            message["sessionId"] = self.session
+        os.write(self.writer, json.dumps(message).encode() + b"\0")
+        while True:
+            reply = self.receive()
+            if reply.get("id") == self.next_id:
+                if "error" in reply:
+                    raise SystemExit("bin/media: Chrome refused %s: %s" % (method, reply["error"]))
+                return dict(reply.get("result", {}))
+
+    def receive(self) -> dict:
+        while b"\0" not in self.buffer:
+            chunk = os.read(self.reader, 1 << 20)
+            if not chunk:
+                raise SystemExit("bin/media: Chrome closed")
+            self.buffer += chunk
+        message, self.buffer = self.buffer.split(b"\0", 1)
+        return dict(json.loads(message))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
