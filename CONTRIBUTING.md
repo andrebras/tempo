@@ -12,6 +12,8 @@ TEMPO_DB=/tmp/questions.db bin/tempo serve  # run the page on a scratch database
 ```
 
 `bin/ci` installs the pinned tools from `requirements-dev.txt` into `.venv` on its first run.
+It rebuilds `.venv` when its Python no longer runs (after the folder was moved, for example),
+and Biome and Ruff skip `.claude/`, so git worktrees kept there do not break the checks.
 It needs [ShellCheck](https://www.shellcheck.net) (`brew install shellcheck`) and
 [Node.js](https://nodejs.org) 18 or newer (`brew install node`), which runs the checks for
 the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on first use.
@@ -33,11 +35,18 @@ line says why.
 Use a scratch database (`TEMPO_DB`) and another port (`TEMPO_PORT`) when you try changes by
 hand, so your real questions stay untouched.
 
+## Screenshots and demo GIF
+
+`bin/media` makes the README's pictures again, `docs/screenshot-light.png`,
+`docs/screenshot-dark.png` and `docs/demo.gif`, from made-up questions in a throwaway
+database, so run it after a change to the page. It needs Google Chrome and
+[ffmpeg](https://ffmpeg.org) (`brew install ffmpeg`), and never touches your own questions.
+
 ## Layout
 
 ```
 .claude-plugin/   plugin and marketplace manifests
-bin/              tempo (the command), oq (its old name), ci and check-version
+bin/              tempo (the command), oq (its old name), ci, check-version and media
 docs/             reference, screenshots and the demo GIF
 hooks/            hook configuration
 tempo/            store (SQLite), cli (tempo), server, and the page (page.html and its
