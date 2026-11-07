@@ -160,33 +160,34 @@ function renderRenames(renames) {
   if (notice.dataset.key === key) return;
   notice.dataset.key = key;
   notice.hidden = !renames.length;
-  notice.replaceChildren(...renames.map((rename) => {
-    const error = el("span", { class: "error", hidden: true });
-    const act = (path, body) => api(path, body).then((settings) => {
-      if (body.project && state.project === rename.project) chooseProject(body.project);
-      if (settingsOpen()) renderSettings(settings);
-      return refresh();
-    }, (problem) => { error.textContent = problem.message; error.hidden = false; });
-    const keep = el("button", { onclick: () => act("/api/folders/keep", { path: rename.path }) },
-      "Keep as its own project");
-    const where = [el("code", {}, rename.folder), ` (${rename.shown}) is a new folder`];
-    if (rename.candidates.length === 1) {
-      const old = rename.candidates[0];
-      const link = () => act("/api/folders/link", { path: rename.path, project: old.project });
-      return el("div", { class: "rename", role: "status" },
-        el("p", {}, ...where, ", and ", el("code", {}, old.shown), `, filed under ${old.project}, `
-          + "no longer exists. Is it the same folder, renamed or moved?"),
-        el("div", { class: "actions" },
-          el("button", { class: "primary", onclick: link }, `Link to ${old.project}`), keep, error));
-    }
-    return el("div", { class: "rename", role: "status" },
-      el("p", {}, ...where, ". Several known folders no longer exist (",
-        rename.candidates.map((old) => `${old.shown}, filed under ${old.project}`).join("; "),
-        "), so it may be one of them renamed or moved. Pick its project in Settings."),
-      el("div", { class: "actions" },
-        el("button", { class: "primary", onclick: () => { if (!settingsOpen()) $("#gear").click(); } },
-          "Open Settings"), keep, error));
-  }));
+  notice.replaceChildren(...renames.map(renameBanner));
+}
+
+// One new folder's banner: a "Link to <project>" button for each known folder that no
+// longer exists, named with that folder's path, and a button to keep it apart.
+function renameBanner(rename) {
+  const error = el("span", { class: "error", hidden: true });
+  const act = (path, body) => api(path, body).then((settings) => {
+    if (body.project && state.project === rename.project) chooseProject(body.project);
+    if (settingsOpen()) renderSettings(settings);
+    return refresh();
+  }, (problem) => { error.textContent = problem.message; error.hidden = false; });
+  const keep = el("button", { onclick: () => act("/api/folders/keep", { path: rename.path }) },
+    "Keep as its own project");
+  const several = rename.candidates.length > 1;
+  const links = rename.candidates.map((old) => el("button", {
+    class: "primary",
+    onclick: () => act("/api/folders/link", { path: rename.path, project: old.project }),
+  }, several ? `Link to ${old.project} (${old.shown})` : `Link to ${old.project}`));
+  const where = [el("code", {}, rename.folder), ` (${rename.shown}) is a new folder`];
+  const text = several
+    ? [". Several known folders no longer exist, so it may be one of them renamed or moved. "
+      + "Link it to the one it was, or keep it apart."]
+    : [", and ", el("code", {}, rename.candidates[0].shown),
+      `, filed under ${rename.candidates[0].project}, no longer exists. `
+      + "Is it the same folder, renamed or moved?"];
+  return el("div", { class: "rename", role: "status" },
+    el("p", {}, ...where, ...text), el("div", { class: "actions" }, ...links, keep, error));
 }
 
 function setStatus(status) {
@@ -647,6 +648,6 @@ function start() {
 }
 
 if (typeof module === "object") module.exports = {
-  rich, inline, openFor, joinNotice, serverChanged, renderFolders,
+  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders,
 };
 else start();

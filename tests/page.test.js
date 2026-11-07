@@ -48,7 +48,7 @@ globalThis.Node = Node;
 globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
-  rich, inline, openFor, joinNotice, serverChanged, renderFolders,
+  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -156,6 +156,23 @@ test("serverChanged notices a restarted server, not a missing answer", () => {
 
 const tempo = { folder: "tempo", path: "/lab/tempo", shown: "~/lab/tempo", project: "tempo" };
 const gone = (project, name) => ({ folder: name, path: `/lab/${name}`, shown: `~/lab/${name}`, project });
+
+test("the rename banner offers one Link button per missing folder", () => {
+  const banner = renameBanner({ ...tempo, candidates: [gone("Tempo", "open-questions"), gone("Shop", "shop")] });
+  assert.deepEqual(all(banner, "BUTTON").map((button) => button.textContent), [
+    "Link to Tempo (~/lab/open-questions)",
+    "Link to Shop (~/lab/shop)",
+    "Keep as its own project",
+  ]);
+  assert.doesNotMatch(banner.textContent, /Settings/);
+});
+
+test("the rename banner names the one missing folder in its text", () => {
+  const banner = renameBanner({ ...tempo, candidates: [gone("Tempo", "open-questions")] });
+  assert.deepEqual(all(banner, "BUTTON").map((button) => button.textContent),
+    ["Link to Tempo", "Keep as its own project"]);
+  assert.match(banner.textContent, /~\/lab\/open-questions, filed under Tempo, no longer exists/);
+});
 
 test("folders are listed read-only, with no menu to move them", () => {
   const list = renderFolders({ name: "tempo", folders: [tempo] });
