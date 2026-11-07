@@ -45,6 +45,8 @@ All notable changes to Tempo are listed here. The format follows
   the buttons on the empty screen. The list is redrawn only when it changes.
 - A slow reply for a question you have already left no longer replaces the question you opened
   next, or clears the note you started there.
+- A link to a question that doesn't exist (for example one renumbered when two projects were
+  joined) says "Question not found". Before, it opened another question without saying so.
 
 ### Security
 

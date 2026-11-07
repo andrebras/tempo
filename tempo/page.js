@@ -1,6 +1,6 @@
 const state = {
   status: "open", project: storedProject(), seen: storedSeen(), opened: storedOpened(),
-  current: null, shown: null, back: null,
+  current: null, shown: null, back: null, missing: null,
 };
 
 // The page shows one project at a time and remembers the last one per browser.
@@ -85,7 +85,8 @@ async function api(path, body) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   } : {});
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Something went wrong");
+  // The status tells a reply from the server apart from no reply at all.
+  if (!response.ok) throw Object.assign(new Error(data.error || "Something went wrong"), { status: response.status });
   return data;
 }
 
@@ -445,14 +446,27 @@ async function refresh(follow = false) {
   }
   showSettings(false);
   let current = route();
+  if (follow) state.missing = null;
   if (current && follow) {
     try {
       const question = await api(`/api/questions/${encodeURIComponent(current.project)}/${current.number}`);
       if (question.status !== state.status) setStatus(question.status);
-    } catch { /* a missing question is reported by loadDetail */ }
+    } catch (problem) {
+      // The server says it doesn't exist; a server that is restarting says nothing.
+      if (problem.status) state.missing = { hash: location.hash, message: problem.message };
+    }
   }
   const shown = await loadList();
   current = route();
+  // A link to a missing question (say, one renumbered when two projects were joined) says
+  // so, and stays until the user moves on, instead of opening another question.
+  if (current && state.missing?.hash === location.hash) {
+    state.current = null;
+    state.shown = null;
+    $("#detail").replaceChildren(el("div", { class: "empty-state" }, el("h2", {}, "Question not found"),
+      el("p", {}, `${state.missing.message}. Pick a question from the list.`)));
+    return;
+  }
   const visible = (q) => current && q.project === current.project && q.number === current.number;
   if (current && !shown.questions.some(visible)) {
     history.replaceState(null, "", location.pathname);
