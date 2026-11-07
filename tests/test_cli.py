@@ -27,8 +27,8 @@ def result(tool_id, output, error=False):
     return {"type": "tool_result", "tool_use_id": tool_id, "content": output, "is_error": error}
 
 
-# How a `tempo wait` process shows in ps.
-WAIT = "/usr/bin/python3 -m tempo wait --timeout 1800"
+# How a `tempo wait` process started by bin/tempo shows in ps.
+WAIT = "/usr/bin/python3 /plugin/tempo/__main__.py wait --timeout 1800"
 
 
 def run(*argv, stdin=""):
@@ -1415,6 +1415,7 @@ class TempoPidTest(unittest.TestCase):
 
         for command, pid in [
             ("/usr/bin/python3 -m tempo serve --port 2204\n", 4242),
+            ("/usr/bin/python3 /plugin/tempo/__main__.py serve --port 2204\n", 4242),
             ("/usr/bin/python3 -m http.server 2204\n", None),
         ]:
             with self.subTest(command=command):
