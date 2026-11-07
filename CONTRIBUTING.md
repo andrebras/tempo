@@ -37,6 +37,25 @@ hand, so your real questions stay untouched. Code run from a worktree, or from t
 checkout on any branch but `main`, does this by itself: it uses `.tempo-dev/questions.db`
 inside its folder and a port of its own.
 
+## Changing the database
+
+A Claude session keeps the Tempo it started with, so an older Tempo may still be reading
+and writing the database after a newer one has changed it. The database's `user_version`
+counts the numbered steps that changed it, and Tempo refuses a database whose number is
+higher than it knows. So a change raises that number only when it has to.
+
+- **Compatible change**: older code can ignore it. Examples are a new table, a new index
+  and a new column that may be empty. Add it to `SCHEMA` in `tempo/store.py`; for a new
+  column, also add a step to `ADDITIONS` that calls `_add_column`. Both run on every open
+  and add only what is missing, and `user_version` stays the same.
+- **Incompatible change**: older code would get it wrong. Examples are a renamed or dropped
+  column, a new required value, or a value whose meaning changed. Add a step at the end of
+  `MIGRATIONS`. It runs once and raises `user_version`, and older sessions then stop with a
+  message asking to restart them.
+
+Prefer a compatible change when one can do the job. `tests/test_previous_release.py`
+checks that the last release still works on a database the current code has opened.
+
 ## Screenshots and demo GIF
 
 `bin/media` makes the README's pictures again, `docs/screenshot-light.png`,
