@@ -71,6 +71,11 @@ decision, it adds a question and links to it in chat. On the page you can:
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too.
 
+If you would rather answer from the terminal, run `tempo config page off`: sessions then stop
+starting the page, and Claude points you to `tempo show` and `tempo answer` instead of page
+links. `tempo serve --background` still starts the page when you want it, and
+`tempo config page on` brings back the default (`tempo config` shows the current value).
+
 ## From the terminal
 
 You can also answer without opening the page. These commands are for you, not for Claude, and
