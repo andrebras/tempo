@@ -24,6 +24,19 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- The skill no longer mentions answers "given with `tempo`": there is no command to answer
+  a question, only the page and chat.
+- A project can't be named `.` or `..` any more, with `--project`, `TEMPO_PROJECT` or a
+  rename. The page could not open such a project's questions, because the browser reads
+  those names in a link as steps between folders.
+- `tempo show 12b` shows Q12, so the short code the user names an answer with works there
+  too. It failed with "invalid _number value".
+- After Claude rewords a question you have picked an option on, the page clears the pick.
+  The same letter may now name another option, so a pick kept from the old wording could
+  answer something you didn't choose. The note you were typing is kept.
+- While an answer, follow-up or reopen is being sent, the page's buttons stay disabled even
+  when the timed refresh redraws the question. Before, a redraw enabled them again, so a
+  second click could send the answer twice.
 - Several sessions, hooks or commands opening a brand-new database at the same moment no
   longer fail now and then with "database is locked". When a write fails in a way that makes
   SQLite undo it by itself, the error you see is that one, not "no transaction is active".

@@ -100,11 +100,10 @@ user was replying to, not an open question. When unsure, ask in chat and let the
 on the page. Subagents follow the same rule.
 
 Act on it, and tell the user in chat what you did with it. On the page an answer always
-picks an option (a note may come with it); a note on its own arrives as a follow-up. Answers
-given with `tempo` or in chat can still be free text: follow them, and ask again only if
-truly unclear. If the answer asks
-for more instead of deciding ("give me more options"), reword the question: that opens it
-again for a new answer.
+picks an option (a note may come with it); a note on its own arrives as a follow-up. An
+answer given in chat can still be free text: follow it, and ask again only if truly unclear.
+If the answer asks for more instead of deciding ("give me more options"), reword the
+question: that opens it again for a new answer.
 
 ## Handling a follow-up ("ask for more context")
 
@@ -124,7 +123,8 @@ was updated, with its link.
 
 ## Other commands
 
-- `tempo list` (`--status answered|archived|all`, `--all-projects`) and `tempo show <number>`.
+- `tempo list` (`--status answered|archived|all`, `--all-projects`) and `tempo show <number>`
+  (also takes a short code such as `12b`).
 - `tempo goal <number> "…"` sets or changes the goal without rewording the question, so it
   stays quick. Add `--start-here "unlocks …"` or `--no-start-here` to move the mark
   (`tempo goal <number> --no-start-here` alone keeps the goal); `tempo goal <number> ""`
