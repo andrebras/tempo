@@ -11,6 +11,7 @@ from tempo.store import (
     Store,
     _add_folder_paths,
     _migrate,
+    branch_db,
     connect,
     db_path,
 )
@@ -572,6 +573,10 @@ class DbPathTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
         for key in ("TEMPO_DB", "OQ_DB"):
             os.environ.pop(key, None)
+        # These tests may run from a worktree, which would pick its own database.
+        branch = mock.patch("tempo.store.branch_db", return_value=None)
+        branch.start()
+        self.addCleanup(branch.stop)
 
     def create(self, folder):
         path = os.path.join(self.home, ".claude", folder, "questions.db")
@@ -592,7 +597,38 @@ class DbPathTest(unittest.TestCase):
         new = self.create("tempo")
         self.assertEqual(db_path(), new)
 
+    def test_a_worktree_uses_its_own_database(self):
+        with mock.patch("tempo.store.branch_db", return_value="/branch/.tempo-dev/questions.db"):
+            self.assertEqual(db_path(), "/branch/.tempo-dev/questions.db")
+
+    def test_an_explicit_path_wins_over_a_worktree(self):
+        with (
+            mock.patch.dict("os.environ", {"TEMPO_DB": "/elsewhere/questions.db"}),
+            mock.patch("tempo.store.branch_db", return_value="/branch/.tempo-dev/questions.db"),
+        ):
+            self.assertEqual(db_path(), "/elsewhere/questions.db")
+
     def test_an_explicit_path_wins(self):
         self.create("open-questions")
         with mock.patch.dict("os.environ", {"OQ_DB": "/elsewhere/questions.db"}):
             self.assertEqual(db_path(), "/elsewhere/questions.db")
+
+
+class BranchDbTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = tmp.name
+
+    def test_a_worktree_gets_a_database_inside_it(self):
+        # In a worktree, .git is a file pointing at the main checkout.
+        with open(os.path.join(self.root, ".git"), "w") as git:
+            git.write("gitdir: /elsewhere\n")
+        self.assertEqual(
+            branch_db(self.root), os.path.join(self.root, ".tempo-dev", "questions.db")
+        )
+
+    def test_the_main_checkout_and_the_installed_plugin_get_none(self):
+        self.assertIsNone(branch_db(self.root))
+        os.mkdir(os.path.join(self.root, ".git"))
+        self.assertIsNone(branch_db(self.root))
