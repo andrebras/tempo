@@ -4,6 +4,16 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The header's project dropdown is replaced by project chips: one per project with open
+  questions or something new since you last looked, each with its open count, plus the
+  project you are on. A dot marks a project where something arrived since you last viewed
+  it (a new question, a reworded one, or Claude's reply to a follow-up). An "All projects"
+  menu lists every project. See [Projects in the header](docs/reference.md#projects-in-the-header).
+
 ## [0.5.2] - 2026-11-07
 
 ### Added

@@ -75,6 +75,13 @@ class ServerTest(DatabaseTest):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(data)["projects"], ["demo", "onzehq"])
 
+    def test_the_list_says_when_each_project_last_had_news(self):
+        status, data = self.request("GET", "/api/questions?status=open")
+        self.assertEqual(status, 200)
+        activity = json.loads(data)["activity"]
+        self.assertEqual(activity, self.store.project_activity())
+        self.assertEqual(list(activity), ["demo"])
+
     def test_answers_a_question(self):
         status, data = self.request(
             "POST", "/api/questions/demo/1/answer", {"choice": "a", "body": ""}

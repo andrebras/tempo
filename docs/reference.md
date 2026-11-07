@@ -20,6 +20,25 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 
 `oq`, the command's old name, still works as an alias.
 
+## Projects in the header
+
+The page shows one project at a time. The header has a chip for each project that has
+something for you: at least one open question, or something new since you last looked at
+that project. Each chip shows the project's name and its open count, such as `tempo · 2`.
+The project you are on always has a chip, highlighted, even with nothing open. Click a chip
+to switch to that project.
+
+A dot on a chip means something arrived since you last viewed that project: a new question,
+a reworded question, or Claude's reply to a follow-up. Viewing the project clears the dot.
+When you last viewed each project is kept in your browser, not in the database; on a
+browser's first visit nothing counts as new yet.
+
+**All projects ▾**, after the chips, lists every project with its open count, so a project
+with nothing waiting is one click away. It works with the keyboard: the arrow keys, Home
+and End move through the list, and Escape closes it.
+
+A project gets its chip by itself, within a few seconds of its first new question.
+
 ## Goals
 
 Each question names its **goal**: the piece of work its answer moves forward, such as

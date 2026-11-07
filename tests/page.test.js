@@ -48,7 +48,7 @@ globalThis.Node = Node;
 globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
-  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders,
+  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -180,4 +180,24 @@ test("folders are listed read-only, with no menu to move them", () => {
   assert.deepEqual(all(list, "SELECT"), []);
   assert.deepEqual(all(list, "BUTTON"), []);
   assert.equal(renderFolders({ name: "tempo", folders: [] }), null);
+});
+
+test("chips show projects with open questions or news, and always the current one", () => {
+  const projects = ["idle", "busy", "fresh", "here"];
+  const counts = { busy: 2 };
+  const activity = { idle: "2026-01-01T00:00:00Z", busy: "2026-01-01T00:00:00Z",
+    fresh: "2026-01-03T00:00:00Z" };
+  const seen = { idle: "2026-01-01T00:00:00Z", busy: "2026-01-02T00:00:00Z", fresh: "2026-01-02T00:00:00Z" };
+  assert.deepEqual(chipProjects(projects, counts, activity, seen, "here"), [
+    { name: "busy", open: 2, current: false, fresh: false },
+    { name: "fresh", open: 0, current: false, fresh: true },
+    { name: "here", open: 0, current: true, fresh: false },
+  ]);
+});
+
+test("a project never viewed is new once it has activity; the current one never shows the dot", () => {
+  const activity = { other: "2026-01-01T00:00:00Z", here: "2026-01-05T00:00:00Z" };
+  const chips = chipProjects(["other", "here", "quiet"], { here: 1 }, activity, {}, "here");
+  assert.deepEqual(chips.map(({ name, fresh }) => [name, fresh]), [["other", true], ["here", false]]);
+  assert.deepEqual(chipProjects(["other"], {}, activity, null, "").map((chip) => chip.fresh), [true]);
 });
