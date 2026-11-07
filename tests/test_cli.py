@@ -12,6 +12,9 @@ from unittest import mock
 from tempo import cli
 from tests.helpers import DatabaseTest
 
+# How a `tempo wait` process shows in ps.
+WAIT = "/usr/bin/python3 -m tempo wait --timeout 1800"
+
 
 def run(*argv, stdin=""):
     out, err = io.StringIO(), io.StringIO()
@@ -42,10 +45,10 @@ class FakeClock:
 class CliTest(DatabaseTest):
     def setUp(self):
         super().setUp()
-        # The pids of the `tempo wait` processes running: none unless a test adds one, so
-        # waits running on this computer for real never count.
-        self.waits = set()
-        waits = mock.patch.object(cli, "_wait_processes", side_effect=lambda: set(self.waits))
+        # The `tempo wait` processes running, by pid, with their commands: none unless a
+        # test adds one, so waits running on this computer for real never count.
+        self.waits = {}
+        waits = mock.patch.object(cli, "_wait_processes", side_effect=lambda: dict(self.waits))
         waits.start()
         self.addCleanup(waits.stop)
 
@@ -525,7 +528,7 @@ class CliTest(DatabaseTest):
         with open(path, "w") as file:
             json.dump({"pid": pid, "project": project}, file)
         if wait:
-            self.waits.add(pid)
+            self.waits[pid] = WAIT
         return path
 
     def test_wait_leaves_a_marker_while_it_runs(self):
@@ -535,7 +538,7 @@ class CliTest(DatabaseTest):
             seen.append(cli.wait_running("demo"))
             return "Answered"
 
-        self.waits.add(os.getpid())  # The wait runs in this process.
+        self.waits[os.getpid()] = WAIT  # The wait runs in this process.
         with mock.patch.object(cli, "take_inbox", side_effect=inbox):
             run("wait", "--timeout", "5")
         self.waits.clear()
@@ -585,7 +588,7 @@ class CliTest(DatabaseTest):
         del os.environ["TEMPO_PROJECT"]
         self.store.see_folder("shop", "/x/shop")
         self.add(project="shop")
-        self.waits.add(os.getpid())  # The wait runs in this process.
+        self.waits[os.getpid()] = WAIT  # The wait runs in this process.
         seen = []
 
         def meanwhile(seconds):
@@ -622,13 +625,31 @@ class CliTest(DatabaseTest):
         self.assertFalse(cli.wait_running("demo"))
         self.assertFalse(os.path.exists(reused))
 
-    def test_a_wait_that_left_no_marker_counts_for_every_project(self):
+    def test_a_wait_that_left_no_marker_counts_for_its_folder_or_named_project(self):
         # An install from before markers, or one using another folder, runs `tempo wait`
         # without leaving a marker here.
+        del os.environ["TEMPO_PROJECT"]
         self.marker(4242, project="other")
         self.assertFalse(cli.wait_running("demo"))
-        self.waits.add(4343)
-        self.assertTrue(cli.wait_running("demo"))
+        folders = {4343: "/x/demo", 4444: "/x/other", 4545: None, 4747: "/x/other"}
+        overrides = {4747: "ONZE HQ"}
+        with (
+            mock.patch.object(cli, "_process_cwd", side_effect=folders.get),
+            mock.patch.object(cli, "_process_project_setting", side_effect=overrides.get),
+        ):
+            self.waits[4444] = WAIT
+            self.assertFalse(cli.wait_running("demo"))
+            self.waits[4343] = WAIT
+            self.assertTrue(cli.wait_running("demo"))
+            self.assertFalse(cli.wait_running("shop"))
+            self.waits[4646] = WAIT + " --project shop"
+            self.assertTrue(cli.wait_running("shop"))
+            self.assertFalse(cli.wait_running("ONZE HQ"))
+            self.waits[4747] = WAIT  # Run with TEMPO_PROJECT="ONZE HQ".
+            self.assertTrue(cli.wait_running("ONZE HQ"))
+            # A wait whose folder cannot be found counts for every project.
+            self.waits[4545] = WAIT
+            self.assertTrue(cli.wait_running("blog"))
 
     def test_without_ps_a_marker_counts_while_its_process_lives(self):
         self.marker(os.getpid(), wait=False)
@@ -976,10 +997,27 @@ class WaitProcessesTest(unittest.TestCase):
             self.addCleanup(process.wait)
             self.addCleanup(process.kill)
         waits = cli._wait_processes()
-        self.assertIn(wait.pid, waits)
+        self.assertIn("-m tempo wait --timeout 1800", waits[wait.pid])
         self.assertNotIn(other.pid, waits)
         self.assertNotIn(os.getpid(), waits)
 
     def test_none_when_ps_cannot_run(self):
         with mock.patch.object(cli.subprocess, "run", side_effect=OSError):
             self.assertIsNone(cli._wait_processes())
+
+    def test_finds_a_process_folder(self):
+        folder = cli._process_cwd(os.getpid())
+        self.assertEqual(os.path.realpath(folder), os.path.realpath(os.getcwd()))
+        self.assertIsNone(cli._process_cwd(-1))
+
+    def test_finds_a_process_project_setting(self):
+        env = dict(os.environ, TEMPO_PROJECT="ONZE HQ")
+        process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], env=env)
+        self.addCleanup(process.wait)
+        self.addCleanup(process.kill)
+        self.assertEqual(cli._process_project_setting(process.pid), "ONZE HQ")
+        plain = {k: v for k, v in os.environ.items() if not k.endswith("_PROJECT")}
+        other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], env=plain)
+        self.addCleanup(other.wait)
+        self.addCleanup(other.kill)
+        self.assertIsNone(cli._process_project_setting(other.pid))

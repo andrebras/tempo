@@ -88,8 +88,8 @@ All notable changes to Tempo are listed here. The format follows
   so it asks Claude to start a new wait instead of trusting a dead one.
 - A `tempo wait` started by an older install, which leaves no marker file, now counts as
   running. Before, the Stop hook only looked for markers, so it sent Claude back after every
-  reply to start a wait that was already running. Such a wait counts for every project, as it
-  cannot say which one it serves.
+  reply to start a wait that was already running. Such a wait counts for the project it names
+  with `--project` or `TEMPO_PROJECT`, else for its folder's project.
 - A running `tempo wait` follows its folder's project when the project is renamed or joined
   into another in Settings. Before, it kept waiting under the old name, so it missed every
   answer and the Stop hook no longer saw it as running.

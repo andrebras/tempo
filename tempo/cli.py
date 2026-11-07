@@ -372,9 +372,10 @@ def wait_running(project: str) -> bool:
     that were killed are removed, and so are those whose pid has since been given to a
     process that is not a wait.
 
-    A wait that left no marker here counts for every project, since it cannot say which
-    one it serves: one from an install older than markers, or one whose database, and so
-    its markers, are in another folder.
+    A wait that left no marker here (one from an install older than markers, or one
+    whose database, and so its markers, are in another folder) counts for the project it
+    names with --project, else for its folder's project, or for every project when its
+    folder cannot be found.
     """
     folder = os.path.dirname(_db_path())
     waits = _wait_processes()
@@ -397,15 +398,75 @@ def wait_running(project: str) -> bool:
         else:
             with contextlib.suppress(OSError):
                 os.remove(path)
-    return running or bool(waits and waits - marked)
+    unmarked = {pid: command for pid, command in (waits or {}).items() if pid not in marked}
+    return running or any(
+        _unmarked_project(pid, command) in (None, project) for pid, command in unmarked.items()
+    )
+
+
+def _unmarked_project(pid: int, command: str) -> str | None:
+    """The project a wait without a marker serves, or None when that cannot be told."""
+    named = re.search(r"--project[= ](\S+)", command)
+    if named:
+        return named.group(1)
+    override = _process_project_setting(pid)
+    if override:
+        return override
+    cwd = _process_cwd(pid)
+    return project_name(cwd) if cwd else None
+
+
+def _process_project_setting(pid: int) -> str | None:
+    """TEMPO_PROJECT (or OQ_PROJECT) as another process of this user sees it, or None."""
+    try:
+        with open("/proc/%d/environ" % pid, "rb") as file:  # Linux
+            env = dict(
+                item.split("=", 1) for item in file.read().decode().split("\0") if "=" in item
+            )
+        return env.get("TEMPO_PROJECT") or env.get("OQ_PROJECT")
+    except OSError:
+        pass
+    try:
+        # ps -E adds the process's environment after its command (macOS). ps is looked up
+        # on PATH on purpose; the only value passed in is a number.
+        listing = subprocess.run(  # noqa: S603
+            ["ps", "-E", "-o", "command=", "-p", str(pid)],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = re.search(r"\s(?:TEMPO|OQ)_PROJECT=(.*?)(?=\s[A-Za-z_][A-Za-z0-9_]*=|$)", listing)
+    return found.group(1) if found else None
+
+
+def _process_cwd(pid: int) -> str | None:
+    """The folder a process runs in, or None when it cannot be found."""
+    with contextlib.suppress(OSError):
+        return os.readlink("/proc/%d/cwd" % pid)  # Linux
+    try:
+        # lsof is looked up on PATH on purpose; the only value passed in is a number.
+        listing = subprocess.run(  # noqa: S603
+            ["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return next((line[1:] for line in listing.splitlines() if line.startswith("n/")), None)
 
 
 # How a `tempo wait` process shows in ps: bin/tempo runs `python3 -m tempo wait …`.
 WAIT_COMMAND = re.compile(r"(?:^|\s)-m tempo wait(?:\s|$)")
 
 
-def _wait_processes() -> set[int] | None:
-    """The pids of the `tempo wait` processes running, or None when ps cannot be run."""
+def _wait_processes() -> dict[int, str] | None:
+    """The `tempo wait` processes running, as their commands by pid, or None when ps
+    cannot be run."""
     try:
         # ps is looked up on PATH on purpose; the arguments are fixed and there is no shell.
         listing = subprocess.run(
@@ -417,11 +478,11 @@ def _wait_processes() -> set[int] | None:
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
-    waits = set()
+    waits = {}
     for line in listing.splitlines():
         pid, _, command = line.strip().partition(" ")
         if pid.isdigit() and WAIT_COMMAND.search(command):
-            waits.add(int(pid))
+            waits[int(pid)] = command
     return waits
 
 
