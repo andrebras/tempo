@@ -42,6 +42,7 @@ All notable changes to Tempo are listed here. The format follows
   project's questions move after the other's, in their order, with new numbers (for
   example tempo Q1–Q5 become Tempo Q28–Q32). Each gets a note in its thread saying its old
   number, and Settings says how many moved and where. Before, Tempo refused the join.
+- Tests can no longer open the real database: a test that does not pick its own fails.
 
 ## [0.4.0] - 2026-11-07
 

@@ -373,7 +373,7 @@ class CliTest(DatabaseTest):
         self.assertFalse(os.path.exists(dead))
 
 
-class ProjectNameTest(unittest.TestCase):
+class ProjectNameTest(DatabaseTest):
     def test_uses_the_main_checkout_folder_from_subfolders_and_worktrees(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
