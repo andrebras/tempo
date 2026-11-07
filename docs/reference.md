@@ -14,7 +14,7 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo goal <n> "…"` | Set a question's goal without rewording it (`--start-here "…"`, `--no-start-here`; `""` removes the goal) |
 | `tempo archive` | Archive the project's answered questions now (they also move to Archived by themselves 7 days after their latest answer) |
 | `tempo set-next <n>` | Continue numbering from an older list |
-| `tempo inbox` | Print answers and follow-ups Claude hasn't seen yet |
+| `tempo inbox` | Print answers and follow-ups Claude hasn't seen yet (`--all-projects` shows every project's without marking them seen) |
 | `tempo wait --timeout 1800` | Wait until you answer or follow up, then print it |
 | `tempo serve [--background]` | Run the page |
 
