@@ -532,7 +532,20 @@ class CliTest(DatabaseTest):
         self.assertFalse(os.path.exists(dead))
 
 
-class RenameNoteTest(DatabaseTest):
+class GitTest(DatabaseTest):
+    """Runs real git commands in temporary folders. Git's own variables, set when the
+    tests run from a git hook or `git rebase --exec`, would point those commands at the
+    repo running the tests instead, so they are cleared."""
+
+    def setUp(self):
+        super().setUp()
+        clean = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        patcher = mock.patch.dict(os.environ, clean, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
+class RenameNoteTest(GitTest):
     """A session starts in a folder Tempo has never seen while a known one is gone."""
 
     def setUp(self):
@@ -587,7 +600,7 @@ class RenameNoteTest(DatabaseTest):
         self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
 
 
-class ProjectNameTest(DatabaseTest):
+class ProjectNameTest(GitTest):
     def test_uses_the_main_checkout_folder_from_subfolders_and_worktrees(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -614,7 +627,7 @@ class ProjectNameTest(DatabaseTest):
         seed = os.path.join(tmp.name, "seed")
         subprocess.run([*git, "clone", "-q", bare, seed], check=True, capture_output=True)
         subprocess.run([*git, "-C", seed, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
-        subprocess.run([*git, "-C", seed, "push", "-q", "origin", "HEAD:main"], check=True)
+        subprocess.run([*git, "-C", bare, "fetch", "-q", seed, "HEAD:main"], check=True)
         main = os.path.join(tmp.name, "shop-main")
         subprocess.run([*git, "-C", bare, "worktree", "add", "-q", main, "main"], check=True)
         self.assertEqual(cli.folder_path(main), os.path.realpath(bare))
