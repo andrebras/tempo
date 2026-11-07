@@ -194,8 +194,8 @@ async function loadList() {
   const matches = (q) => words.every((word) =>
     `${q.label} ${q.title} ${q.context} ${q.goal || ""}`.toLowerCase().includes(word));
   const questions = data.questions.filter((q) => q.project === state.project && matches(q));
-  const list = $("#list");
-  list.replaceChildren();
+  // Built aside, then swapped in only if it changed (see drawList).
+  const list = el("div");
   const shown = { questions, counts, projects: data.projects };
   if (!questions.length) {
     // The empty screen beside the list says the same, so wide screens hide this line;
@@ -203,6 +203,7 @@ async function loadList() {
     list.append(el("p", { class: words.length ? "empty" : "empty repeat" }, data.projects.length
       ? (words.length ? "No questions match your search." : `No ${state.status} questions in ${state.project}.`)
       : "No questions yet."));
+    drawList($("#list"), list);
     return shown;
   }
   // Open questions come grouped by goal from the server; a heading starts each group,
@@ -223,7 +224,17 @@ async function loadList() {
       question.start_here && el("span", { class: "reason" }, question.start_here),
       question.status === "open" && el("span", { class: "facts" }, facts(question))));
   }
+  drawList($("#list"), list);
   return shown;
+}
+
+// The timed refresh redraws the list only when it changed, so a click isn't swallowed,
+// and keeps the keyboard on the same question when it does.
+function drawList(list, next) {
+  if (next.innerHTML === list.innerHTML) return;
+  const focused = list.contains(document.activeElement) && document.activeElement.getAttribute("href");
+  list.replaceChildren(...next.childNodes);
+  if (focused) [...list.querySelectorAll("a")].find((link) => link.getAttribute("href") === focused)?.focus();
 }
 
 // A banner above every screen for each new folder that may be a known one renamed or
@@ -457,7 +468,12 @@ async function refresh(follow = false) {
   if (!current) {
     state.current = null;
     state.shown = null;
-    $("#detail").replaceChildren(renderEmpty(shown));
+    // Redrawn only when it changes, so the timed refresh keeps focus on its buttons.
+    const key = JSON.stringify([state.status, state.project, shown.projects, shown.counts]);
+    if ($("#detail").firstChild?.dataset?.key === key) return;
+    const empty = renderEmpty(shown);
+    empty.dataset.key = key;
+    $("#detail").replaceChildren(empty);
     return;
   }
   await loadDetail(follow);
