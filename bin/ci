@@ -1,6 +1,6 @@
 #!/bin/sh
 # Local CI: version check, lint, format check, security scan, shell check, then every
-# test, for the Python code and for the page's script.
+# test, for the Python code and for the page's script, and a coverage report for the Python.
 # Installs the pinned development tools into .venv on first run.
 set -eu
 cd "$(dirname "$0")/.."
@@ -47,4 +47,17 @@ step "Shell scripts (shellcheck)" shellcheck bin/tempo bin/oq bin/ci
 step "Compile" python3 -m compileall -q tempo tests
 step "Lint page script (biome)" npx --yes "@biomejs/biome@$biome_version" lint --error-on-warnings
 step "Page tests (node --test)" node --test tests/page.test.js
-step "Tests" python3 -m unittest discover -s tests -t . "$@"
+# The tests run under coverage.py, which only reports: no minimum, no failing on a number.
+# The .venv Python goes first on PATH so that the bin/tempo processes some tests start are
+# measured too (pyproject.toml has the settings).
+rm -f .coverage .coverage.*
+step "Tests" env PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m coverage run \
+  -m unittest discover -s tests -t . "$@"
+.venv/bin/python -m coverage combine --quiet
+step "Coverage (report only)" .venv/bin/python -m coverage report
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  {
+    echo "### Coverage, Python $(.venv/bin/python -c 'import platform; print(platform.python_version())')"
+    .venv/bin/python -m coverage report --format=markdown
+  } >>"$GITHUB_STEP_SUMMARY"
+fi
