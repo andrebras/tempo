@@ -167,12 +167,50 @@ class CliTest(DatabaseTest):
         )
         self.assertEqual(json.loads(out)["decision"], "block")
 
+    def test_stop_sends_back_questions_the_closing_list_does_not_record(self):
+        closing = "\n\nOpen questions in demo:\n- Q1: Which way? http://127.0.0.1:2204/#/demo/1"
+        cases = {
+            "options": "Pick one:\n- (a) Left\n- (b) Right",
+            "options and the closing list": "Pick one:\n- (a) Left\n- (b) Right" + closing,
+            "yes or no": "May I clean up the database? Reply yes or no.",
+            "permission over steps": "May I do this?\n1. Back up\n2. Clean up" + closing,
+            "should I": "Done.\n\nShould I also update the docs?",
+            "do you want": "- Do you want me to push it?",
+            "bold closing list": "May I push?\n\n- **Q1** Which way? [Release] http://127.0.0.1:2204/#/demo/1",
+            "tempo add named, not run": "(a) Left (b) Right. I will run tempo add next.",
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                out = self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
+                self.assertEqual(json.loads(out)["decision"], "block")
+                self.assertIn("tempo add", json.loads(out)["reason"])
+
+    def test_stop_ignores_code_quotes_and_statements(self):
+        cases = {
+            "code block": "Fixed:\n```\nif ask:\n    print('May I go? Reply yes')\n```",
+            "inline code": "The hook now matches `Should I …?`.",
+            "quoted line": "You wrote:\n> May I clean up the database? Reply yes or no.",
+            "quoted phrase": 'The text "May I clean up? Reply yes or no." was missed before.',
+            "statement": "I can update the docs next. Steps:\n1. Back up\n2. Clean up",
+            "how can I": "How can I tell? The log shows it.",
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                reply = [("user", "Go"), ("assistant", [{"type": "text", "text": text}])]
+                self.assertEqual(self.stop(*reply), "")
+
     def test_stop_lets_tempo_questions_and_old_replies_through(self):
         options = [{"type": "text", "text": "(a) Left (b) Right"}]
         linked = [{"type": "text", "text": "(a) Left (b) Right http://127.0.0.1:2204/#/demo/1"}]
         added = [{"type": "tool_use", "input": {"command": "tempo add --title T"}}]
+        reworded = [{"type": "tool_use", "input": {"command": "tempo reword 3 --note N"}}]
+        yes_no = [{"type": "text", "text": "May I clean up? Reply yes or no.\n- Q1: T http://x"}]
+        heading = [{"type": "text", "text": "**Q5: Push?** http://127.0.0.1:2204/#/demo/5\nMay I?"}]
         cases = {
             "linked": [("user", "Q?"), ("assistant", linked)],
+            "linked in a heading": [("user", "Q?"), ("assistant", heading)],
+            "yes or no added": [("user", "Q?"), ("assistant", added), ("assistant", yes_no)],
+            "reworded": [("user", "Q?"), ("assistant", reworded), ("assistant", options)],
             "added": [("user", "Q?"), ("assistant", added), ("assistant", options)],
             "earlier reply": [("assistant", options), ("user", "Thanks"), ("assistant", [])],
             "after a tool result": [

@@ -12,6 +12,13 @@ All notable changes to Tempo are listed here. The format follows
   project name, which the header already shows.
 - The empty screen's width follows the font (70 characters) instead of a fixed 460 pixels,
   so its short sentences no longer break in the middle.
+- The Stop hook catches every question left only in chat: yes-or-no questions and requests
+  for permission ("May I…?", "Should I…?", "Reply yes or no") as well as lettered options.
+  A question counts as recorded only when the reply ran `tempo add`, `tempo reword` or
+  `tempo context`, or links it outside the closing list of open questions. Code and quoted
+  text don't count as asking.
+- The skill puts yes/no confirmations and requests for permission in Tempo too. Merging,
+  publishing and installing still also need a one-line OK in chat.
 
 ## [0.4.0] - 2026-11-07
 
