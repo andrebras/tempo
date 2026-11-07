@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tempo import store as store_module
 from tempo.store import (
     MIGRATIONS,
     SCHEMA,
@@ -18,12 +17,13 @@ from tempo.store import (
     connect,
     db_path,
 )
+from tempo.store import schema as store_schema
 from tests.helpers import DatabaseTest
 
 
 class ActivityTest(DatabaseTest):
     def at(self, time, action, *args, **kwargs):
-        with mock.patch("tempo.store.now", return_value=time):
+        with mock.patch("tempo.store.common.now", return_value=time):
             return action(*args, **kwargs)
 
     def test_each_project_has_its_latest_news_from_claude(self):
@@ -969,7 +969,7 @@ class AdditionTest(DatabaseTest):
     def setUp(self):
         super().setUp()
         self.locked = []
-        patcher = mock.patch.object(store_module, "ADDITIONS", [self.note])
+        patcher = mock.patch.object(store_schema, "ADDITIONS", [self.note])
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -1019,7 +1019,7 @@ class DbPathTest(unittest.TestCase):
         for key in ("TEMPO_DB", "OQ_DB"):
             os.environ.pop(key, None)
         # These tests may run from a worktree, which would pick its own database.
-        branch = mock.patch("tempo.store.branch_db", return_value=None)
+        branch = mock.patch("tempo.store.schema.branch_db", return_value=None)
         branch.start()
         self.addCleanup(branch.stop)
 
@@ -1043,13 +1043,17 @@ class DbPathTest(unittest.TestCase):
         self.assertEqual(db_path(), new)
 
     def test_a_worktree_uses_its_own_database(self):
-        with mock.patch("tempo.store.branch_db", return_value="/branch/.tempo-dev/questions.db"):
+        with mock.patch(
+            "tempo.store.schema.branch_db", return_value="/branch/.tempo-dev/questions.db"
+        ):
             self.assertEqual(db_path(), "/branch/.tempo-dev/questions.db")
 
     def test_an_explicit_path_wins_over_a_worktree(self):
         with (
             mock.patch.dict("os.environ", {"TEMPO_DB": "/elsewhere/questions.db"}),
-            mock.patch("tempo.store.branch_db", return_value="/branch/.tempo-dev/questions.db"),
+            mock.patch(
+                "tempo.store.schema.branch_db", return_value="/branch/.tempo-dev/questions.db"
+            ),
         ):
             self.assertEqual(db_path(), "/elsewhere/questions.db")
 

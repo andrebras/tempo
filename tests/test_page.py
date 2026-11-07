@@ -165,7 +165,7 @@ class PageTest(DatabaseTest):
         self.assertFalse(self.run_js("$('#chips .dot') || $('#list .dot')"))
         self.add(project="garden", title="Frost warnings on?")
         # Times are kept to the second, so the context is dated a little later.
-        with mock.patch("tempo.store.now", return_value="2099-01-01T00:00:00Z"):
+        with mock.patch("tempo.store.common.now", return_value="2099-01-01T00:00:00Z"):
             self.store.add_context("demo", 2, "Fast costs twice as much.")
         self.tick()
         self.wait(
