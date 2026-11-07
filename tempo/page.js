@@ -61,9 +61,8 @@ function startHere(question) {
   return question.start_here && el("span", { class: "badge start" }, "Start here");
 }
 
-// After "Ask for more", until Claude replies: "sent" while no session has picked the
-// follow-up up, "seen" once one has. The list gets it from the server; a full question
-// works it out from its thread.
+// After "Ask for more", until Claude replies. The list gets it from the server; a full
+// question works it out from its thread.
 function waitingOnClaude(question) {
   if (question.waiting !== undefined) return question.waiting;
   const last = question.entries[question.entries.length - 1];
@@ -71,14 +70,13 @@ function waitingOnClaude(question) {
   return last.delivered ? "seen" : "sent";
 }
 
-function waitBadge(question) {
-  const waiting = waitingOnClaude(question);
-  if (!waiting) return null;
-  if (waiting === "sent") {
-    return el("span", { class: "badge wait", title: "No Claude session has picked this up yet" }, "Sent to Claude");
-  }
-  return el("span", { class: "badge wait working", title: "A Claude session has your message" },
-    "Claude is on it", el("span", { class: "dots", "aria-hidden": "true" }, el("i"), el("i"), el("i")));
+// The header says it in words; a list row shows only the moving dots, which catch the eye
+// without crowding the title.
+function waitBadge(question, compact = false) {
+  if (!waitingOnClaude(question)) return null;
+  const dots = (attrs) => el("span", { class: "dots", ...attrs }, el("i"), el("i"), el("i"));
+  if (compact) return dots({ title: "Waiting on Claude", role: "img", "aria-label": "Waiting on Claude" });
+  return el("span", { class: "badge wait working" }, "Waiting on Claude", dots({ "aria-hidden": "true" }));
 }
 
 async function loadList() {
@@ -128,11 +126,10 @@ async function loadList() {
     const active = current && current.project === question.project && current.number === question.number;
     list.append(el("a", { href: `#/${encodeURIComponent(question.project)}/${question.number}`,
                           class: [question.start_here && "start", active && "active"].filter(Boolean).join(" ") },
-      el("span", { class: "label" }, question.label, startHere(question)),
+      el("span", { class: "label" }, question.label, startHere(question), waitBadge(question, true)),
       el("span", { class: "title" }, question.title),
       question.start_here && el("span", { class: "reason" }, question.start_here),
-      question.status === "open" && el("span", { class: "facts" }, facts(question)),
-      waitBadge(question)));
+      question.status === "open" && el("span", { class: "facts" }, facts(question))));
   }
   return shown;
 }

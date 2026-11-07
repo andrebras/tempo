@@ -21,9 +21,8 @@ All notable changes to Tempo are listed here. The format follows
 - The skill says only the user answers questions; Claude never answers through the page.
 - The SessionStart note and the skill ask Claude to give every question a goal, and to mark
   "start here" only for a real dependency.
-- "Waiting on Claude" now shows in two steps, in the question header and on its row in the
-  list: "Sent to Claude" until a session picks the follow-up up, then "Claude is on it" with
-  moving dots (still when Reduce motion is on).
+- "Waiting on Claude" is easier to notice: the question header says "Waiting on Claude" with
+  three moving dots, and its row in the list shows the dots (still when Reduce motion is on).
 
 ### Removed
 
