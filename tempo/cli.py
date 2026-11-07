@@ -607,8 +607,12 @@ def _process_cwd(pid: int) -> str | None:
     return next((line[1:] for line in listing.splitlines() if line.startswith("n/")), None)
 
 
-# How a `tempo wait` process shows in ps: bin/tempo runs `python3 -m tempo wait …`.
-WAIT_COMMAND = re.compile(r"(?:^|\s)-m tempo wait(?:\s|$)")
+# How a Tempo command shows in ps: bin/tempo runs `python3 /…/tempo/__main__.py wait …`
+# (older releases ran `python3 -m tempo wait …`), and start_server runs
+# `python3 -m tempo serve …`.
+TEMPO_COMMAND = r"(?:^|\s)(?:-m tempo|\S*/tempo/__main__\.py) %s(?:\s|$)"
+WAIT_COMMAND = re.compile(TEMPO_COMMAND % "wait")
+SERVE_COMMAND = re.compile(TEMPO_COMMAND % "serve")
 
 
 def _wait_processes() -> dict[int, str] | None:
@@ -1255,7 +1259,7 @@ def _fetch(port: int, path: str) -> bytes | None:
 
 
 def _tempo_pid(port: int) -> int | None:
-    """The process listening on the port, but only if its command is `python -m tempo serve`."""
+    """The process listening on the port, but only if its command is `tempo serve`."""
     try:
         # lsof and ps are looked up on PATH on purpose. There is no shell, and the only
         # values passed in are the port number and a pid made of digits only.
@@ -1277,7 +1281,7 @@ def _tempo_pid(port: int) -> int | None:
         ).stdout
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return int(pids[0]) if "-m tempo serve" in command else None
+    return int(pids[0]) if SERVE_COMMAND.search(command) else None
 
 
 def project_name(cwd: str, record: bool = False) -> str:
