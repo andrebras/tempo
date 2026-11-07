@@ -335,6 +335,11 @@ function renderSettings(data) {
     el("h2", {}, "Settings"),
     renderAppearance(),
     renderProjects(data),
+    // Threads are an early feature: the link shows only while TEMPO_THREADS=1 is set.
+    data.threads ? el("section", { class: "card" },
+      el("h3", {}, "Threads", el("span", { class: "badge muted" }, "early")),
+      el("p", {}, "Start a conversation with Claude in a project folder, one topic per thread. ",
+        el("a", { href: "/threads" }, "Open threads"))) : null,
     // Placeholder: what belongs here is still to be decided.
     el("section", { class: "card" },
       el("h3", {}, "Question rules", el("span", { class: "badge muted" }, "coming soon")),
