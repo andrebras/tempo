@@ -3,7 +3,8 @@
 Each thread is one Claude Code session, run headless with `claude -p` in a project
 folder and resumed for every follow-up, so threads never mix. Claude's final reply is
 the message; the tools it used are kept beside it as short "steps", which the page
-shows only when asked. TEMPO_THREADS=1 turns the feature on.
+shows only when asked. When a tool call needs approval, the request shows in the thread
+with Allow and Deny (see tempo/permissions.py). TEMPO_THREADS=1 turns the feature on.
 """
 
 from __future__ import annotations
@@ -13,10 +14,11 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import sys
 import threading
 from typing import Any
 
-from tempo.store import QuestionError, connect, now, setting
+from tempo.store import CODE_ROOT, QuestionError, connect, db_path, now, setting
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS threads (
@@ -36,6 +38,15 @@ CREATE TABLE IF NOT EXISTS thread_messages (
   steps TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS thread_permissions (
+  id INTEGER PRIMARY KEY,
+  thread_id INTEGER NOT NULL REFERENCES threads(id),
+  tool TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'allowed', 'denied', 'expired')),
+  created_at TEXT NOT NULL
+);
 """
 
 # What every thread's session is told, on top of Claude Code's own instructions.
@@ -48,7 +59,7 @@ RULES = (
     " the thread too."
 )
 
-# Headless sessions cannot ask for permission, so tools outside this mode are refused.
+# What runs without asking; anything else is put to the user in the thread.
 PERMISSION_MODE = setting("THREADS_PERMISSION_MODE") or "acceptEdits"
 TIMEOUT = 30 * 60
 # How much of Claude's error output a failed run shows.
@@ -72,7 +83,9 @@ def threads() -> list[dict[str, Any]]:
     with open_db() as db:
         rows = db.execute(
             "SELECT t.*, (SELECT body FROM thread_messages m WHERE m.thread_id = t.id"
-            " ORDER BY m.id DESC LIMIT 1) AS last FROM threads t ORDER BY t.updated_at DESC"
+            " ORDER BY m.id DESC LIMIT 1) AS last, (SELECT COUNT(*) FROM thread_permissions p"
+            " WHERE p.thread_id = t.id AND p.status = 'pending') AS asking"
+            " FROM threads t ORDER BY t.updated_at DESC"
         )
         return [dict(row) for row in rows]
 
@@ -87,9 +100,15 @@ def thread(thread_id: int) -> dict[str, Any]:
             " WHERE thread_id = ? ORDER BY id",
             (thread_id,),
         )
+        pending = db.execute(
+            "SELECT id, tool, summary, created_at FROM thread_permissions"
+            " WHERE thread_id = ? AND status = 'pending' ORDER BY id",
+            (thread_id,),
+        )
         return dict(
             row,
             messages=[dict(message, steps=json.loads(message["steps"])) for message in messages],
+            permissions=[dict(request) for request in pending],
         )
 
 
@@ -112,6 +131,19 @@ def reply(thread_id: int, text: str) -> dict[str, Any]:
     if thread(thread_id)["status"] == "working":
         raise QuestionError("Claude is still working on this thread")
     return _send(thread_id, _required(text, "message"))
+
+
+def decide(thread_id: int, request_id: int, allow: Any) -> dict[str, Any]:
+    """Answer a pending permission request from the page with Allow or Deny."""
+    with open_db() as db:
+        changed = db.execute(
+            "UPDATE thread_permissions SET status = ?"
+            " WHERE id = ? AND thread_id = ? AND status = 'pending'",
+            ("allowed" if allow is True else "denied", request_id, thread_id),
+        ).rowcount
+    if not changed:
+        raise QuestionError("That request is no longer waiting for an answer")
+    return thread(thread_id)
 
 
 def _send(thread_id: int, text: str) -> dict[str, Any]:
@@ -138,6 +170,8 @@ def _run(thread_id: int, folder: str, session_id: str | None, text: str) -> None
     command = [claude, "-p", text, "--output-format", "stream-json", "--verbose"]
     command += ["--permission-mode", PERMISSION_MODE]
     command += ["--append-system-prompt", RULES]
+    command += ["--mcp-config", _permission_server(thread_id)]
+    command += ["--permission-prompt-tool", PERMISSION_TOOL]
     if session_id:
         command += ["--resume", session_id]
     steps: list[dict[str, Any]] = []
@@ -165,6 +199,29 @@ def _run(thread_id: int, folder: str, session_id: str | None, text: str) -> None
             "UPDATE threads SET status = ?, session_id = ?, updated_at = ? WHERE id = ?",
             (status, session_id, now(), thread_id),
         )
+        # A request left from a run that ended can no longer be answered.
+        db.execute(
+            "UPDATE thread_permissions SET status = 'expired'"
+            " WHERE thread_id = ? AND status = 'pending'",
+            (thread_id,),
+        )
+
+
+# The MCP server that puts permission requests to the user; see tempo/permissions.py.
+PERMISSION_SERVER = "tempo_threads"
+PERMISSION_TOOL = "mcp__%s__approve" % PERMISSION_SERVER
+
+
+def _permission_server(thread_id: int) -> str:
+    """The --mcp-config JSON that starts tempo/permissions.py for this thread. It runs in
+    the project folder, so it is told where the code and the database are."""
+    server = {
+        "type": "stdio",
+        "command": sys.executable,
+        "args": ["-m", "tempo.permissions", str(thread_id)],
+        "env": {"PYTHONPATH": CODE_ROOT, "TEMPO_DB": db_path()},
+    }
+    return json.dumps({"mcpServers": {PERMISSION_SERVER: server}})
 
 
 def read_stream(output: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
@@ -191,7 +248,7 @@ def read_stream(output: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]
             if block.get("type") == "tool_use":
                 steps[block.get("id")] = {
                     "tool": block.get("name") or "?",
-                    "input": _summary(block.get("input") or {}),
+                    "input": summary(block.get("input") or {}),
                     "result": "",
                     "error": False,
                 }
@@ -202,7 +259,7 @@ def read_stream(output: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]
     return result, list(steps.values())
 
 
-def _summary(tool_input: dict[str, Any]) -> str:
+def summary(tool_input: dict[str, Any]) -> str:
     """The one input that says what a tool call did, else the whole input as JSON."""
     for key in ("command", "file_path", "pattern", "url", "query", "description", "prompt"):
         if isinstance(tool_input.get(key), str):
