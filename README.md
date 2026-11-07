@@ -22,7 +22,7 @@ itself.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshot-light.png">
-  <img alt="The Tempo page: a list of open questions on the left, and on the right the question &quot;Where should the new Export orders button go?&quot; with its context and three lettered options, the recommended one picked." src="docs/screenshot-light.png" width="1280">
+  <img alt="The Tempo page: project chips across the top, one with a dot for something new; on the left the open questions grouped by goal, one with a dot because Claude added to it and one waiting on Claude; on the right the question &quot;Where should the new Export orders button go?&quot; with its context and three lettered options, the recommended one picked." src="docs/screenshot-light.png" width="1280">
 </picture>
 
 ## See it in action
@@ -31,7 +31,8 @@ itself.
 
 You pick an option and send it, and the page moves on to the next question. On that one, you
 ask for more context; Claude rewords the question, and the thread shows what you asked and what
-changed.
+changed. The pictures use made-up questions; `bin/media` makes them again (see
+[CONTRIBUTING.md](CONTRIBUTING.md#screenshots-and-demo-gif)).
 
 ## Install
 
