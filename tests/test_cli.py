@@ -128,6 +128,15 @@ class CliTest(DatabaseTest):
         self.assertEqual(code, 0)
         self.assertIn("(a) Left", out)
 
+    def test_show_takes_the_short_code_of_an_option(self):
+        # The user names an answer as "1b"; show gives that question.
+        self.add()
+        for code in ("1b", "Q1B"):
+            with self.subTest(code=code):
+                status, out, _ = run("show", code)
+                self.assertEqual(status, 0)
+                self.assertIn("(b) Right", out)
+
     def test_user_prompt_hook_delivers_answers_once(self):
         self.add(title="Left or right?")
         self.store.answer("demo", 1, "b", "Nicer view")

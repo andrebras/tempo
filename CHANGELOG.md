@@ -24,6 +24,8 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- `tempo show 12b` shows Q12, so the short code the user names an answer with works there
+  too. It failed with "invalid _number value".
 - After Claude rewords a question you have picked an option on, the page clears the pick.
   The same letter may now name another option, so a pick kept from the old wording could
   answer something you didn't choose. The note you were typing is kept.

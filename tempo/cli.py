@@ -9,6 +9,7 @@ import json
 import os
 import re
 import signal
+import string
 import subprocess
 import sys
 import time
@@ -87,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     add.set_defaults(run=run_add)
 
     show = commands.add_parser("show", help="Show a question with its whole thread")
-    show.add_argument("number", type=_number)
+    show.add_argument("number", type=_code, help="A number such as 12, Q12, or 12b for an option")
     show.add_argument("--project")
     show.add_argument("--json", action="store_true")
     show.set_defaults(run=run_show)
@@ -930,6 +931,11 @@ def _project(value: str | None, record: bool = False) -> str:
 
 def _number(value: str) -> int:
     return int(value.upper().lstrip("Q"))
+
+
+def _code(value: str) -> int:
+    """The question number in a short code such as "12b", the way the user names an answer."""
+    return _number(value.rstrip(string.ascii_letters) or value)
 
 
 def _port() -> int:

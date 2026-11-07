@@ -124,7 +124,8 @@ was updated, with its link.
 
 ## Other commands
 
-- `tempo list` (`--status answered|archived|all`, `--all-projects`) and `tempo show <number>`.
+- `tempo list` (`--status answered|archived|all`, `--all-projects`) and `tempo show <number>`
+  (also takes a short code such as `12b`).
 - `tempo goal <number> "…"` sets or changes the goal without rewording the question, so it
   stays quick. Add `--start-here "unlocks …"` or `--no-start-here` to move the mark
   (`tempo goal <number> --no-start-here` alone keeps the goal); `tempo goal <number> ""`
