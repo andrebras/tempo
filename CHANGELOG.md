@@ -6,12 +6,35 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Goals: each question names the piece of work it moves forward (`tempo add --goal`, and
+  `tempo goal <n>` to set it later). The page groups open questions by goal, oldest group
+  first, with questions without a goal last under "Other".
+- Start here: within a goal, one question can be marked as the one to answer first, with a
+  one-line reason (`--start-here "unlocks …"`). It shows a badge and sorts first in its goal.
+- Two facts on each open question: **quick** (a recommended option, at most three options,
+  never reworded) and how long it has been open.
+
 ### Changed
 
 - The skill says only the user answers questions; Claude never answers through the page.
+- The SessionStart note and the skill ask Claude to give every question a goal, and to mark
+  "start here" only for a real dependency.
 - "Waiting on Claude" now shows in two steps, in the question header and on its row in the
   list: "Sent to Claude" until a session picks the follow-up up, then "Claude is on it" with
   moving dots (still when Reduce motion is on).
+
+### Removed
+
+- The Now / Soon / Later priorities, from the page, the command and the skill. The database
+  keeps the column for old rows but no longer uses it. `--priority` and `tempo priority`
+  are still accepted for one release and only print a note.
+
+### Fixed
+
+- A reworded question's `created_at` (in `tempo show --json` and the page's data) was its
+  latest version's time, not the time it was first asked.
 
 ## [0.3.3] - 2026-11-07
 

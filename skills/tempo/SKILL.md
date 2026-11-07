@@ -30,15 +30,26 @@ Write it so someone with no context can answer it cold:
   backticks for file names and commands. The page renders these; never one long paragraph.
 - `--option`: one per option, written out in full; they are lettered (a), (b)… in order.
 - `--recommended`: the letter you recommend, if any. Say why in the context.
-- `--priority`: how soon you need the answer. `now`: work is waiting on it. `soon` (the
-  default): needed this week. `later`: no rush. The page sorts by it, then by number.
+- `--goal`: always. The piece of work the answer moves forward, for example "Q5 settings",
+  "Release 0.4" or "DataForge test feed". Name it the same way on every question for that
+  work: the page groups open questions by goal, oldest group first.
+- `--start-here "unlocks …"`: only when this question's answer really unlocks or sets the
+  pattern for other questions in the same goal, for example "unlocks Q5 and Q6: it decides
+  the data format". It shows a Start here badge with the reason and puts the question first
+  in its goal. One per goal: marking another moves the mark. Don't use it to say a question
+  is important; most goals need no mark.
+
+The page also shows two facts it works out itself: **quick** (a recommended option, at most
+three options, never reworded) and how long the question has been open. There is no
+priority any more.
 
 ```bash
 tempo add --title "Where should the export button go?" \
   --context "The export feature is built and needs a place in the UI. ..." \
   --option "In the toolbar, next to Share" \
   --option "In the ⋯ menu" \
-  --recommended a
+  --recommended a \
+  --goal "Export"
 ```
 
 The command prints the number and a link. In chat, give the question in full with its options
@@ -86,7 +97,8 @@ The user wants to understand the question better before answering. Answer it in 
 question itself: `tempo reword <number> --note "Why it changed" --context "…"` (plus
 `--title`, `--option` and `--recommended` when those change; passing `--option` replaces all
 options, so pass `--recommended` again). The context box at the top is what the user reads;
-old versions stay in the thread.
+old versions stay in the thread. `tempo reword` also takes `--goal`, `--start-here` and
+`--no-start-here`.
 
 Use `tempo context <number> "…"` only for a small extra fact that doesn't change the
 question: it shows at the bottom of the thread, below the options, where it is easy to miss.
@@ -98,6 +110,9 @@ was updated, with its link.
 ## Other commands
 
 - `tempo list` (`--status answered|archived|all`, `--all-projects`) and `tempo show <number>`.
-- `tempo priority <number> now|soon|later` when the need changes.
+- `tempo goal <number> "…"` sets or changes the goal without rewording the question, so it
+  stays quick. Add `--start-here "unlocks …"` or `--no-start-here` to move the mark
+  (`tempo goal <number> --no-start-here` alone keeps the goal); `tempo goal <number> ""`
+  removes the goal. A new goal drops the mark.
 - Answered questions move to Archived by themselves 7 days after their latest answer.
   `tempo archive` archives all of the project's answered questions at once.
