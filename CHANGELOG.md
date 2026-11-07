@@ -4,7 +4,7 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.2] - 2026-11-07
 
 ### Added
 
@@ -15,6 +15,15 @@ All notable changes to Tempo are listed here. The format follows
   GitHub release.
 - Weekly Dependabot pull requests for GitHub Actions and the development tools.
 - Type hints on every function in `tempo/`, checked by mypy in CI.
+- A schema version in the database, with numbered upgrade steps that each run once.
+- The page's script in its own file, `tempo/page.js`, linted by Biome, with tests for the
+  text formatting.
+
+### Changed
+
+- The question column is as wide as about 68 characters of text, so lines stay easy to read
+  whatever the font and size.
+- Ruff 0.17.3 and Bandit 1.8.6 for development; newer GitHub Actions versions in CI.
 
 ## [0.3.1] - 2026-11-06
 
