@@ -21,6 +21,11 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- Tempo works in a repository that pins a Python version that isn't installed, through asdf,
+  pyenv or mise. Its hooks and commands failed there with exit code 126, because the version
+  manager picked Python by the session's folder. The `tempo` command now looks up Python from
+  the plugin's folder, then tries the system's and Homebrew's, uses the first that is 3.9 or
+  newer, and says so plainly when none is.
 - Tempo code running from a git worktree serves its page on a port of its own, worked out
   from its database's path, instead of taking port 2204. Before, a worktree's page could
   replace the real one, so the page showed the worktree's throwaway questions. `/health`
