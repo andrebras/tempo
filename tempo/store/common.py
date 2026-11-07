@@ -1,5 +1,5 @@
 """What every part of the store shares: the shapes it passes around, its error, the
-clock, and the write transaction."""
+clock, the write transaction, and the connection (StoreBase)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import sqlite3
 from collections.abc import Callable
 from datetime import datetime, timezone
 from types import TracebackType
-from typing import Any, Optional
+from typing import Any, Optional, TypeVar
 
 # The shapes passed around, as plain dicts that turn straight into JSON. A question has
 # the keys of _question_dict, plus its latest version, thread and answer from get().
@@ -73,3 +73,23 @@ def _project_name(name: str) -> str:
     if name in (".", ".."):
         raise QuestionError('A project can\'t be called "%s"' % name)
     return name
+
+
+This = TypeVar("This", bound="StoreBase")
+
+
+class StoreBase:
+    """The database connection every part of the Store works on, closed when a `with`
+    block ends."""
+
+    def __init__(self, db: sqlite3.Connection) -> None:
+        self.db = db
+
+    def __enter__(self: This) -> This:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.db.close()
+
+    def _transaction(self) -> _Transaction:
+        return _Transaction(self.db)
