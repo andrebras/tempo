@@ -1213,6 +1213,19 @@ class StartServerTest(unittest.TestCase):
         self.kill.assert_not_called()
         self.popen.assert_not_called()
 
+    def test_keeps_a_tempo_that_does_not_name_its_database_unless_this_is_the_real_one(self):
+        # 0.5 and older leave the database out of /health. The 0.6.0 release's tests, on a
+        # test database, once replaced the user's 0.5.4 page this way.
+        old = {key: value for key, value in self.current.items() if key != "db"}
+        self.serve(health={**old, "version": "0.0.1"})
+        self.assertFalse(cli.start_server(2204))
+        self.kill.assert_not_called()
+        self.popen.assert_not_called()
+        # Code on the real database still replaces it, so a 0.5 page is upgraded.
+        with mock.patch.object(cli, "default_db", return_value=cli.db_path()):
+            self.assertTrue(cli.start_server(2204))
+        self.kill.assert_called_once_with(42, cli.signal.SIGTERM)
+
     def test_keeps_an_old_server_whose_page_works(self):
         self.serve(page=b"<title>Tempo</title>")
         self.tempo_pid.return_value = 42

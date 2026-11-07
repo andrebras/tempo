@@ -29,6 +29,7 @@ from tempo.store import (
     branch_db,
     connect,
     db_path,
+    default_db,
     setting,
 )
 
@@ -1114,8 +1115,9 @@ def _stop_stale(port: int) -> bool:
         health = None
     if isinstance(health, dict) and health.get("app") == "tempo":
         # A Tempo on another database is someone else's page: never replaced, whatever
-        # its version. One from before /health named its database is judged by version.
-        if health.get("db") and health["db"] != db_path():
+        # its version. One from before /health named its database (0.5 and older) is
+        # taken to be on the real one, so only code on the real one replaces it.
+        if (health.get("db") or default_db()) != db_path():
             return False
         if not _older(health.get("version"), server.version()):
             return False
