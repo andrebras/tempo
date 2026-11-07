@@ -7,11 +7,11 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 
 | Command | What it does |
 | --- | --- |
-| `tempo add --title … --context … --option … --option …` | Add a question (`--recommended b`, `--priority now`) |
+| `tempo add --title … --context … --option … --option …` | Add a question (`--recommended b`, `--goal "Release 0.4"`, `--start-here "unlocks Q5"`) |
 | `tempo list`, `tempo show <n>` | List questions, or show one with its thread |
 | `tempo context <n> "…"` | Add context to a question |
 | `tempo reword <n> --note "…"` | Save a new version of a question; reopens it if it was answered |
-| `tempo priority <n> now\|soon\|later` | Change how soon an answer is needed |
+| `tempo goal <n> "…"` | Set a question's goal without rewording it (`--start-here "…"`, `--no-start-here`; `""` removes the goal) |
 | `tempo archive` | Archive the project's answered questions now (they also move to Archived by themselves 7 days after their latest answer) |
 | `tempo set-next <n>` | Continue numbering from an older list |
 | `tempo inbox` | Print answers and follow-ups Claude hasn't seen yet |
@@ -20,15 +20,26 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 
 `oq`, the command's old name, still works as an alias.
 
-## Priorities
+## Goals
 
-| Priority | Meaning |
-| --- | --- |
-| `now` | Work is waiting on the answer |
-| `soon` | Needed this week (the default) |
-| `later` | No rush |
+Each question names its **goal**: the piece of work its answer moves forward, such as
+"Release 0.4". The page groups a project's open questions under their goal. Groups come in
+the order of their oldest question, and questions without a goal come last, under "Other".
+Inside a group, the oldest question comes first.
 
-The page lists questions by priority, then by number.
+Within a goal, Claude may mark one question **Start here**, with a one-line reason such as
+"unlocks Q5 and Q6". It does so only when that answer unlocks or sets the pattern for the
+others. The question then comes first in its group. Marking another question in the same
+goal moves the mark.
+
+Each open question also shows two facts that Tempo works out itself:
+
+- **quick**: it has a recommended option, at most three options, and was never reworded.
+- **open 3 days** (or hours, or minutes): how long ago it was asked.
+
+Goals replace the earlier Now / Soon / Later priorities. Old questions keep their priority in
+the database, but nothing uses it. `--priority` and `tempo priority` still run for one
+release, but only print a note.
 
 ## Settings
 

@@ -1,6 +1,7 @@
-// Tests for the page's text renderer, rich() and inline(), run with `node --test`.
-// They turn a little Markdown into DOM nodes; a tiny fake document stands in for the
-// browser's, and refuses innerHTML so any attempt to inject markup fails loudly.
+// Tests for the page's text renderer, rich() and inline(), and for openFor(), run with
+// `node --test`. rich() and inline() turn a little Markdown into DOM nodes; a tiny fake
+// document stands in for the browser's, and refuses innerHTML so any attempt to inject
+// markup fails loudly.
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
@@ -46,7 +47,7 @@ class Element extends Node {
 globalThis.Node = Node;
 globalThis.document = { createElement: (tag) => new Element(tag) };
 
-const { rich, inline } = require("../tempo/page.js");
+const { rich, inline, openFor } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
 // inline() returns plain strings for its text parts; inside elements they are Text nodes.
@@ -119,4 +120,16 @@ test("HTML stays text", () => {
   assert.deepEqual(all(holder, "SCRIPT"), []);
   assert.deepEqual(all(holder, "B"), []);
   assert.deepEqual(shape(holder), ["DIV", ["P", text]]);
+});
+
+test("openFor says how long a question has been open, in the largest whole unit", () => {
+  const now = Date.parse("2026-11-07T12:00:00Z");
+  const cases = {
+    "2026-11-07T11:59:55Z": "open 1 minute",
+    "2026-11-07T11:01:00Z": "open 59 minutes",
+    "2026-11-07T09:55:00Z": "open 2 hours",
+    "2026-11-06T12:00:00Z": "open 1 day",
+    "2026-11-03T13:00:00Z": "open 3 days",
+  };
+  for (const [createdAt, text] of Object.entries(cases)) assert.equal(openFor(createdAt, now), text);
 });

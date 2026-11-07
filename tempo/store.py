@@ -9,6 +9,10 @@ entry in its thread. Entries written by the user start undelivered; the hook and
 A project is just a name. The first time a session runs in a git folder, the folder is
 filed under a project of the same name; renaming the project in Settings takes its
 questions and folders along.
+
+A question can name its goal: the piece of work its answer moves forward. Within a goal,
+one question may be marked "start here", with the reason, when its answer unlocks or sets
+the pattern for the others.
 """
 
 from __future__ import annotations
@@ -72,6 +76,8 @@ CREATE TABLE IF NOT EXISTS questions (
   number INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'answered', 'archived')),
   priority TEXT NOT NULL DEFAULT 'soon' CHECK (priority IN ('now', 'soon', 'later')),
+  goal TEXT,
+  start_here TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (project, number)
@@ -110,9 +116,9 @@ CREATE INDEX IF NOT EXISTS entries_undelivered ON entries (delivered_at) WHERE d
 # Answered questions move to Archived this long after their latest answer.
 ARCHIVE_AFTER = timedelta(days=7)
 
-# How soon Claude needs the answer, in sort order: work is waiting on it, needed this
-# week, no rush.
-PRIORITIES = ("now", "soon", "later")
+# A question is quick to answer when it has a recommended option, at most this many
+# options, and its first wording still stands.
+QUICK_OPTIONS = 3
 
 
 class QuestionError(ValueError):
@@ -152,11 +158,23 @@ def _fill_folder_projects(db: sqlite3.Connection) -> None:
     db.execute("UPDATE folders SET project = folder WHERE project IS NULL")
 
 
+def _add_goal(db: sqlite3.Connection) -> None:
+    """Goals and "start here" replace the priority, which stays in old rows but is unused."""
+    columns = [row["name"] for row in db.execute("PRAGMA table_info(questions)")]
+    for column in ("goal", "start_here"):
+        if column not in columns:
+            db.execute("ALTER TABLE questions ADD COLUMN %s TEXT" % column)
+
+
 # Steps that bring older databases up to SCHEMA, in order. The database's user_version
 # says how many have run; never reorder or remove one, only add new ones at the end.
 # Databases made before user_version was used are at 0 whatever their shape, so each
 # step must also be safe on a database that already has its change.
-MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [_add_priority, _fill_folder_projects]
+MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
+    _add_priority,
+    _fill_folder_projects,
+    _add_goal,
+]
 
 
 def _version(db: sqlite3.Connection) -> int:
@@ -194,7 +212,8 @@ class Store:
         context: str,
         options: Names,
         recommended: str | None = None,
-        priority: str = "soon",
+        goal: str | None = None,
+        start_here: str | None = None,
         number: int | None = None,
     ) -> Question:
         project = _required(project, "project")
@@ -202,7 +221,8 @@ class Store:
         context = _required(context, "context")
         lettered = _letter(options)
         recommended = _recommended(recommended, lettered)
-        priority = _priority(priority)
+        goal = _goal(goal)
+        start_here = _start_here(start_here, goal)
         with self._transaction():
             self.db.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", (project,))
             next_number = self._next_number(project)
@@ -215,12 +235,14 @@ class Store:
                 )
             stamp = now()
             cursor = self.db.execute(
-                "INSERT INTO questions (project, number, priority, created_at, updated_at)"
+                "INSERT INTO questions (project, number, goal, created_at, updated_at)"
                 " VALUES (?, ?, ?, ?, ?)",
-                (project, number, priority, stamp, stamp),
+                (project, number, goal, stamp, stamp),
             )
             # An INSERT always sets lastrowid; it is only None for other statements.
             question_id = cast(int, cursor.lastrowid)
+            if start_here:
+                self._mark_start_here(question_id, project, goal, start_here)
             self._insert_version(question_id, 1, title, context, lettered, recommended)
             self.db.execute(
                 "UPDATE projects SET next_number = ? WHERE name = ?", (number + 1, project)
@@ -253,11 +275,15 @@ class Store:
         context: str | None = None,
         options: Names | None = None,
         recommended: str | None = None,
+        goal: str | None = None,
+        start_here: str | None = None,
+        clear_start_here: bool = False,
     ) -> Question:
         note = _required(note, "note (why it was reworded)")
         question = self._find(project, number)
         if question["status"] == "archived":
             raise QuestionError("Archived questions cannot be reworded")
+        goals = self._goal_change(question, goal, start_here, clear_start_here)
         current = self._current_version(question["id"])
         lettered = _letter(options) if options is not None else json.loads(current["options"])
         if recommended is None and lettered is not None:
@@ -275,18 +301,32 @@ class Store:
                 recommended,
             )
             self._insert_entry(question, "reword", "claude", note, version=version)
+            if goals is not None:
+                self._set_goal(question, *goals)
             # A reword after an answer means the answer asked for more, so the question
             # is open again until the user answers the new version.
             self.db.execute("UPDATE questions SET status = 'open' WHERE id = ?", (question["id"],))
         return self.get(project, number)
 
-    def set_priority(self, project: str, number: int, priority: str) -> Question:
-        priority = _priority(priority)
+    def set_goal(
+        self,
+        project: str,
+        number: int,
+        goal: str | None = None,
+        start_here: str | None = None,
+        clear_start_here: bool = False,
+    ) -> Question:
+        """Change a question's goal or its "start here" mark without rewording it.
+
+        goal None keeps the goal and an empty goal removes it. A new goal drops the mark,
+        which was about the old goal's questions, unless start_here gives a new one.
+        """
         question = self._find(project, number)
-        self.db.execute(
-            "UPDATE questions SET priority = ?, updated_at = ? WHERE id = ?",
-            (priority, now(), question["id"]),
-        )
+        goals = self._goal_change(question, goal, start_here, clear_start_here)
+        if goals is None:
+            raise QuestionError("Give a goal, --start-here or --no-start-here")
+        with self._transaction():
+            self._set_goal(question, *goals)
         return self.get(project, number)
 
     def archive_old(self) -> int:
@@ -374,6 +414,9 @@ class Store:
         ]
         result = _question_dict(question)
         result.update(versions[-1])
+        # The question's own creation time, not its latest version's, says how long it is open.
+        result["created_at"] = question["created_at"]
+        result["quick"] = _quick(result["version"], result["options"], result["recommended"])
         result["versions"] = versions
         result["entries"] = entries
         answers = [entry for entry in entries if entry["kind"] == "answer"]
@@ -384,7 +427,7 @@ class Store:
         # Every list, on the page or from the command, first moves old answers to Archived.
         self.archive_old()
         sql = (
-            "SELECT q.*, v.title, v.context, v.version,"
+            "SELECT q.*, v.title, v.context, v.version, v.options, v.recommended,"
             # Whether the user's last word is a follow-up Claude hasn't answered yet: 'sent'
             # until a session picks it up, 'seen' once one has, else NULL.
             " (SELECT CASE WHEN e.kind = 'followup' AND e.author = 'user' THEN"
@@ -409,10 +452,7 @@ class Store:
                 " WHERE question_id = q.id AND kind = 'answer') DESC, q.number DESC"
             )
         else:
-            sql += (
-                " ORDER BY q.project,"
-                " CASE q.priority WHEN 'now' THEN 0 WHEN 'soon' THEN 1 ELSE 2 END, q.number"
-            )
+            sql += " ORDER BY q.project, q.created_at, q.number"
         rows: Questions = []
         for row in self.db.execute(sql, params):
             item = _question_dict(row)
@@ -420,8 +460,9 @@ class Store:
             item["context"] = row["context"]
             item["version"] = row["version"]
             item["waiting"] = row["waiting"]
+            item["quick"] = _quick(row["version"], json.loads(row["options"]), row["recommended"])
             rows.append(item)
-        return rows
+        return rows if status in ("answered", "archived") else _by_goal(rows)
 
     def projects(self) -> Names:
         return [row["name"] for row in self.db.execute("SELECT name FROM projects ORDER BY name")]
@@ -559,6 +600,45 @@ class Store:
             raise QuestionError("Q%s does not exist in %s" % (number, project))
         return row
 
+    def _goal_change(
+        self,
+        question: sqlite3.Row,
+        goal: str | None,
+        start_here: str | None,
+        clear_start_here: bool,
+    ) -> tuple[str | None, str | None] | None:
+        """The goal and mark a question ends up with, checked, or None for no change."""
+        if goal is None and start_here is None and not clear_start_here:
+            return None
+        if start_here is not None and clear_start_here:
+            raise QuestionError("Pass either a start-here reason or no-start-here, not both")
+        new_goal = question["goal"] if goal is None else _goal(goal)
+        if clear_start_here:
+            mark = None
+        elif start_here is not None:
+            mark = start_here
+        else:
+            mark = question["start_here"] if new_goal == question["goal"] else None
+        return new_goal, _start_here(mark, new_goal)
+
+    def _set_goal(self, question: sqlite3.Row, goal: str | None, start_here: str | None) -> None:
+        self.db.execute(
+            "UPDATE questions SET goal = ?, start_here = NULL, updated_at = ? WHERE id = ?",
+            (goal, now(), question["id"]),
+        )
+        if start_here:
+            self._mark_start_here(question["id"], question["project"], goal, start_here)
+
+    def _mark_start_here(
+        self, question_id: int, project: str, goal: str | None, reason: str
+    ) -> None:
+        """Mark one question as the one to answer first; only one per project and goal."""
+        self.db.execute(
+            "UPDATE questions SET start_here = NULL WHERE project = ? AND goal IS ? AND id != ?",
+            (project, goal, question_id),
+        )
+        self.db.execute("UPDATE questions SET start_here = ? WHERE id = ?", (reason, question_id))
+
     def _current_version(self, question_id: int) -> sqlite3.Row:
         return self.db.execute(
             "SELECT * FROM versions WHERE question_id = ? ORDER BY version DESC LIMIT 1",
@@ -643,11 +723,50 @@ def _letter(options: Sequence[str | None] | None) -> Options:
     return [{"letter": letter, "text": text} for letter, text in zip(string.ascii_lowercase, texts)]
 
 
-def _priority(priority: str | None) -> str:
-    priority = (priority or "").strip().lower()
-    if priority not in PRIORITIES:
-        raise QuestionError("Priority must be one of: %s" % ", ".join(PRIORITIES))
-    return priority
+def _goal(goal: str | None) -> str | None:
+    """A goal on one line, or None for no goal."""
+    return " ".join((goal or "").split()) or None
+
+
+def _start_here(reason: str | None, goal: str | None) -> str | None:
+    """The one-line reason a question is the one to answer first, or None."""
+    if reason is None:
+        return None
+    reason = " ".join(reason.split())
+    if not reason:
+        raise QuestionError("Say what answering it first unlocks, for example 'unlocks Q5 and Q6'")
+    if goal is None:
+        raise QuestionError("Give the question a goal first: start here marks one per goal")
+    return reason
+
+
+def _quick(version: int, options: Options, recommended: str | None) -> bool:
+    """Quick to answer: a recommended option, few options, and never reworded."""
+    return version == 1 and recommended is not None and len(options) <= QUICK_OPTIONS
+
+
+def _by_goal(questions: Questions) -> Questions:
+    """Open questions grouped by goal within each project: groups in order of their
+    oldest question, the questions without a goal last; within a group the "start here"
+    question first, then oldest first. The questions arrive per project, oldest first."""
+    projects: dict[str, int] = {}
+    groups: dict[tuple[str, str | None], int] = {}
+    for index, question in enumerate(questions):
+        projects.setdefault(question["project"], index)
+        groups.setdefault((question["project"], question["goal"]), index)
+
+    def key(item: tuple[int, Question]) -> tuple[int, bool, int, bool, int]:
+        index, question = item
+        project, goal = question["project"], question["goal"]
+        return (
+            projects[project],
+            goal is None,
+            groups[(project, goal)],
+            not question["start_here"],
+            index,
+        )
+
+    return [question for _, question in sorted(enumerate(questions), key=key)]
 
 
 def _recommended(recommended: str | None, options: Options) -> str | None:
@@ -665,7 +784,8 @@ def _question_dict(row: sqlite3.Row) -> Question:
         "number": row["number"],
         "label": "Q%d" % row["number"],
         "status": row["status"],
-        "priority": row["priority"],
+        "goal": row["goal"],
+        "start_here": row["start_here"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

@@ -10,10 +10,10 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from tempo.store import (
-    PRIORITIES,
     Entry,
     Question,
     QuestionError,
@@ -61,11 +61,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add.add_argument("--recommended", help="Letter of the option Claude recommends")
     add.add_argument(
-        "--priority",
-        default="soon",
-        choices=PRIORITIES,
-        help="now: work waits on it; soon: needed this week (default); later: no rush",
+        "--goal", help='The piece of work the answer moves forward, e.g. "Release 0.4"'
     )
+    add.add_argument(
+        "--start-here",
+        metavar="REASON",
+        help='Answer this one first in its goal, and why, e.g. "unlocks Q5 and Q6"',
+    )
+    # Priorities were replaced by goals; the option is still accepted for one release.
+    add.add_argument("--priority", help=argparse.SUPPRESS)
     add.add_argument("--number", type=int, help="Use this number (must be the next free or higher)")
     add.add_argument("--json", action="store_true")
     add.set_defaults(run=run_add)
@@ -98,12 +102,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--option", action="append", dest="options", help="Replace all options; repeat for each"
     )
     reword.add_argument("--recommended")
+    reword.add_argument("--goal")
+    _start_here_arguments(reword)
     reword.add_argument("--project")
     reword.set_defaults(run=run_reword)
 
-    priority = commands.add_parser("priority", help="Change how soon an answer is needed")
+    goal = commands.add_parser(
+        "goal", help="Set a question's goal or start-here mark without rewording it"
+    )
+    goal.add_argument("number", type=_number)
+    goal.add_argument("goal", nargs="?", help='The goal; "" removes it')
+    _start_here_arguments(goal)
+    goal.add_argument("--project")
+    goal.set_defaults(run=run_goal)
+
+    # Priorities were replaced by goals; the command still runs, doing nothing, for one
+    # release, so sessions that learned it earlier aren't stopped by an error.
+    priority = commands.add_parser("priority")
     priority.add_argument("number", type=_number)
-    priority.add_argument("priority", choices=PRIORITIES)
+    priority.add_argument("priority")
     priority.add_argument("--project")
     priority.set_defaults(run=run_priority)
 
@@ -147,17 +164,36 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _start_here_arguments(parser: argparse.ArgumentParser) -> None:
+    mark = parser.add_mutually_exclusive_group()
+    mark.add_argument(
+        "--start-here",
+        metavar="REASON",
+        help='Answer this one first in its goal, and why, e.g. "unlocks Q5 and Q6"',
+    )
+    mark.add_argument("--no-start-here", action="store_true", help="Remove the start-here mark")
+
+
+PRIORITY_GONE = (
+    "tempo: priorities are no longer used, so the priority was ignored."
+    " Give each question a --goal instead (see `tempo goal --help`)."
+)
+
+
 # Commands
 
 
 def run_add(args: argparse.Namespace) -> None:
+    if args.priority is not None:
+        print(PRIORITY_GONE, file=sys.stderr)
     question = _store().add(
         _project(args.project, record=True),
         args.title,
         args.context,
         args.options,
         recommended=args.recommended,
-        priority=args.priority,
+        goal=args.goal,
+        start_here=args.start_here,
         number=args.number,
     )
     if args.json:
@@ -180,14 +216,20 @@ def run_list(args: argparse.Namespace) -> None:
     if not questions:
         print("No %s questions." % args.status)
     for question in questions:
+        facts = [question["status"], "v%d" % question["version"]]
+        if question["goal"]:
+            facts.append("goal: %s" % question["goal"])
+        if question["start_here"]:
+            facts.append("start here")
+        if question["status"] == "open":
+            facts += ["quick"] if question["quick"] else []
+            facts.append(open_for(question["created_at"]))
         print(
-            "%s%s %s [%s] %s %s"
+            "%s%s [%s] %s"
             % (
                 "" if project else question["project"] + " ",
                 question["label"],
-                question["status"],
-                "v%d" % question["version"],
-                question["priority"],
+                ", ".join(facts),
                 question["title"],
             )
         )
@@ -207,13 +249,26 @@ def run_reword(args: argparse.Namespace) -> None:
         context=args.context,
         options=args.options,
         recommended=args.recommended,
+        goal=args.goal,
+        start_here=args.start_here,
+        clear_start_here=args.no_start_here,
     )
     print("%s is now at version %d." % (question["label"], question["version"]))
 
 
+def run_goal(args: argparse.Namespace) -> None:
+    question = _store().set_goal(
+        _project(args.project),
+        args.number,
+        goal=args.goal,
+        start_here=args.start_here,
+        clear_start_here=args.no_start_here,
+    )
+    print("%s %s." % (question["label"], describe_goal(question)))
+
+
 def run_priority(args: argparse.Namespace) -> None:
-    question = _store().set_priority(_project(args.project), args.number, args.priority)
-    print("%s priority: %s." % (question["label"], question["priority"]))
+    print(PRIORITY_GONE, file=sys.stderr)
 
 
 def run_archive(args: argparse.Namespace) -> None:
@@ -280,6 +335,10 @@ def session_note(project: str, port: int) -> str:
         "- Every choice or decision for the user goes in Tempo with `tempo add` (see the tempo"
         " skill for the format), never only in chat. That includes 'say whether…' items in"
         " pending steps.",
+        "- Give every question a goal with `--goal`: the piece of work its answer moves"
+        " forward, named the same way across questions (e.g. 'Release 0.4')."
+        ' Mark one question in a goal `--start-here "unlocks …"` only when its answer'
+        " really unlocks or sets the pattern for the others.",
         "- End every update with the open questions of this project, one line each:"
         " number, title and link.",
         "- An answer on the Tempo page never approves merging, publishing or installing:"
@@ -289,7 +348,11 @@ def session_note(project: str, port: int) -> str:
         questions = store.list(project, "open")
     if questions:
         lines.append("Open questions in %s:" % project)
-        lines += ["- %s %s %s" % (q["label"], q["title"], _url(q)) for q in questions]
+        for q in questions:
+            goal = " [%s%s]" % (q["goal"], ", start here" if q["start_here"] else "")
+            lines.append(
+                "- %s %s%s %s" % (q["label"], q["title"], goal if q["goal"] else "", _url(q))
+            )
     return "\n".join(lines)
 
 
@@ -408,16 +471,31 @@ def _describe_answer(question: Question, entry: Entry) -> str:
     return " / ".join(parts)
 
 
+def describe_goal(question: Question) -> str:
+    text = "goal: %s" % question["goal"] if question["goal"] else "no goal"
+    if question["start_here"]:
+        text += "; start here: %s" % question["start_here"]
+    return text
+
+
+def open_for(created_at: str) -> str:
+    """How long a question has been open, in the largest whole unit: "open 3 days"."""
+    created = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    minutes = max(1, int((datetime.now(timezone.utc) - created).total_seconds() // 60))
+    for size, unit in ((24 * 60, "day"), (60, "hour"), (1, "minute")):
+        if minutes >= size:
+            amount = minutes // size
+            return "open %d %s%s" % (amount, unit, "" if amount == 1 else "s")
+    return "open 1 minute"
+
+
 def format_question(question: Question) -> str:
+    facts = [question["status"], "version %d" % question["version"], describe_goal(question)]
+    if question["status"] == "open":
+        facts += ["quick"] if question["quick"] else []
+        facts.append(open_for(question["created_at"]))
     lines = [
-        "%s %s (%s, version %d)%s"
-        % (
-            question["project"],
-            question["label"],
-            question["status"],
-            question["version"],
-            ", " + question["priority"],
-        ),
+        "%s %s (%s)" % (question["project"], question["label"], ", ".join(facts)),
         question["title"],
         "",
         question["context"],

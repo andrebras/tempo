@@ -100,20 +100,30 @@
   #list { overflow-y: auto; padding: 4px 12px 16px; }
   #list a { position: relative; display: block; padding: 11px 12px 11px 18px; margin-bottom: 6px;
             border-radius: 10px; color: inherit; text-decoration: none; border: 1px solid transparent; }
-  #list a::before { content: ""; position: absolute; left: 7px; top: 12px; bottom: 12px; width: 3px;
-                    border-radius: 3px; background: var(--later); }
-  #list a.prio-now::before { background: var(--now); }
-  #list a.prio-soon::before { background: var(--soon); }
+  /* The question to answer first in its goal carries an accent bar. */
+  #list a.start::before { content: ""; position: absolute; left: 7px; top: 12px; bottom: 12px; width: 3px;
+                          border-radius: 3px; background: var(--accent); }
+  #list h3.goal { margin: 14px 6px 6px; font-size: .75rem; font-weight: 600; letter-spacing: .06em;
+                  text-transform: uppercase; color: var(--muted); }
+  #list h3.goal:first-child { margin-top: 6px; }
   #list a:hover { background: var(--panel); }
   #list a.active { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); }
   #list .label { display: block; font-size: .75rem; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
   #list .title { display: block; font-weight: 500; line-height: 1.4; }
+  #list .label .badge { margin-left: 8px; }
+  #list .reason { display: block; margin-top: 2px; font-size: .8125rem; color: var(--accent); }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted);
+           font-size: .8125rem; }
+  #list .facts { margin-top: 4px; font-size: .75rem; }
+  #detail .facts { margin: -4px 0 12px; }
+  .start-here { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 14px;
+                color: var(--accent); font-size: .875rem; font-weight: 500; }
 
   .badge { display: inline-block; font-size: .71875rem; font-weight: 600; padding: 2px 9px;
            border-radius: 999px; vertical-align: 1px; }
-  .badge.now { background: var(--now-soft); color: var(--now); }
-  .badge.soon { background: var(--soon-soft); color: var(--soon); }
-  .badge.later { background: var(--later-soft); color: var(--later); }
+  .badge.muted, .badge.goal, .badge.quick { background: var(--later-soft); color: var(--later); }
+  .badge.goal { color: var(--text); font-weight: 500; }
+  .badge.start { background: var(--accent); color: #fff; }
   .badge.rec { background: var(--done-soft); color: var(--done); margin-left: 8px; }
   .badge.wait { background: var(--accent-soft); color: var(--accent); }
   #list .badge.wait { display: inline-flex; align-items: center; margin-top: 6px; }
