@@ -13,6 +13,8 @@ All notable changes to Tempo are listed here. The format follows
   An answer, follow-up or reopen also checks the question again inside its write, so it
   cannot land on a question archived or reworded a moment before, or pick an option the
   reword removed.
+- Two rewords of one question at the same moment both save, as versions one after the
+  other, instead of the second failing with a database error.
 
 ## [0.5.4] - 2026-11-07
 

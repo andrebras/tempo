@@ -617,6 +617,12 @@ class RaceTest(DatabaseTest):
         with self.assertRaisesRegex(QuestionError, "archived"):
             self.store.follow_up("demo", 1, "Why?")
 
+    def test_two_rewords_at_the_same_moment_both_save(self):
+        self.add()
+        self.meanwhile(lambda other: other.reword("demo", 1, "First", title="One?"))
+        question = self.store.reword("demo", 1, "Second", title="Two?")
+        self.assertEqual((question["version"], question["title"]), (3, "Two?"))
+
 
 class MigrateTest(DatabaseTest):
     def test_folders_keyed_by_name_keep_their_projects(self):

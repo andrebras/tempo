@@ -333,18 +333,20 @@ class Store:
         clear_start_here: bool = False,
     ) -> Question:
         note = _required(note, "note (why it was reworded)")
-        question = self._find(project, number)
-        if question["status"] == "archived":
-            raise QuestionError("Archived questions cannot be reworded")
-        goals = self._goal_change(question, goal, start_here, clear_start_here)
-        current = self._current_version(question["id"])
-        lettered = _letter(options) if options is not None else json.loads(current["options"])
-        if recommended is None and lettered is not None:
-            letters = [option["letter"] for option in lettered]
-            recommended = current["recommended"] if current["recommended"] in letters else None
-        recommended = _recommended(recommended, lettered)
-        version = current["version"] + 1
+        # The current version is read inside the lock, so two rewords at once number
+        # their versions one after the other instead of both taking the same number.
         with self._transaction():
+            question = self._find(project, number)
+            if question["status"] == "archived":
+                raise QuestionError("Archived questions cannot be reworded")
+            goals = self._goal_change(question, goal, start_here, clear_start_here)
+            current = self._current_version(question["id"])
+            lettered = _letter(options) if options is not None else json.loads(current["options"])
+            if recommended is None and lettered is not None:
+                letters = [option["letter"] for option in lettered]
+                recommended = current["recommended"] if current["recommended"] in letters else None
+            recommended = _recommended(recommended, lettered)
+            version = current["version"] + 1
             self._insert_version(
                 question["id"],
                 version,
