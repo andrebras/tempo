@@ -66,6 +66,9 @@ class Board:
         # "normal", "help", "confirm" (an answer waiting for y/n), "note" or "reply".
         self.mode = "normal"
         self.letter = ""
+        # The question an answer or follow-up being written is for, fixed when it starts,
+        # so a reload meanwhile (which may select another question) can't redirect it.
+        self.target: tuple[str, int] | None = None
         self.typed = ""
         # The line shown after an action: (text, "ok" or "error").
         self.message: tuple[str, str] | None = None
@@ -159,7 +162,7 @@ class Board:
             self.mode = "help"
         elif key == "r":
             if self._selected():
-                self.mode, self.typed = "reply", ""
+                self.mode, self.typed, self.target = "reply", "", self._here()
         elif len(key) == 1 and key.lower() in string.ascii_lowercase and key not in BOUND:
             self._pick(key.lower())
         return True
@@ -195,7 +198,7 @@ class Board:
             # The store's own words for it.
             self.message = ("Option (%s) does not exist" % letter, "error")
             return
-        self.mode, self.letter = "confirm", letter
+        self.mode, self.letter, self.target = "confirm", letter, self._here()
 
     def _confirm(self, key: str) -> None:
         if key in ("y", "Y", "enter"):
@@ -227,7 +230,7 @@ class Board:
         from tempo.cli import _describe_answer
 
         def save() -> str:
-            question = self.store.answer(self.project, self._number(), letter, note)
+            question = self.store.answer(*self._target(), letter, note)
             return "Answered %s: %s" % (
                 question["label"],
                 _describe_answer(question, question["answer"]),
@@ -239,15 +242,18 @@ class Board:
         """Ask for more on the selected question as `tempo reply` does."""
 
         def save() -> str:
-            question = self.store.follow_up(self.project, self._number(), body)
+            question = self.store.follow_up(*self._target(), body)
             return "Added your follow-up to %s." % question["label"]
 
         self._save(save)
 
-    def _number(self) -> int:
-        if self.number is None:
+    def _here(self) -> tuple[str, int] | None:
+        return (self.project, self.number) if self.number is not None else None
+
+    def _target(self) -> tuple[str, int]:
+        if self.target is None:
             raise QuestionError("No question selected.")
-        return self.number
+        return self.target
 
     def _save(self, save: Callable[[], str]) -> None:
         self.mode = "normal"

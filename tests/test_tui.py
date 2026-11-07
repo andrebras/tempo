@@ -168,6 +168,20 @@ class BoardTest(DatabaseTest):
         board.press("r")
         self.assertEqual(board.message, ("No question selected.", "error"))
 
+    def test_a_reload_while_confirming_keeps_the_answer_on_its_question(self):
+        self.add()
+        self.add()
+        board = self.board()
+        board.press("a")
+        self.assertEqual(board.target, ("demo", 1))
+        # Answered on the page meanwhile: the screen moves on to Q2 as it reloads.
+        self.store.answer("demo", 1, "b")
+        self.assertTrue(board.changed())
+        self.assertEqual(board.number, 2)
+        board.press("y")
+        self.assertEqual(board.message[1], "error")
+        self.assertEqual(self.store.get("demo", 2)["status"], "open")
+
     def test_an_empty_follow_up_is_refused_with_the_stores_words(self):
         self.add()
         board = self.board()
