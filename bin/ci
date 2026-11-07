@@ -55,3 +55,9 @@ step "Tests" env PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m coverage run \
   -m unittest discover -s tests -t . "$@"
 .venv/bin/python -m coverage combine --quiet
 step "Coverage (report only)" .venv/bin/python -m coverage report
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  {
+    echo "### Coverage, Python $(.venv/bin/python -c 'import platform; print(platform.python_version())')"
+    .venv/bin/python -m coverage report --format=markdown
+  } >>"$GITHUB_STEP_SUMMARY"
+fi
