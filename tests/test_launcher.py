@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from tempo.server import ROOT
+from tests import TEST_PORT
 
 LAUNCHER = os.path.join(ROOT, "bin", "tempo")
 
@@ -22,6 +23,7 @@ class LauncherTest(unittest.TestCase):
             if not key.startswith(("TEMPO_", "OQ_", "ASDF_", "PYENV_", "MISE_"))
         }
         self.env["TEMPO_DB"] = os.path.join(self.folder, "questions.db")
+        self.env["TEMPO_PORT"] = str(TEST_PORT)
 
     def run_tempo(self, env):
         return subprocess.run(

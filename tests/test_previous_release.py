@@ -18,6 +18,7 @@ from unittest import mock
 
 from tempo.store import CODE_ROOT, MIGRATIONS, Store, _add_column, connect
 from tempo.store import schema as store_schema
+from tests import TEST_PORT
 
 
 def git(*args):
@@ -71,7 +72,7 @@ class PreviousReleaseTest(unittest.TestCase):
         self.addCleanup(os.remove, self.db)
 
     def old_tempo(self, *args, stdin="", project="demo"):
-        env = dict(os.environ, TEMPO_DB=self.db, TEMPO_PROJECT=project, TEMPO_PORT="2299")
+        env = dict(os.environ, TEMPO_DB=self.db, TEMPO_PROJECT=project, TEMPO_PORT=str(TEST_PORT))
         env.pop("PYTHONPATH", None)
         env.pop("TEMPO_IN_THREAD", None)
         # Run from the temporary folder: `python -m` puts the working folder first on the
