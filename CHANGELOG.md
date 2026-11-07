@@ -10,6 +10,8 @@ All notable changes to Tempo are listed here. The format follows
 
 - The empty screen says "Nothing is waiting on you" (or "No answered questions"), without the
   project name, which the header already shows.
+- The empty screen's width follows the font (70 characters) instead of a fixed 460 pixels,
+  so its short sentences no longer break in the middle.
 
 ## [0.4.0] - 2026-11-07
 
