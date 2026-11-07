@@ -34,8 +34,9 @@ The page lists questions by priority, then by number.
 
 The gear button at the top right of the page opens Settings.
 
-- **Appearance**: theme (System, Light or Dark), font (System sans, Serif or Monospace) and
-  text size. These are kept in your browser, not in the database.
+- **Appearance**: theme (System, Light or Dark), font (System sans, Serif or Monospace), text
+  size, and width: how many characters fit on a line of a question (Narrow 68, Medium 80 or
+  Wide 100). These are kept in your browser, not in the database.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
   its questions, their numbers and its folders along. To join two projects, rename one to

@@ -9,6 +9,11 @@ All notable changes to Tempo are listed here. The format follows
 ### Added
 
 - A pull request template with the usual sections and a short checklist.
+- A Width setting under Appearance: Narrow (68 characters per line), Medium (80) or Wide (100).
+
+### Changed
+
+- The question column defaults to 80 characters per line, the WCAG limit, instead of 68.
 
 ## [0.3.2] - 2026-11-07
 
