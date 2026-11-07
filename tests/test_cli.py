@@ -402,13 +402,14 @@ class RenameNoteTest(DatabaseTest):
         self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
         self.assertEqual(len(self.store.renames()), 1)
 
-    def test_several_missing_folders_ask_the_user_to_pick_in_settings(self):
+    def test_several_missing_folders_offer_a_link_for_each(self):
         shop = os.path.join(self.lab, "shop")
         self.store.see_folder("shop", shop)
         os.rename(self.old, self.new)
         note = self.start(self.new)
         self.assertIn("several known folders no longer exist", note)
-        self.assertIn("pick this folder's project in Settings", note)
+        self.assertIn('"Link to <project>" button for each missing folder', note)
+        self.assertNotIn("Settings", note)
         self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
 
     def test_no_missing_folder_starts_a_new_project_as_before(self):

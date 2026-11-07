@@ -1,4 +1,4 @@
-// Tests for the page's text renderer, rich() and inline(), and for openFor(), run with
+// Tests for the page's text renderer, rich() and inline(), and for other helpers, run with
 // `node --test`. rich() and inline() turn a little Markdown into DOM nodes; a tiny fake
 // document stands in for the browser's, and refuses innerHTML so any attempt to inject
 // markup fails loudly.
@@ -47,7 +47,9 @@ class Element extends Node {
 globalThis.Node = Node;
 globalThis.document = { createElement: (tag) => new Element(tag) };
 
-const { rich, inline, openFor, joinNotice, serverChanged } = require("../tempo/page.js");
+const {
+  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders,
+} = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
 // inline() returns plain strings for its text parts; inside elements they are Text nodes.
@@ -150,4 +152,32 @@ test("serverChanged notices a restarted server, not a missing answer", () => {
   assert.equal(serverChanged(first, { ...first, started: "2026-11-07T12:00:00Z" }), true);
   assert.equal(serverChanged(null, first), false);
   assert.equal(serverChanged(first, null), false);
+});
+
+const tempo = { folder: "tempo", path: "/lab/tempo", shown: "~/lab/tempo", project: "tempo" };
+const gone = (project, name) => ({ folder: name, path: `/lab/${name}`, shown: `~/lab/${name}`, project });
+
+test("the rename banner offers one Link button per missing folder", () => {
+  const banner = renameBanner({ ...tempo, candidates: [gone("Tempo", "open-questions"), gone("Shop", "shop")] });
+  assert.deepEqual(all(banner, "BUTTON").map((button) => button.textContent), [
+    "Link to Tempo (~/lab/open-questions)",
+    "Link to Shop (~/lab/shop)",
+    "Keep as its own project",
+  ]);
+  assert.doesNotMatch(banner.textContent, /Settings/);
+});
+
+test("the rename banner names the one missing folder in its text", () => {
+  const banner = renameBanner({ ...tempo, candidates: [gone("Tempo", "open-questions")] });
+  assert.deepEqual(all(banner, "BUTTON").map((button) => button.textContent),
+    ["Link to Tempo", "Keep as its own project"]);
+  assert.match(banner.textContent, /~\/lab\/open-questions, filed under Tempo, no longer exists/);
+});
+
+test("folders are listed read-only, with no menu to move them", () => {
+  const list = renderFolders({ name: "tempo", folders: [tempo] });
+  assert.equal(list.textContent, "tempo ~/lab/tempo");
+  assert.deepEqual(all(list, "SELECT"), []);
+  assert.deepEqual(all(list, "BUTTON"), []);
+  assert.equal(renderFolders({ name: "tempo", folders: [] }), null);
 });

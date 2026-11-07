@@ -160,33 +160,34 @@ function renderRenames(renames) {
   if (notice.dataset.key === key) return;
   notice.dataset.key = key;
   notice.hidden = !renames.length;
-  notice.replaceChildren(...renames.map((rename) => {
-    const error = el("span", { class: "error", hidden: true });
-    const act = (path, body) => api(path, body).then((settings) => {
-      if (body.project && state.project === rename.project) chooseProject(body.project);
-      if (settingsOpen()) renderSettings(settings);
-      return refresh();
-    }, (problem) => { error.textContent = problem.message; error.hidden = false; });
-    const keep = el("button", { onclick: () => act("/api/folders/keep", { path: rename.path }) },
-      "Keep as its own project");
-    const where = [el("code", {}, rename.folder), ` (${rename.shown}) is a new folder`];
-    if (rename.candidates.length === 1) {
-      const old = rename.candidates[0];
-      const link = () => act("/api/folders/link", { path: rename.path, project: old.project });
-      return el("div", { class: "rename", role: "status" },
-        el("p", {}, ...where, ", and ", el("code", {}, old.shown), `, filed under ${old.project}, `
-          + "no longer exists. Is it the same folder, renamed or moved?"),
-        el("div", { class: "actions" },
-          el("button", { class: "primary", onclick: link }, `Link to ${old.project}`), keep, error));
-    }
-    return el("div", { class: "rename", role: "status" },
-      el("p", {}, ...where, ". Several known folders no longer exist (",
-        rename.candidates.map((old) => `${old.shown}, filed under ${old.project}`).join("; "),
-        "), so it may be one of them renamed or moved. Pick its project in Settings."),
-      el("div", { class: "actions" },
-        el("button", { class: "primary", onclick: () => { if (!settingsOpen()) $("#gear").click(); } },
-          "Open Settings"), keep, error));
-  }));
+  notice.replaceChildren(...renames.map(renameBanner));
+}
+
+// One new folder's banner: a "Link to <project>" button for each known folder that no
+// longer exists, named with that folder's path, and a button to keep it apart.
+function renameBanner(rename) {
+  const error = el("span", { class: "error", hidden: true });
+  const act = (path, body) => api(path, body).then((settings) => {
+    if (body.project && state.project === rename.project) chooseProject(body.project);
+    if (settingsOpen()) renderSettings(settings);
+    return refresh();
+  }, (problem) => { error.textContent = problem.message; error.hidden = false; });
+  const keep = el("button", { onclick: () => act("/api/folders/keep", { path: rename.path }) },
+    "Keep as its own project");
+  const several = rename.candidates.length > 1;
+  const links = rename.candidates.map((old) => el("button", {
+    class: "primary",
+    onclick: () => act("/api/folders/link", { path: rename.path, project: old.project }),
+  }, several ? `Link to ${old.project} (${old.shown})` : `Link to ${old.project}`));
+  const where = [el("code", {}, rename.folder), ` (${rename.shown}) is a new folder`];
+  const text = several
+    ? [". Several known folders no longer exist, so it may be one of them renamed or moved. "
+      + "Link it to the one it was, or keep it apart."]
+    : [", and ", el("code", {}, rename.candidates[0].shown),
+      `, filed under ${rename.candidates[0].project}, no longer exists. `
+      + "Is it the same folder, renamed or moved?"];
+  return el("div", { class: "rename", role: "status" },
+    el("p", {}, ...where, ...text), el("div", { class: "actions" }, ...links, keep, error));
 }
 
 function setStatus(status) {
@@ -298,7 +299,7 @@ function renderProjects(data) {
       return saveRow(
         el("div", {}, el("strong", {}, project.name),
           el("span", { class: "meta" }, count(project.questions, "question")),
-          renderFolders(project, data.projects.map((other) => other.name))),
+          renderFolders(project)),
         input,
         () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
         (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
@@ -317,25 +318,12 @@ function joinNotice(from, to, moved) {
   return `Moved ${count(moved.length, "question")} from ${from} to ${to}: now ${numbers}.`;
 }
 
-// The folders a project covers, each with its full path (wrapped when long) and a menu to
-// file it under another project. Folders remembered before paths were stored get theirs
-// the next time a session runs there, and only then can be moved.
-function renderFolders(project, projects) {
+// The folders a project covers, each with its full path (wrapped when long). Only
+// folders still on disk come from the server; a renamed one is linked from the banner.
+function renderFolders(project) {
   if (!project.folders.length) return null;
   return el("ul", { class: "folders", "aria-label": "Folders" }, project.folders.map((folder) =>
-    el("li", {}, folder.folder, " ", el("span", { class: "path", title: folder.path || false },
-      folder.shown || "path not known yet"), folder.path && moveMenu(folder, project.name, projects))));
-}
-
-function moveMenu(folder, current, projects) {
-  const names = [...new Set([...projects, folder.folder])].sort((a, b) => a.localeCompare(b));
-  const error = el("span", { class: "error", hidden: true });
-  const select = el("select", { class: "move", "aria-label": `Project for ${folder.shown}`,
-    onchange: () => api("/api/folders/link", { path: folder.path, project: select.value }).then(
-      (settings) => { renderSettings(settings); renderRenames(settings.renames); },
-      (problem) => { error.textContent = problem.message; error.hidden = false; }) },
-  names.map((name) => el("option", { value: name, selected: name === current }, name)));
-  return [select, error];
+    el("li", {}, folder.folder, " ", el("span", { class: "path", title: folder.path }, folder.shown))));
 }
 
 // Keep the page on a renamed project, and the way back pointing at the same question.
@@ -659,5 +647,7 @@ function start() {
   setInterval(() => { refresh(false); checkServer(); }, 4000);
 }
 
-if (typeof module === "object") module.exports = { rich, inline, openFor, joinNotice, serverChanged };
+if (typeof module === "object") module.exports = {
+  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders,
+};
 else start();

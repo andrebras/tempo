@@ -420,9 +420,10 @@ def rename_note(rename: dict[str, Any]) -> str:
     gone = ", ".join(str(old["shown"]) for old in candidates)
     return (
         "- %s, and several known folders no longer exist (%s), so it may be one of them"
-        " renamed or moved. Tell the user in chat: the Tempo page shows a banner asking them"
-        " to pick this folder's project in Settings. Until they pick, its questions go to"
-        " the project %s." % (where, gone, rename["project"])
+        " renamed or moved. Tell the user in chat: the Tempo page shows a banner with a"
+        ' "Link to <project>" button for each missing folder, or they can keep this folder'
+        " as its own project. Until they pick, its questions go to the project %s."
+        % (where, gone, rename["project"])
     )
 
 

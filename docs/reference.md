@@ -56,6 +56,13 @@ The gear button at the top right of the page opens Settings.
   (Q1–Q27) makes them Q28–Q32. Each moved question gets a note in its thread with its old
   number, such as "Moved from tempo Q2 when tempo joined Tempo.", so old references can
   still be traced.
+  Under each project, Settings lists the folders it covers, with their paths, read-only.
+  Only folders still on disk are listed: a folder that no longer exists, or that was
+  remembered before Tempo stored paths, is hidden but not deleted.
+- **Renamed or moved folders**: when a session runs in a new folder while a known folder no
+  longer exists, a banner on every screen asks whether the new folder is that one renamed or
+  moved. It has a "Link to <project>" button for each missing folder, named with that
+  folder's path, and a "Keep as its own project" button.
 
 Projects are saved in the database, so every session, the hooks and the `tempo` command use
 them.
