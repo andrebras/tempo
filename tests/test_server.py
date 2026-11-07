@@ -282,6 +282,23 @@ class ServerTest(DatabaseTest):
         )
         self.assertEqual(status, 400)
 
+    def test_turns_the_page_off_and_on_for_new_sessions(self):
+        _, data = self.request("GET", "/api/settings")
+        self.assertTrue(json.loads(data)["start_page"])
+        status, data = self.request("POST", "/api/settings/page", {"on": False})
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(data)["start_page"])
+        self.assertFalse(self.store.start_page())
+        status, data = self.request("POST", "/api/settings/page", {"on": True})
+        self.assertTrue(json.loads(data)["start_page"])
+        self.assertTrue(self.store.start_page())
+        for body in ({}, {"on": "off"}, {"on": 0}):
+            with self.subTest(body=body):
+                status, data = self.request("POST", "/api/settings/page", body)
+                self.assertEqual(status, 400)
+                self.assertIn("true or false", json.loads(data)["error"])
+        self.assertTrue(self.store.start_page())
+
     def test_reports_settings_errors(self):
         self.add(project="other")
         status, data = self.request("POST", "/api/projects/demo/rename", {"name": " "})
@@ -323,12 +340,14 @@ class ServerTest(DatabaseTest):
         for path, body in [
             ("/api/projects/demo/rename", {"name": "Hijacked"}),
             ("/api/folders/link", {"path": "/x/onzehq", "project": "Hijacked"}),
+            ("/api/settings/page", {"on": False}),
         ]:
             with self.subTest(path=path):
                 status, _ = self.request("POST", path, body, origin="https://evil.example")
                 self.assertEqual(status, 403)
         self.assertEqual(self.store.projects(), ["demo"])
         self.assertEqual(self.store.project_for("onzehq"), "onzehq")
+        self.assertTrue(self.store.start_page())
 
     def test_threads_are_gone(self):
         for method, path in [

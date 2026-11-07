@@ -12,7 +12,8 @@ All notable changes to Tempo are listed here. The format follows
   terminal. Claude then points you to `tempo show N` and `tempo answer N <letter>` instead of
   page links. `tempo serve --background` still starts the page on demand, and
   `tempo config page on` brings back the default. `tempo config` shows the current value. The
-  setting is kept in the database; existing databases get it without a version change.
+  setting is kept in the database; existing databases get it without a version change. The
+  page's Settings has the same switch, under Sessions.
 
 ### Changed
 
