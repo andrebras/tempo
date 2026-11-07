@@ -8,6 +8,16 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Added
 
+- `tempo tui` shows the page's questions in the terminal, in panels side by side as in
+  lazygit, keyboard only. Projects lists every project with open questions plus the current
+  folder's, with their counts; Questions lists the selected project's open questions grouped by
+  goal; Detail shows the selected question with its context, options and thread. `a`, `b`,
+  `c`… answer after a y/n confirm that can add a note, `r` asks for more, and `?` lists every
+  key. Answers and follow-ups are saved as the page saves them, so Claude gets them the same
+  way. The screen follows changes by itself within a second or two, fits a tmux popup (one
+  panel at a time below 60 columns), honors `NO_COLOR`, and never starts the page. It is drawn
+  with curses, which comes with Python, so there is nothing to install. The README has the tmux
+  line to open it in a popup.
 - Claude now links the question number instead of printing the page address: the closing
   list reads `- [Q3](…) Pick a colour`, and a question in a reply is headed
   `**[Q3](…): Pick a colour?**`, so you click Q3 in the terminal. With the page off, the
