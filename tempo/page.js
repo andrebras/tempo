@@ -359,6 +359,27 @@ function renderAppearance() {
     }));
 }
 
+// Whether each Claude session starts this page, kept in the database like `tempo config page`.
+// With it off, Claude points to `tempo show` and `tempo answer` in the terminal instead.
+function renderSessions(data) {
+  const error = el("p", { class: "error", hidden: true });
+  const choose = (on) => api("/api/settings/page", { on }).then(renderSettings, (problem) => {
+    error.textContent = problem.message;
+    error.hidden = false;
+  });
+  return el("section", { class: "card" },
+    el("h3", {}, "Sessions"),
+    el("p", {}, "Saved in the database, the same as ", el("code", {}, "tempo config page"), "."),
+    el("div", { class: "row" },
+      el("div", {}, el("strong", {}, "Start the page with each session"),
+        el("span", { class: "meta" }, "Off: Claude points you to the terminal; ", el("code", {}, "tempo serve"),
+          " still starts the page.")),
+      el("div", { class: "segmented", role: "group", "aria-label": "Start the page with each session" },
+        [[true, "On"], [false, "Off"]].map(([on, name]) =>
+          el("button", { "aria-pressed": String(on === data.start_page), onclick: () => choose(on) }, name))),
+      error));
+}
+
 // A Settings row: what it is on the left, a small form on the right. read() returns the
 // value to save, or null while nothing changed; the button is enabled only for a change.
 function saveRow(about, fields, read, save, label = "Save") {
@@ -449,6 +470,7 @@ function drawSettings(data) {
     el("button", { class: "back", onclick: closeSettings }, "← Back to questions"),
     el("h2", {}, "Settings"),
     renderAppearance(),
+    renderSessions(data),
     renderProjects(data),
     // Placeholder: what belongs here is still to be decided.
     el("section", { class: "card" },
@@ -855,6 +877,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
-  noteOpened, questionFresh, keptDraft, renderQuestion, state,
+  noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, state,
 };
 else start();

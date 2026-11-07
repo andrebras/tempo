@@ -49,7 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
-  noteOpened, questionFresh, keptDraft, renderQuestion, state,
+  noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, state,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -181,6 +181,16 @@ test("folders are listed read-only, with no menu to move them", () => {
   assert.deepEqual(all(list, "SELECT"), []);
   assert.deepEqual(all(list, "BUTTON"), []);
   assert.equal(renderFolders({ name: "tempo", folders: [] }), null);
+});
+
+test("the page switch shows whether each session starts the page", () => {
+  for (const [on, pressed] of [[true, ["true", "false"]], [false, ["false", "true"]]]) {
+    const card = renderSessions({ start_page: on });
+    const buttons = all(card, "BUTTON");
+    assert.deepEqual(buttons.map((button) => button.textContent), ["On", "Off"]);
+    assert.deepEqual(buttons.map((button) => button.attributes["aria-pressed"]), pressed);
+    assert.match(card.textContent, /Start the page with each session/);
+  }
 });
 
 test("chips show projects with open questions or news, and always the current one", () => {
