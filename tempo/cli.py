@@ -350,7 +350,7 @@ def run_hook(args: argparse.Namespace) -> int:
         payload = {}
     cwd = payload.get("cwd") or os.getcwd()
     if args.event == "stop":
-        reason = unrecorded_options(payload)
+        reason = stop_reason(payload, cwd)
         if reason:
             print(json.dumps({"decision": "block", "reason": reason}))
         return 0
@@ -396,6 +396,38 @@ def session_note(project: str, port: int) -> str:
                 "- %s %s%s %s" % (q["label"], q["title"], goal if q["goal"] else "", _url(q))
             )
     return "\n".join(lines)
+
+
+def stop_reason(payload: dict[str, Any], cwd: str) -> str | None:
+    """Why the reply that just ended must not stop yet, or None.
+
+    In order: the user's new answers and follow-ups (handed over and marked delivered),
+    a question asked only in chat, then open questions with no `tempo wait` running to
+    bring the answers back. Blocks at most once per reply (stop_hook_active), and any
+    error lets the reply end, so the hook can never trap a session.
+    """
+    if payload.get("stop_hook_active"):
+        return None
+    try:
+        project = setting("PROJECT") or project_name(cwd)
+        inbox = take_inbox(project)
+        if inbox:
+            return inbox
+        unrecorded = unrecorded_options(payload)
+        if unrecorded:
+            return unrecorded
+        with Store(connect()) as store:
+            questions = store.list(project, "open")
+        if questions and not wait_running(project):
+            return (
+                "%s has open questions in Tempo, but no `tempo wait` is running, so answers"
+                " from the page would not reach you until the user writes in chat. Start"
+                " `tempo wait --timeout 1800` with the Bash tool's run_in_background option,"
+                " then end the reply." % project
+            )
+    except Exception:
+        return None
+    return None
 
 
 # Lettered options such as "(a) …" and "(b) …" on separate items of one reply.

@@ -226,6 +226,41 @@ class CliTest(DatabaseTest):
         self.assertEqual(self.stop(("user", "Q?"), ("assistant", options), active=True), "")
         self.assertEqual(run("hook", "stop", stdin="{}")[1], "")
 
+    def test_stop_hands_over_new_answers_once(self):
+        self.add(title="Left or right?")
+        self.store.answer("demo", 1, "b")
+        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
+        self.assertEqual(self.stop(*reply, active=True), "")
+        out = json.loads(self.stop(*reply))
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("demo Q1 (Left or right?) answered (b) Right", out["reason"])
+        self.assertEqual(self.stop(*reply), "")
+
+    def test_stop_hands_over_answers_before_anything_else(self):
+        self.add()
+        self.add()
+        self.store.answer("demo", 1, "a")
+        options = [("user", "Go"), ("assistant", [{"type": "text", "text": "(a) Up (b) Down"}])]
+        self.assertIn("answered (a) Left", json.loads(self.stop(*options))["reason"])
+        self.assertIn("tempo add", json.loads(self.stop(*options))["reason"])
+
+    def test_stop_asks_for_a_wait_while_questions_are_open(self):
+        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
+        self.assertEqual(self.stop(*reply), "")
+        self.add()
+        out = json.loads(self.stop(*reply))
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("tempo wait --timeout 1800", out["reason"])
+        self.assertIn("run_in_background", out["reason"])
+        self.assertEqual(self.stop(*reply, active=True), "")
+        self.marker(os.getpid())
+        self.assertEqual(self.stop(*reply), "")
+
+    def test_stop_lets_the_reply_end_on_any_error(self):
+        self.add()
+        with mock.patch.object(cli, "wait_running", side_effect=RuntimeError):
+            self.assertEqual(run("hook", "stop", stdin="{}")[1], "")
+
     def test_user_prompt_hook_ignores_other_projects(self):
         self.add(project="other")
         self.store.follow_up("other", 1, "Why?")
