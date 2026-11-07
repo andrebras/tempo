@@ -167,7 +167,13 @@ The gear button at the top right of the page opens Settings.
 - **Renamed or moved folders**: when a session runs in a new folder while a known folder no
   longer exists, a banner on every screen asks whether the new folder is that one renamed or
   moved. It has a "Link to <project>" button for each missing folder, named with that
-  folder's path, and a "Keep as its own project" button.
+  folder's path, and a "Keep as its own project" button. Only a new git repository gets the
+  banner. Tempo notes each repository's first commit and the address of its `origin` remote
+  when it first sees the folder, and offers a missing folder only to a repository with the
+  same first commit or, when none has that, the same remote. So a repository renamed on
+  GitHub still matches, and a deleted one is not offered to unrelated new repositories. A
+  folder remembered before Tempo noted these is offered to any new git repository, as
+  before. Nothing is linked until you click.
 
 Projects are saved in the database, so every session, the hooks and the `tempo` command use
 them.

@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -850,6 +851,65 @@ class RenameNoteTest(GitTest):
         self.assertNotIn("is new to Tempo", note)
         self.assertEqual(self.store.renames(), [])
         self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
+
+
+class RepoIdentityNoteTest(GitTest):
+    """Real repos with commits and remotes, first seen by a session: a missing one is
+    offered only to a copy of it."""
+
+    # No signing: the test must not depend on how the developer signs commits.
+    git = ("git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false")
+    start = RenameNoteTest.start
+
+    def setUp(self):
+        super().setUp()
+        del os.environ["TEMPO_PROJECT"]
+        self.lab = os.path.realpath(self.tmp.name)
+        self.old = os.path.join(self.lab, "open-questions")
+        self.new = os.path.join(self.lab, "tempo")
+        self.repo(self.old, "git@github.com:me/open-questions.git")
+        self.start(self.old)
+        self.store.rename_project("open-questions", "Tempo")
+
+    def repo(self, path, remote=None):
+        subprocess.run([*self.git, "init", "-q", path], check=True)
+        # Its own message: two empty commits made in the same second would be the same.
+        message = os.path.basename(path)
+        commit = [*self.git, "-C", path, "commit", "-q", "--allow-empty", "-m", message]
+        subprocess.run(commit, check=True)
+        if remote:
+            subprocess.run(["git", "-C", path, "remote", "add", "origin", remote], check=True)
+
+    def test_the_renamed_repo_is_offered(self):
+        os.rename(self.old, self.new)
+        self.assertIn("looks renamed or moved", self.start(self.new))
+
+    def test_a_repo_renamed_on_github_too_is_offered(self):
+        os.rename(self.old, self.new)
+        url = "git@github.com:me/tempo.git"
+        subprocess.run(["git", "-C", self.new, "remote", "set-url", "origin", url], check=True)
+        self.assertIn("looks renamed or moved", self.start(self.new))
+
+    def test_an_unrelated_repo_is_not_offered_a_deleted_one(self):
+        shutil.rmtree(self.old)
+        self.repo(self.new, "git@github.com:me/tempo.git")
+        self.assertNotIn("is new to Tempo", self.start(self.new))
+        self.assertEqual(self.store.renames(), [])
+
+    def test_without_git_on_path_sessions_still_start(self):
+        shutil.rmtree(self.old)
+        self.repo(self.new)
+        with mock.patch.dict(os.environ, {"PATH": "/nonexistent"}):
+            note = self.start(self.new)
+            self.assertEqual(cli.repo_identity(self.new), (None, None))
+        self.assertNotIn("is new to Tempo", note)
+        self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
+
+    def test_a_token_in_the_remote_address_is_not_kept(self):
+        url = "https://me:secret@github.com/me/open-questions.git"
+        subprocess.run(["git", "-C", self.old, "remote", "set-url", "origin", url], check=True)
+        _, remote = cli.repo_identity(self.old)
+        self.assertEqual(remote, "https://github.com/me/open-questions.git")
 
 
 class ProjectNameTest(GitTest):
