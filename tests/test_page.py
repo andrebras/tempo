@@ -236,7 +236,8 @@ class PageTest(DatabaseTest):
         with mock.patch("tempo.server._STARTED", time.gmtime(0)):
             self.server.RequestHandlerClass = self.handler()
         self.run_js("window.beforeRestart = true")
-        self.run_js("checkServer()")
+        # Not awaited: the page reloads before the call would return.
+        self.run_js("setTimeout(checkServer, 0)")
         self.wait("!window.beforeRestart && %s && $('#note')" % LOADED)
         self.assertEqual(self.run_js("$('#note').value"), "Right, if it's dry.")
         self.assertEqual(self.run_js("$('input[name=choice]:checked')?.value"), "b")
