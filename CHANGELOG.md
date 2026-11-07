@@ -24,6 +24,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- A project can't be named `.` or `..` any more, with `--project`, `TEMPO_PROJECT` or a
+  rename. The page could not open such a project's questions, because the browser reads
+  those names in a link as steps between folders.
 - `tempo show 12b` shows Q12, so the short code the user names an answer with works there
   too. It failed with "invalid _number value".
 - After Claude rewords a question you have picked an option on, the page clears the pick.
