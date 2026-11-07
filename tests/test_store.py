@@ -809,6 +809,7 @@ class DbPathTest(unittest.TestCase):
         connect("questions.db").close()
         self.assertTrue(os.path.exists(os.path.join(self.home, "questions.db")))
 
+
 class PermissionsTest(unittest.TestCase):
     """Questions and answers are private: other accounts on the machine cannot read them."""
 

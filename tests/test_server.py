@@ -1,11 +1,14 @@
 import http.client
+import io
 import json
 import os
 import tempfile
 import threading
 from http.server import ThreadingHTTPServer
+from unittest import mock
 
 from tempo.server import ROOT, make_handler
+from tempo.store import Store
 from tests.helpers import DatabaseTest
 
 
@@ -37,6 +40,20 @@ class ServerTest(DatabaseTest):
         connection.close()
         return response.status, data
 
+    def post_raw(self, path, data, length=None):
+        """POST bytes as they are, with any Content-Length, and give up after two seconds."""
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=2)
+        connection.putrequest("POST", path, skip_host=True)
+        connection.putheader("Host", "127.0.0.1:%d" % self.port)
+        connection.putheader("Origin", "http://127.0.0.1:%d" % self.port)
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Content-Length", str(len(data) if length is None else length))
+        connection.endheaders(data)
+        response = connection.getresponse()
+        body = response.read()
+        connection.close()
+        return response.status, json.loads(body)
+
     def test_serves_the_page_and_the_list(self):
         status, page = self.request("GET", "/")
         self.assertEqual(status, 200)
@@ -65,6 +82,43 @@ class ServerTest(DatabaseTest):
         self.assertEqual(health["root"], ROOT)
         self.assertEqual(health["pid"], os.getpid())
         self.assertRegex(health["started"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+
+    def test_a_body_that_is_not_an_object_is_refused(self):
+        for data in (b"null", b"[]", b"5"):
+            with self.subTest(data=data):
+                status, reply = self.post_raw("/api/questions/demo/1/answer", data)
+                self.assertEqual(status, 400)
+                self.assertIn("error", reply)
+
+    def test_fields_of_the_wrong_type_are_refused(self):
+        for body in ({"choice": 1}, {"body": 5}, {"choice": "a", "body": ["x"]}):
+            with self.subTest(body=body):
+                status, reply = self.post_raw(
+                    "/api/questions/demo/1/answer", json.dumps(body).encode()
+                )
+                self.assertEqual(status, 400)
+                self.assertIn("must be text", reply["error"])
+        for path, data in (
+            ("/api/questions/demo/1/followup", b'{"body": 5}'),
+            ("/api/projects/demo/rename", b'{"name": 5}'),
+            ("/api/folders/link", b'{"path": "/x", "project": 5}'),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(self.post_raw(path, data)[0], 400)
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
+    def test_an_unexpected_error_answers_with_a_json_500(self):
+        error = RuntimeError("database is locked")
+        log = mock.patch("sys.stderr", io.StringIO())
+        log.start()
+        self.addCleanup(log.stop)
+        with mock.patch.object(Store, "answer", side_effect=error):
+            status, reply = self.post_raw("/api/questions/demo/1/answer", b'{"choice": "a"}')
+        self.assertEqual((status, reply), (500, {"error": "Something went wrong in Tempo"}))
+        with mock.patch.object(Store, "list", side_effect=error):
+            status, data = self.request("GET", "/api/questions?status=open")
+        self.assertEqual(status, 500)
+        self.assertEqual(json.loads(data), {"error": "Something went wrong in Tempo"})
 
     def test_health_needs_this_server_as_its_host(self):
         self.assertEqual(self.request("GET", "/health", host="evil.example")[0], 403)
