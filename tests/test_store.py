@@ -343,11 +343,46 @@ class ProjectsTest(DatabaseTest):
         self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
         self.assertEqual(self.add(project="ONZE HQ")["label"], "Q10")
 
-    def test_rename_refuses_a_clash_and_changes_nothing(self):
+    def test_rename_joins_two_projects_that_both_have_questions(self):
+        # What happened for real: a folder rename split Tempo (Q1-Q27) and a new tempo.
+        for _ in range(3):
+            self.add(project="Tempo")
+        self.store.set_next("Tempo", 28)
+        self.add(project="tempo")
+        self.store.set_next("tempo", 4)
+        self.add(project="tempo", title="Second")
+        self.add(project="tempo", title="Third")
+        self.store.see_folder("tempo")
+        moves = self.store.rename_project("tempo", "Tempo")
+        self.assertEqual(
+            moves, [{"from": 1, "to": 28}, {"from": 4, "to": 29}, {"from": 5, "to": 30}]
+        )
+        self.assertEqual(self.store.projects(), ["Tempo"])
+        self.assertEqual(
+            [(q["label"], q["title"]) for q in self.store.list("Tempo")][-3:],
+            [("Q28", "Which way?"), ("Q29", "Second"), ("Q30", "Third")],
+        )
+        self.assertEqual(self.store.get("Tempo", 1)["label"], "Q1")
+        self.assertEqual(self.add(project="Tempo")["label"], "Q31")
+        self.assertEqual(self.store.project_for("tempo"), "Tempo")
+        trace = self.store.get("Tempo", 29)["entries"][-1]
+        self.assertEqual(
+            (trace["kind"], trace["author"], trace["body"]),
+            ("context", "claude", "Moved from tempo Q4 when tempo joined Tempo."),
+        )
+        self.assertEqual(self.store.get("Tempo", 3)["entries"], [])
+
+    def test_rename_into_a_project_with_questions_keeps_numbers_when_it_has_none(self):
+        self.add(project="onzehq")
+        self.store.see_folder("onzehq-api")
+        self.assertEqual(self.store.rename_project("onzehq-api", "onzehq"), [])
+        self.assertEqual([q["label"] for q in self.store.list("onzehq")], ["Q1"])
+        self.assertEqual(self.store.project_for("onzehq-api"), "onzehq")
+
+    def test_rename_refuses_bad_names_and_changes_nothing(self):
         self.add(project="onzehq")
         self.add(project="ONZE HQ")
         for old, new in [
-            ("onzehq", "ONZE HQ"),
             ("onzehq", " "),
             ("onzehq", "onzehq"),
             ("missing", "Anything"),

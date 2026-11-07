@@ -120,9 +120,16 @@ class ServerTest(DatabaseTest):
 
     def test_reports_settings_errors(self):
         self.add(project="other")
-        status, data = self.request("POST", "/api/projects/demo/rename", {"name": "other"})
+        status, data = self.request("POST", "/api/projects/demo/rename", {"name": " "})
         self.assertEqual(status, 400)
-        self.assertIn("already has questions", json.loads(data)["error"])
+        self.assertIn("needs a name", json.loads(data)["error"])
+
+    def test_joining_projects_reports_the_moved_questions(self):
+        self.add(project="other")
+        status, data = self.request("POST", "/api/projects/demo/rename", {"name": "other"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)["moved"], [{"from": 1, "to": 2}])
+        self.assertEqual(json.loads(data)["projects"][0]["questions"], 2)
 
     def test_refuses_other_hosts(self):
         for path in ["/", "/page.js", "/api/questions"]:
