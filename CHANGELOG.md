@@ -42,6 +42,9 @@ All notable changes to Tempo are listed here. The format follows
   Before, a deleted repository was offered to every new repository until one was linked to
   it. Tempo notes the first commit and remote when it first sees a folder, so normal session
   starts cost no more than before. Folders it remembered earlier are offered as before.
+- A git folder Tempo remembered before it noted first commits and remotes gets them the next
+  time a session starts or a prompt arrives there, once, so it too is matched only with a
+  copy of itself when it goes missing. Folders that already have them cost no git call.
 
 ### Fixed
 

@@ -905,6 +905,56 @@ class RepoIdentityNoteTest(GitTest):
         self.assertNotIn("is new to Tempo", note)
         self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
 
+    def forget_identity(self, path):
+        """Make path look remembered before identities were stored."""
+        self.store.db.execute(
+            "UPDATE folders SET first_commit = NULL, remote = NULL WHERE path = ?", (path,)
+        )
+        self.store.db.commit()
+
+    def identity_of(self, path):
+        row = self.store.db.execute(
+            "SELECT first_commit, remote FROM folders WHERE path = ?", (path,)
+        ).fetchone()
+        return tuple(row)
+
+    def test_a_known_repo_without_identity_gets_it_once(self):
+        self.forget_identity(self.old)
+        self.start(self.old)
+        first_commit, remote = self.identity_of(self.old)
+        self.assertTrue(first_commit)
+        self.assertEqual(remote, "git@github.com:me/open-questions.git")
+        with mock.patch.object(cli, "repo_identity") as identity:
+            self.start(self.old)
+        identity.assert_not_called()
+        # Now a copy of it is matched when it goes missing.
+        os.rename(self.old, self.new)
+        self.assertIn("looks renamed or moved", self.start(self.new))
+
+    def test_a_known_repo_fills_in_a_stripped_remote(self):
+        url = "https://me:secret@github.com/me/open-questions.git"
+        subprocess.run(["git", "-C", self.old, "remote", "set-url", "origin", url], check=True)
+        self.forget_identity(self.old)
+        self.start(self.old)
+        self.assertEqual(self.identity_of(self.old)[1], "https://github.com/me/open-questions.git")
+
+    def test_a_known_folder_outside_git_makes_no_git_call(self):
+        scratch = os.path.join(self.lab, "scratch")
+        os.makedirs(scratch)
+        self.start(scratch)
+        with mock.patch.object(cli, "repo_identity") as identity:
+            self.start(scratch)
+        identity.assert_not_called()
+        self.assertEqual(self.identity_of(scratch), (None, None))
+
+    def test_without_git_on_path_a_known_repo_still_starts_and_fills_in_later(self):
+        self.forget_identity(self.old)
+        with mock.patch.dict(os.environ, {"PATH": "/nonexistent"}):
+            self.assertIn("Tempo", self.start(self.old))
+        self.assertEqual(self.identity_of(self.old), (None, None))
+        self.start(self.old)
+        self.assertTrue(self.identity_of(self.old)[0])
+
     def test_a_token_in_the_remote_address_is_not_kept(self):
         url = "https://me:secret@github.com/me/open-questions.git"
         subprocess.run(["git", "-C", self.old, "remote", "set-url", "origin", url], check=True)

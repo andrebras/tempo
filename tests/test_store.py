@@ -766,6 +766,32 @@ class RepoIdentityTest(DatabaseTest):
         ).fetchone()
         self.assertEqual(tuple(row), ("api", "c5"))
 
+    def identity_of(self, path):
+        row = self.store.db.execute(
+            "SELECT first_commit, remote FROM folders WHERE path = ?", (path,)
+        ).fetchone()
+        return tuple(row)
+
+    def test_a_folder_known_without_identity_gets_it_once(self):
+        # Remembered with its path before identities were stored.
+        self.store.see_folder("notes", "/lab/notes")
+        self.assertIsNone(self.see("/lab/notes", "c7", "git@github.com:me/notes.git"))
+        self.assertEqual(self.identity_of("/lab/notes"), ("c7", "git@github.com:me/notes.git"))
+        self.see("/lab/notes", "c8", "git@github.com:me/other.git")
+        self.assertEqual(self.asked, ["/lab/open-questions", "/lab/notes"])
+        self.assertEqual(self.identity_of("/lab/notes"), ("c7", "git@github.com:me/notes.git"))
+
+    def test_a_folder_with_only_a_remote_or_a_first_commit_is_not_asked_again(self):
+        self.see("/lab/fresh", None, "git@github.com:me/fresh.git")
+        self.see("/lab/fresh")
+        self.see("/lab/open-questions")
+        self.assertEqual(self.asked, ["/lab/open-questions", "/lab/fresh"])
+
+    def test_a_folder_without_a_way_to_ask_keeps_no_identity(self):
+        self.store.see_folder("scratch", "/lab/scratch")
+        self.store.see_folder("scratch", "/lab/scratch")
+        self.assertEqual(self.identity_of("/lab/scratch"), (None, None))
+
 
 class RaceTest(DatabaseTest):
     """Another connection (a second tab, the page and the tempo command) writes between

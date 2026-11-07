@@ -672,12 +672,17 @@ class Store:
         when the folder is new.
 
         identity gives a git folder's first commit and remote address. It may be slow on a
-        long history, so it is asked only when the folder is new or gets its path, and
+        long history, so it is asked only when the folder is new, gets its path, or has
+        neither yet (a folder remembered before they were stored gets them once), and
         before the write lock is taken, so other sessions do not wait for git.
         """
         folder = _required(folder, "folder")
         row = self._folder_row(folder, path)
-        fresh = path is not None and (row is None or row["path"] is None)
+        fresh = path is not None and (
+            row is None
+            or row["path"] is None
+            or (row["first_commit"] is None and row["remote"] is None)
+        )
         first_commit, remote = identity() if identity and fresh else (None, None)
         with self._transaction():
             row = self._folder_row(folder, path)

@@ -172,8 +172,9 @@ The gear button at the top right of the page opens Settings.
   when it first sees the folder, and offers a missing folder only to a repository with the
   same first commit or, when none has that, the same remote. So a repository renamed on
   GitHub still matches, and a deleted one is not offered to unrelated new repositories. A
-  folder remembered before Tempo noted these is offered to any new git repository, as
-  before. Nothing is linked until you click.
+  repository remembered before Tempo noted these gets them the next time a session starts
+  or a prompt arrives in it. One that goes missing before that is offered to any new git
+  repository, as before. Nothing is linked until you click.
 
 Projects are saved in the database, so every session, the hooks and the `tempo` command use
 them.
