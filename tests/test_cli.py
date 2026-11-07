@@ -280,6 +280,13 @@ class CliTest(DatabaseTest):
         self.assertEqual((code, err), (2, "tempo: Q9 does not exist in demo\n"))
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
 
+    def test_answer_takes_an_options_text_in_any_case(self):
+        self.add(title="Ship it?", options=["Yes", "No."])
+        code, out, _ = run("answer", "Q1", "yes")
+        self.assertEqual((code, out), (0, "Answered Q1: (a) Yes\n"))
+        self.add(title="Ship it?", options=["Yes", "No."])
+        self.assertEqual(run("answer", "2", "NO")[1], "Answered Q2: (b) No.\n")
+
     def test_answer_and_reply_take_another_project(self):
         self.add(project="shop")
         self.assertEqual(run("reply", "1", "Why?", "--project", "shop")[0], 0)
