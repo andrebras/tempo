@@ -485,7 +485,11 @@ class Store:
             # until a session picks it up, 'seen' once one has, else NULL.
             " (SELECT CASE WHEN e.kind = 'followup' AND e.author = 'user' THEN"
             " CASE WHEN e.delivered_at IS NULL THEN 'sent' ELSE 'seen' END END"
-            " FROM entries e WHERE e.question_id = q.id ORDER BY e.id DESC LIMIT 1) AS waiting"
+            " FROM entries e WHERE e.question_id = q.id ORDER BY e.id DESC LIMIT 1) AS waiting,"
+            # Its latest news, as in project_activity: asked, reworded, or Claude's context.
+            " MAX(q.created_at, v.created_at, COALESCE((SELECT MAX(created_at) FROM entries"
+            " WHERE question_id = q.id AND author = 'claude' AND kind IN ('context', 'reword')),"
+            " '')) AS activity"
             " FROM questions q"
             " JOIN versions v ON v.question_id = q.id"
             " AND v.version = (SELECT MAX(version) FROM versions WHERE question_id = q.id)"
@@ -513,6 +517,7 @@ class Store:
             item["context"] = row["context"]
             item["version"] = row["version"]
             item["waiting"] = row["waiting"]
+            item["activity"] = row["activity"]
             item["quick"] = _quick(row["version"], json.loads(row["options"]), row["recommended"])
             rows.append(item)
         return rows if status in ("answered", "archived") else _by_goal(rows)
