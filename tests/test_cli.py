@@ -1,7 +1,9 @@
+import contextlib
 import io
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -309,6 +311,56 @@ class CliTest(DatabaseTest):
         self.assertEqual(code, 2)
         self.assertIn("follow-up", err)
         self.assertEqual(self.store.get("demo", 1)["entries"], [])
+
+    def test_status_counts_the_open_questions_of_every_project(self):
+        self.add()
+        self.add()
+        self.add(project="shop")
+        self.store.answer("demo", 2, "a")
+        self.assertEqual(run("status"), (0, "? 2\n", ""))
+        self.assertEqual(run("status", "--project", "shop"), (0, "? 1\n", ""))
+        self.assertEqual(run("status", "--project", "none"), (0, "", ""))
+
+    def test_status_prints_nothing_when_nothing_is_open(self):
+        self.add()
+        self.store.answer("demo", 1, "a")
+        self.assertEqual(run("status"), (0, "", ""))
+
+    def test_status_never_creates_a_database(self):
+        missing = os.path.join(self.tmp.name, "nowhere", "questions.db")
+        with mock.patch.dict("os.environ", {"TEMPO_DB": missing}):
+            self.assertEqual(run("status"), (0, "", ""))
+        self.assertFalse(os.path.exists(os.path.dirname(missing)))
+
+    def test_status_never_migrates_and_reads_what_it_can(self):
+        path = os.path.join(self.tmp.name, "old.db")
+        old = sqlite3.connect(path)
+        old.execute("CREATE TABLE questions (project TEXT, number INTEGER, status TEXT)")
+        old.execute("INSERT INTO questions VALUES ('demo', 1, 'open')")
+        old.commit()
+        old.close()
+        empty = os.path.join(self.tmp.name, "empty.db")
+        open(empty, "w").close()
+        with mock.patch.dict("os.environ", {"TEMPO_DB": path}):
+            self.assertEqual(run("status"), (0, "? 1\n", ""))
+        with mock.patch.dict("os.environ", {"TEMPO_DB": empty}):
+            self.assertEqual(run("status"), (0, "", ""))
+        old = sqlite3.connect(path)
+        self.addCleanup(old.close)
+        tables = [row[0] for row in old.execute("SELECT name FROM sqlite_master")]
+        self.assertEqual(
+            (tables, old.execute("PRAGMA user_version").fetchone()[0]), (["questions"], 0)
+        )
+
+    def test_status_reads_a_database_no_one_has_open(self):
+        # With no connection open, a WAL database has no -shm file; status must still read it.
+        self.add()
+        self.store.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        self.store.db.close()
+        for suffix in ("-wal", "-shm"):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(self.env["TEMPO_DB"] + suffix)
+        self.assertEqual(run("status"), (0, "? 1\n", ""))
 
     def test_session_start_tells_claude_to_use_tempo_and_lists_open_questions(self):
         self.add()

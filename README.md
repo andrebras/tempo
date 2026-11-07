@@ -89,6 +89,21 @@ They act on the project of the folder you run them in; add `--project NAME` for 
 `PATH` only inside a session. In your own shell, run it from the plugin's folder, for example
 with an alias: `alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo`.
 
+### A badge in the tmux status bar
+
+`tempo status` prints `? 3` when three questions, in all projects, are waiting for you, and
+nothing when none are (`--project NAME` counts one project). It only reads the database, so it
+is quick and safe to run every few seconds, and it never starts the page. To show it in tmux,
+add this to `~/.tmux.conf` (use the full path of `bin/tempo`, because tmux runs it outside
+your shell and its aliases):
+
+```tmux
+set -g status-interval 5
+set -g status-right '#(~/.claude/plugins/marketplaces/tempo/bin/tempo status) %H:%M'
+```
+
+Then reload it with `tmux source-file ~/.tmux.conf`.
+
 ## How it works
 
 ```
