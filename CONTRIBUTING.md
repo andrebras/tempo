@@ -12,6 +12,8 @@ TEMPO_DB=/tmp/questions.db bin/tempo serve  # run the page on a scratch database
 ```
 
 `bin/ci` installs the pinned tools from `requirements-dev.txt` into `.venv` on its first run.
+It rebuilds `.venv` when its Python no longer runs (after the folder was moved, for example),
+and Biome and Ruff skip `.claude/`, so git worktrees kept there do not break the checks.
 It needs [ShellCheck](https://www.shellcheck.net) (`brew install shellcheck`) and
 [Node.js](https://nodejs.org) 18 or newer (`brew install node`), which runs the checks for
 the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on first use.
