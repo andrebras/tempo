@@ -715,14 +715,16 @@ def unanswered_note(store: Store, entries: Entries) -> str:
     lines = ["The user asked for more on these questions and has had no answer yet:"]
     for entry in entries:
         question = store.get(entry["project"], entry["number"])
+        # Rewording reopens an answered question, so its reply goes in the thread.
+        how = "context %d" if question["status"] == "answered" else "reword %d --context"
         lines.append(
-            "- %s %s (%s) asked: %s Answer it with `tempo reword %d --context`."
+            "- %s %s (%s) asked: %s Answer it with `tempo %s`."
             % (
                 entry["project"],
                 question["label"],
                 question["title"],
                 entry["body"],
-                entry["number"],
+                how % entry["number"],
             )
         )
     lines.append(

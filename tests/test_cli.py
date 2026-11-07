@@ -476,6 +476,12 @@ class CliTest(DatabaseTest):
         self.assertEqual(self.stop(*reply, active=True), "")
         self.store.reword("demo", 1, "Answered the follow-up", context="Only the docs.")
         self.assertEqual(self.stop(*reply), "")
+        # On an answered question, the reply goes in the thread: a reword would reopen it.
+        self.store.answer("demo", 2, "a")
+        self.store.follow_up("demo", 2, "Sure?")
+        self.store.take_undelivered("demo")
+        self.store.db.execute("UPDATE entries SET delivered_at = '2026-01-01T10:00:00Z'")
+        self.assertIn("`tempo context 2`", json.loads(self.stop(*reply))["reason"])
         self.assertIn("hook stop demo blocked: unanswered follow-ups 1", self.hook_log())
 
     def test_stop_asks_for_a_wait_while_questions_are_open(self):
