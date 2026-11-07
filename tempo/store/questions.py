@@ -1,22 +1,5 @@
-"""SQLite storage for open questions.
-
-A question belongs to a project and has a running number that is never reused.
-Its wording lives in versions (a reword adds a version, old ones stay). Everything
-that happens to it afterwards (added context, rewords, follow-ups, answers) is an
-entry in its thread. Entries written by the user start undelivered; the hook and
-`tempo wait` hand them to Claude and mark them delivered.
-
-A project is just a name. The first time a session runs in a git folder, the folder is
-filed under a project of the same name; renaming the project in Settings takes its
-questions and folders along. A folder is known by its full path; rows from before paths
-were stored have only a name, and the first session in a folder of that name fills it in.
-The folder column is the row's key: the folder's name, or its full path when another
-folder already has that name.
-
-A question can name its goal: the piece of work its answer moves forward. Within a goal,
-one question may be marked "start here", with the reason, when its answer unlocks or sets
-the pattern for the others.
-"""
+"""Questions, their versions and threads; and, for now, projects, folders and delivery,
+which move to their own modules next."""
 
 from __future__ import annotations
 
@@ -24,135 +7,29 @@ import contextlib
 import json
 import os
 import sqlite3
-import stat
 import string
-import time
 from collections.abc import Callable, Iterator, Sequence
 from datetime import datetime, timedelta, timezone
-from types import TracebackType
-from typing import Any, Optional, cast
+from typing import Any, cast
 
-DEFAULT_DB = "~/.claude/tempo/questions.db"
-# Where the database lived before the plugin was renamed to Tempo.
-OLD_DEFAULT_DB = "~/.claude/open-questions/questions.db"
-# The folder this code runs from: the installed plugin, the main checkout or a worktree.
-CODE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# The shapes passed around, as plain dicts that turn straight into JSON. A question has
-# the keys of _question_dict, plus its latest version, thread and answer from get().
-Question = dict[str, Any]
-# One entry of a thread, see _entry_dict.
-Entry = dict[str, Any]
-# One lettered option: {"letter": "a", "text": "..."}.
-Option = dict[str, str]
-# Store has a list() method, which hides the builtin inside the class, so the lists its
-# methods take and return are named here.
-Questions = list[Question]
-Entries = list[Entry]
-Options = list[Option]
-Names = list[str]
-Folders = list[dict[str, Optional[str]]]
-Summaries = list[dict[str, Any]]
-Ids = list[int]
-# Questions moved by a join: {"from": old number, "to": new number}.
-Moves = list[dict[str, int]]
-# Gives a git folder's (first commit, remote address); either may be None.
-Identity = Callable[[], tuple[Optional[str], Optional[str]]]
-
-
-def setting(name: str) -> str | None:
-    """Read TEMPO_<name> from the environment, or OQ_<name>, its name before the rename."""
-    return os.environ.get("TEMPO_" + name) or os.environ.get("OQ_" + name)
-
-
-def db_path() -> str:
-    """The database file: TEMPO_DB if set, else a branch's own database, else the default,
-    or the old default if only that one exists. The old file is used where it is, never
-    moved or copied."""
-    chosen = setting("DB") or branch_db()
-    if chosen:
-        # Settings such as Claude Code's env block pass "~" and relative paths as written.
-        return os.path.abspath(os.path.expanduser(chosen))
-    path, old = os.path.expanduser(DEFAULT_DB), os.path.expanduser(OLD_DEFAULT_DB)
-    if not os.path.exists(path) and os.path.exists(old):
-        return old
-    return path
-
-
-def branch_db(root: str = CODE_ROOT) -> str | None:
-    """A throwaway database inside the code's folder when that folder is a git checkout
-    that isn't on main, so code still being built never touches (or migrates) the real
-    questions; None otherwise.
-
-    Only two kinds of code use the real database: the installed plugin, which has no .git,
-    and the main checkout on main. Any worktree, whatever its branch, and the main checkout
-    on another branch or on no branch, get their own."""
-    git = os.path.join(root, ".git")
-    if os.path.isdir(git):
-        try:
-            with open(os.path.join(git, "HEAD"), encoding="utf-8") as head:
-                on_main = head.read().strip() == "ref: refs/heads/main"
-        except OSError:
-            on_main = False
-        if on_main:
-            return None
-    elif not os.path.isfile(git):
-        return None
-    return os.path.join(root, ".tempo-dev", "questions.db")
-
-
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS projects (
-  name TEXT PRIMARY KEY,
-  next_number INTEGER NOT NULL DEFAULT 1
-);
-CREATE TABLE IF NOT EXISTS questions (
-  id INTEGER PRIMARY KEY,
-  project TEXT NOT NULL REFERENCES projects(name),
-  number INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'answered', 'archived')),
-  priority TEXT NOT NULL DEFAULT 'soon' CHECK (priority IN ('now', 'soon', 'later')),
-  goal TEXT,
-  start_here TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (project, number)
-);
-CREATE TABLE IF NOT EXISTS versions (
-  id INTEGER PRIMARY KEY,
-  question_id INTEGER NOT NULL REFERENCES questions(id),
-  version INTEGER NOT NULL,
-  title TEXT NOT NULL,
-  context TEXT NOT NULL,
-  options TEXT NOT NULL,
-  recommended TEXT,
-  created_at TEXT NOT NULL,
-  UNIQUE (question_id, version)
-);
-CREATE TABLE IF NOT EXISTS entries (
-  id INTEGER PRIMARY KEY,
-  question_id INTEGER NOT NULL REFERENCES questions(id),
-  kind TEXT NOT NULL CHECK (kind IN ('context', 'reword', 'followup', 'answer')),
-  author TEXT NOT NULL CHECK (author IN ('claude', 'user')),
-  body TEXT NOT NULL DEFAULT '',
-  choice TEXT,
-  version INTEGER NOT NULL,
-  created_at TEXT NOT NULL,
-  delivered_at TEXT
-);
-CREATE TABLE IF NOT EXISTS folders (
-  folder TEXT PRIMARY KEY,
-  project TEXT,
-  seen_at TEXT,
-  path TEXT,
-  renamed_from TEXT,
-  rename_answered_at TEXT,
-  first_commit TEXT,
-  remote TEXT
-);
-CREATE INDEX IF NOT EXISTS entries_undelivered ON entries (delivered_at) WHERE delivered_at IS NULL;
-"""
-
+from tempo.store import common
+from tempo.store.common import (
+    Entries,
+    Entry,
+    Folders,
+    Identity,
+    Ids,
+    Moves,
+    Names,
+    Options,
+    Question,
+    QuestionError,
+    Questions,
+    Summaries,
+    _project_name,
+    _required,
+    _Transaction,
+)
 
 # Answered questions move to Archived this long after their latest answer.
 ARCHIVE_AFTER = timedelta(days=7)
@@ -170,189 +47,6 @@ def shown_path(path: str | None) -> str | None:
     if path == home or path.startswith(home + os.sep):
         return "~" + path[len(home) :]
     return path
-
-
-class QuestionError(ValueError):
-    """Raised when a request breaks the question format or rules."""
-
-
-def now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def connect(path: str | None = None) -> sqlite3.Connection:
-    path = path or db_path()
-    if path != ":memory:" and os.path.dirname(path):
-        # Only this account may read the questions. An existing folder is left alone: it
-        # may be one the user picked and shares on purpose.
-        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-    db = sqlite3.connect(path, timeout=10, isolation_level=None)
-    if path != ":memory:":
-        _make_private(path)
-    db.row_factory = sqlite3.Row
-    _use_wal(db)
-    db.execute("PRAGMA foreign_keys = ON")
-    try:
-        _migrate(db)
-    except BaseException:
-        db.close()
-        raise
-    return db
-
-
-def _use_wal(db: sqlite3.Connection) -> None:
-    """Switch the file to WAL mode, which then stays set. While another process is making
-    the same switch on a brand-new database, SQLite says it is locked without waiting, so
-    this tries again for up to two seconds."""
-    for _ in range(40):
-        try:
-            db.execute("PRAGMA journal_mode = WAL")
-            return
-        except sqlite3.OperationalError as error:
-            if "locked" not in str(error):
-                raise
-            time.sleep(0.05)
-    db.execute("PRAGMA journal_mode = WAL")
-
-
-def _make_private(path: str) -> None:
-    """Make the database file readable by this account only, before WAL mode makes its
-    -wal and -shm files, which SQLite creates with the same permissions."""
-    with contextlib.suppress(OSError):
-        if stat.S_IMODE(os.stat(path).st_mode) != 0o600:
-            os.chmod(path, 0o600)
-
-
-def _add_priority(db: sqlite3.Connection) -> None:
-    """The first version had an urgent flag; it became the 'now' priority."""
-    columns = [row["name"] for row in db.execute("PRAGMA table_info(questions)")]
-    if "priority" not in columns:
-        db.execute(
-            "ALTER TABLE questions ADD COLUMN priority TEXT NOT NULL DEFAULT 'soon'"
-            " CHECK (priority IN ('now', 'soon', 'later'))"
-        )
-        db.execute("UPDATE questions SET priority = 'now' WHERE urgent = 1")
-
-
-def _fill_folder_projects(db: sqlite3.Connection) -> None:
-    """Folders used to fall back to their own name when no project was picked."""
-    db.execute("UPDATE folders SET project = folder WHERE project IS NULL")
-
-
-def _add_goal(db: sqlite3.Connection) -> None:
-    """Goals and "start here" replace the priority, which stays in old rows but is unused."""
-    columns = [row["name"] for row in db.execute("PRAGMA table_info(questions)")]
-    for column in ("goal", "start_here"):
-        if column not in columns:
-            db.execute("ALTER TABLE questions ADD COLUMN %s TEXT" % column)
-
-
-def _add_folder_paths(db: sqlite3.Connection) -> None:
-    """Folders were known by name only; now each has its full path, so two folders with
-    the same name are told apart. Old rows get their path on next use.
-
-    Only a column and an index are added, so an older Tempo still running on this
-    database keeps working: it reads and writes folders by name as before.
-    """
-    columns = [row["name"] for row in db.execute("PRAGMA table_info(folders)")]
-    if "path" not in columns:
-        db.execute("ALTER TABLE folders ADD COLUMN path TEXT")
-    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS folders_path ON folders (path)")
-
-
-def _add_renames(db: sqlite3.Connection) -> None:
-    """A new folder may be a known one renamed or moved: it keeps the paths it may have
-    come from until the user links it or keeps it apart."""
-    columns = [row["name"] for row in db.execute("PRAGMA table_info(folders)")]
-    for column in ("renamed_from", "rename_answered_at"):
-        if column not in columns:
-            db.execute("ALTER TABLE folders ADD COLUMN %s TEXT" % column)
-
-
-# Two kinds of database change (CONTRIBUTING.md, "Changing the database"):
-#
-# - Compatible: a change older code can ignore, such as a new table, a new index or a new
-#   column that may be empty. It goes into SCHEMA, and a new column also into ADDITIONS.
-#   Both run on every open and add only what is missing; user_version stays the same, so
-#   a session still running an older Tempo keeps working on the database.
-# - Incompatible: a change older code would get wrong, such as a renamed or dropped column
-#   or a value whose meaning changed. It is a numbered step in MIGRATIONS, which raises
-#   user_version, and older code then refuses the database (see _migrate).
-#
-# Steps that bring older databases up to SCHEMA, in order. The database's user_version
-# says how many have run; never reorder or remove one, only add new ones at the end.
-# Databases made before user_version was used are at 0 whatever their shape, so each
-# step must also be safe on a database that already has its change. The first steps are
-# compatible ones made before ADDITIONS existed; they stay numbered, since existing
-# databases count them in their user_version.
-MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
-    _add_priority,
-    _fill_folder_projects,
-    _add_goal,
-    _add_folder_paths,
-    _add_renames,
-]
-
-
-# Compatible additions, run on every open after SCHEMA, in the same transaction. Each must
-# add only what is missing (use _add_column), and must work on any older database, since
-# it runs before the numbered steps. An index on a new column is made here too, after the
-# column, as SCHEMA runs before the column exists on an older database.
-def _add_repo_identity(db: sqlite3.Connection) -> None:
-    """A git folder keeps its repository's first commit and remote address, so a missing
-    folder is offered only to a new folder that is a copy of the same repository."""
-    _add_column(db, "folders", "first_commit", "TEXT")
-    _add_column(db, "folders", "remote", "TEXT")
-
-
-ADDITIONS: list[Callable[[sqlite3.Connection], None]] = [
-    _add_repo_identity,
-]
-
-
-def _add_column(db: sqlite3.Connection, table: str, column: str, kind: str) -> None:
-    """Add a column to a table unless it has it already. Only for fixed names from this
-    module: SQLite cannot take a table or column name as a parameter."""
-    columns = [row["name"] for row in db.execute("PRAGMA table_info(%s)" % table)]
-    if column not in columns:
-        db.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, kind))
-
-
-def _version(db: sqlite3.Connection) -> int:
-    return db.execute("PRAGMA user_version").fetchone()[0]
-
-
-def _migrate(db: sqlite3.Connection) -> None:
-    """Bring the database up to SCHEMA: create what is missing and make the compatible
-    additions, then run each numbered step it has not had yet, once, in its own
-    transaction.
-
-    A database a newer Tempo has moved past these steps is refused before anything is
-    read or written, since this code cannot know what the newer steps changed."""
-    if _version(db) > len(MIGRATIONS):
-        raise QuestionError(
-            "The database was last changed by a newer Tempo (step %d; this one knows %d)."
-            " Update Tempo, or restart the session to use the installed version."
-            % (_version(db), len(MIGRATIONS))
-        )
-    # One statement at a time inside one write transaction, so processes opening a brand-new
-    # database at the same moment wait for each other (executescript would commit first).
-    with _Transaction(db):
-        for statement in SCHEMA.split(";"):
-            if statement.strip():
-                db.execute(statement)
-        # Inside the same write lock: two sessions opening at once cannot both find a
-        # column missing and both add it.
-        for addition in ADDITIONS:
-            addition(db)
-    for number, step in enumerate(MIGRATIONS, start=1):
-        if _version(db) >= number:
-            continue
-        with _Transaction(db):
-            # Another process may have run the step while this one waited for the lock.
-            if _version(db) < number:
-                step(db)
-                db.execute("PRAGMA user_version = %d" % number)
 
 
 class Store:
@@ -395,7 +89,7 @@ class Store:
                     "Q%d is already used or skipped in %s; the next free number is Q%d"
                     % (number, project, next_number)
                 )
-            stamp = now()
+            stamp = common.now()
             cursor = self.db.execute(
                 "INSERT INTO questions (project, number, goal, created_at, updated_at)"
                 " VALUES (?, ?, ?, ?, ?)",
@@ -500,14 +194,14 @@ class Store:
             "UPDATE questions SET status = 'archived', updated_at = ?"
             " WHERE status = 'answered' AND (SELECT MAX(created_at) FROM entries"
             " WHERE question_id = questions.id AND kind = 'answer') <= ?",
-            (now(), cutoff),
+            (common.now(), cutoff),
         ).rowcount
 
     def archive_answered(self, project: str) -> int:
         cursor = self.db.execute(
             "UPDATE questions SET status = 'archived', updated_at = ?"
             " WHERE project = ? AND status = 'answered'",
-            (now(), project),
+            (common.now(), project),
         )
         return cursor.rowcount
 
@@ -552,7 +246,7 @@ class Store:
             )
             self.db.execute(
                 "UPDATE questions SET status = 'answered', updated_at = ? WHERE id = ?",
-                (now(), question["id"]),
+                (common.now(), question["id"]),
             )
         return self.get(project, number)
 
@@ -567,7 +261,7 @@ class Store:
                 raise QuestionError("Only answered questions can be reopened")
             self.db.execute(
                 "UPDATE questions SET status = 'open', updated_at = ? WHERE id = ?",
-                (now(), question["id"]),
+                (common.now(), question["id"]),
             )
         return self.get(project, number)
 
@@ -691,7 +385,7 @@ class Store:
                     "UPDATE folders SET path = ?, seen_at = ?,"
                     " first_commit = COALESCE(?, first_commit), remote = COALESCE(?, remote)"
                     " WHERE rowid = ?",
-                    (path or row["path"], now(), first_commit, remote, row["rowid"]),
+                    (path or row["path"], common.now(), first_commit, remote, row["rowid"]),
                 )
                 return False
             # The name is the key, unless another folder of this name has it already.
@@ -700,7 +394,7 @@ class Store:
             self.db.execute(
                 "INSERT INTO folders (folder, path, project, seen_at, first_commit, remote)"
                 " VALUES (?, ?, ?, ?, ?, ?)",
-                (key, path, self._new_project(folder, path), now(), first_commit, remote),
+                (key, path, self._new_project(folder, path), common.now(), first_commit, remote),
             )
             return True
 
@@ -829,7 +523,7 @@ class Store:
         with self._transaction():
             self.db.execute(
                 "UPDATE folders SET project = ?, rename_answered_at = ? WHERE path = ?",
-                (project, now(), path),
+                (project, common.now(), path),
             )
             for old in json.loads(row["renamed_from"] or "[]"):
                 self.db.execute(
@@ -838,7 +532,9 @@ class Store:
 
     def keep_folder(self, path: str) -> None:
         """The folder at path is not a renamed one: it stays its own project."""
-        self.db.execute("UPDATE folders SET rename_answered_at = ? WHERE path = ?", (now(), path))
+        self.db.execute(
+            "UPDATE folders SET rename_answered_at = ? WHERE path = ?", (common.now(), path)
+        )
 
     def project_summaries(self) -> Summaries:
         """Every project with its question count and folders: projects that have
@@ -997,7 +693,7 @@ class Store:
         placeholders = ",".join("?" * len(entry_ids))
         self.db.execute(
             "UPDATE entries SET delivered_at = ? WHERE id IN (%s)" % placeholders,  # noqa: S608  # nosec B608
-            [now(), *entry_ids],
+            [common.now(), *entry_ids],
         )
 
     # Helpers
@@ -1054,7 +750,7 @@ class Store:
     def _set_goal(self, question: sqlite3.Row, goal: str | None, start_here: str | None) -> None:
         self.db.execute(
             "UPDATE questions SET goal = ?, start_here = NULL, updated_at = ? WHERE id = ?",
-            (goal, now(), question["id"]),
+            (goal, common.now(), question["id"]),
         )
         if start_here:
             self._mark_start_here(question["id"], question["project"], goal, start_here)
@@ -1088,7 +784,7 @@ class Store:
             "INSERT INTO versions"
             " (question_id, version, title, context, options, recommended, created_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (question_id, version, title, context, json.dumps(options), recommended, now()),
+            (question_id, version, title, context, json.dumps(options), recommended, common.now()),
         )
 
     def _insert_entry(
@@ -1100,7 +796,7 @@ class Store:
         choice: str | None = None,
         version: int | None = None,
     ) -> None:
-        stamp = now()
+        stamp = common.now()
         if version is None:
             version = self._current_version(question["id"])["version"]
         self.db.execute(
@@ -1119,42 +815,6 @@ class Store:
             ),
         )
         self.db.execute("UPDATE questions SET updated_at = ? WHERE id = ?", (stamp, question["id"]))
-
-
-class _Transaction:
-    def __init__(self, db: sqlite3.Connection) -> None:
-        self.db = db
-
-    def __enter__(self) -> None:
-        self.db.execute("BEGIN IMMEDIATE")
-
-    def __exit__(
-        self,
-        kind: type[BaseException] | None,
-        value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        if kind is None:
-            self.db.execute("COMMIT")
-        # SQLite rolls back by itself after some errors; a second rollback would fail and
-        # hide the error that caused it.
-        elif self.db.in_transaction:
-            self.db.execute("ROLLBACK")
-
-
-def _required(value: str | None, name: str) -> str:
-    value = (value or "").strip()
-    if not value:
-        raise QuestionError("A question needs a %s" % name)
-    return value
-
-
-def _project_name(name: str) -> str:
-    """A project's name as given, unless it is "." or "..": the page's links could not reach
-    such a project, since a browser reads them as steps between folders."""
-    if name in (".", ".."):
-        raise QuestionError('A project can\'t be called "%s"' % name)
-    return name
 
 
 def _letter(options: Sequence[str | None] | None) -> Options:

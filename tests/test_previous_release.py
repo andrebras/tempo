@@ -16,8 +16,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tempo import store as store_module
 from tempo.store import CODE_ROOT, MIGRATIONS, Store, _add_column, connect
+from tempo.store import schema as store_schema
 
 
 def git(*args):
@@ -108,7 +108,7 @@ class PreviousReleaseTest(unittest.TestCase):
             _add_column(db, "questions", "later", "TEXT")
             db.execute("CREATE TABLE IF NOT EXISTS later (id INTEGER PRIMARY KEY)")
 
-        with mock.patch.object(store_module, "ADDITIONS", [addition]):
+        with mock.patch.object(store_schema, "ADDITIONS", [addition]):
             connect(self.db).close()
         added = self.old_tempo(
             "add", "--title", "Up?", "--context", "C", "--option", "Up", "--option", "Down"

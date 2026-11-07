@@ -47,8 +47,8 @@ counts the numbered steps that changed it, and Tempo refuses a database whose nu
 higher than it knows. So a change raises that number only when it has to.
 
 - **Compatible change**: older code can ignore it. Examples are a new table, a new index
-  and a new column that may be empty. Add it to `SCHEMA` in `tempo/store.py`; for a new
-  column, also add a step to `ADDITIONS` that calls `_add_column`. Both run on every open
+  and a new column that may be empty. Add it to `SCHEMA` in `tempo/store/schema.py`; for a
+  new column, also add a step to `ADDITIONS` that calls `_add_column`. Both run on every open
   and add only what is missing, and `user_version` stays the same.
 - **Incompatible change**: older code would get it wrong. Examples are a renamed or dropped
   column, a new required value, or a value whose meaning changed. Add a step at the end of
