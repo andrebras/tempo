@@ -1,6 +1,7 @@
 import http.client
 import json
 import os
+import tempfile
 import threading
 from http.server import ThreadingHTTPServer
 from unittest import mock
@@ -109,7 +110,7 @@ class ServerTest(DatabaseTest):
                 {
                     "name": "onzehq",
                     "questions": 0,
-                    "folders": [{"folder": "onzehq", "path": None, "shown": None}],
+                    "folders": [],
                 },
             ],
         )
@@ -123,12 +124,26 @@ class ServerTest(DatabaseTest):
                 {
                     "name": "ONZE HQ",
                     "questions": 1,
-                    "folders": [{"folder": "onzehq", "path": None, "shown": None}],
+                    "folders": [],
                 }
             ],
         )
         self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
         self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
+
+    def test_settings_hide_folders_that_are_gone_or_have_no_path(self):
+        here = tempfile.mkdtemp()
+        self.addCleanup(os.rmdir, here)
+        self.store.see_folder("tempo", here)
+        self.store.see_folder("old", "/nowhere/old")
+        self.store.see_folder("open-questions")
+        self.store.rename_project("old", "tempo")
+        self.store.rename_project("open-questions", "tempo")
+        _, data = self.request("GET", "/api/settings")
+        [tempo] = [p for p in json.loads(data)["projects"] if p["name"] == "tempo"]
+        self.assertEqual([folder["path"] for folder in tempo["folders"]], [here])
+        # Hidden, not deleted.
+        self.assertEqual(len(self.store.folders()), 3)
 
     def test_offers_a_renamed_folder_on_every_screen_and_links_it(self):
         self.store.see_folder("open-questions", "/lab/open-questions")

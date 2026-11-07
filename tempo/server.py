@@ -236,16 +236,25 @@ def _commit() -> str | None:
 
 def _settings(store: Store) -> dict[str, Any]:
     """What the Settings screen shows: projects with their folders, and new folders that
-    may be renamed ones."""
+    may be renamed ones. Only folders still on disk are listed; a folder that no longer
+    exists, or whose path isn't known yet, stays in the database but is hidden."""
+    projects = [
+        dict(project, folders=[folder for folder in project["folders"] if _on_disk(folder)])
+        for project in store.project_summaries()
+    ]
     return {
-        "projects": store.project_summaries(),
+        "projects": projects,
         "renames": store.renames(),
         "threads": threads.enabled(),
     }
 
 
+def _on_disk(folder: dict[str, Any]) -> bool:
+    return bool(folder["path"]) and os.path.exists(str(folder["path"]))
+
+
 def _link(store: Store, body: Any) -> dict[str, Any]:
-    """File a folder under a project, from the rename banner or Settings."""
+    """File a folder under a project, from the rename banner."""
     store.link_folder(str(body.get("path") or ""), body.get("project"))
     return {}
 
