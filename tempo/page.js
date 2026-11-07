@@ -332,8 +332,8 @@ function renderEmpty(shown) {
   const SHOWN = 3;
   const more = others.length - SHOWN;
   const heading = state.status === "open"
-    ? `Nothing is waiting on you in ${state.project}`
-    : `No ${state.status} questions in ${state.project}`;
+    ? "Nothing is waiting on you"
+    : `No ${state.status} questions`;
   return el("div", { class: "empty-state" }, mark(),
     el("h2", {}, heading),
     el("p", {}, state.status === "open"
