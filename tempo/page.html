@@ -139,7 +139,9 @@
 
   .empty { color: var(--muted); padding: 24px 8px; }
   #list .empty { text-align: center; }
-  .empty-state { margin: 10vh auto 0; max-width: 460px; text-align: center; }
+  /* Wide enough for its sentences to stay on one line in any font; a line that does break
+     splits into two even halves. */
+  .empty-state { margin: 10vh auto 0; max-width: 70ch; text-align: center; text-wrap: balance; }
   .empty-state svg { width: 64px; height: 64px; color: var(--accent); opacity: .85; }
   .empty-state h2 { margin: 12px 0 6px; font-size: 1.375rem; letter-spacing: -.01em; }
   .empty-state p { color: var(--muted); margin: 0 0 16px; }
