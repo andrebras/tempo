@@ -604,6 +604,38 @@ class ProjectNameTest(DatabaseTest):
                 self.assertEqual(cli.folder_path(folder), os.path.realpath(repo))
                 self.assertEqual(cli.project_name(folder), "shop")
 
+    def test_worktrees_of_a_bare_repo_share_the_repo_project(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        bare = os.path.join(tmp.name, "shop.git")
+        subprocess.run([*git, "init", "-q", "--bare", bare], check=True)
+        # A first commit, so the bare repo has a branch to check out.
+        seed = os.path.join(tmp.name, "seed")
+        subprocess.run([*git, "clone", "-q", bare, seed], check=True, capture_output=True)
+        subprocess.run([*git, "-C", seed, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+        subprocess.run([*git, "-C", seed, "push", "-q", "origin", "HEAD:main"], check=True)
+        main = os.path.join(tmp.name, "shop-main")
+        subprocess.run([*git, "-C", bare, "worktree", "add", "-q", main, "main"], check=True)
+        self.assertEqual(cli.folder_path(main), os.path.realpath(bare))
+        self.assertEqual(cli.project_name(main), "shop")
+
+    def test_a_submodule_is_a_project_of_its_own(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        app, lib = os.path.join(tmp.name, "app"), os.path.join(tmp.name, "lib")
+        for repo in (app, lib):
+            subprocess.run([*git, "init", "-q", repo], check=True)
+            subprocess.run(
+                [*git, "-C", repo, "commit", "-q", "--allow-empty", "-m", "x"], check=True
+            )
+        add = ["-c", "protocol.file.allow=always", "submodule", "add", "-q", lib, "vendor/lib"]
+        subprocess.run([*git, "-C", app, *add], check=True, capture_output=True)
+        submodule = os.path.join(app, "vendor", "lib")
+        self.assertEqual(cli.folder_path(submodule), os.path.realpath(submodule))
+        self.assertEqual(cli.project_name(submodule), "lib")
+
     def test_uses_the_folder_itself_outside_git(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

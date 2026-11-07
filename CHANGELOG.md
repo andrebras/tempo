@@ -116,6 +116,10 @@ All notable changes to Tempo are listed here. The format follows
   now starts in a project named after its parent folder too, such as `api (personal)`, which
   you can rename in Settings. A folder moved to a new place under the same name also starts
   its own project: link it from the banner, or rename its project in Settings to join them.
+- Worktrees of a bare repo, such as `shop.git` with `shop-main` checked out from it, share the
+  project `shop`. They used to be filed under the folder the bare repo sits in. A submodule is
+  now a project of its own, named after its folder, instead of a project named after a folder
+  inside `.git/modules`.
 
 ### Security
 
