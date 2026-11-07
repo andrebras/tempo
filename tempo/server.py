@@ -71,6 +71,8 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
                     {
                         "questions": store.list(project, status),
                         "projects": projects,
+                        # When each project last had news, for the header's "new" dot.
+                        "activity": store.project_activity(),
                         "renames": store.renames(),
                     },
                 )

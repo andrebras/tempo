@@ -520,6 +520,19 @@ class Store:
     def projects(self) -> Names:
         return [row["name"] for row in self.db.execute("SELECT name FROM projects ORDER BY name")]
 
+    def project_activity(self) -> dict[str, str]:
+        """Each project's latest news for the user: when a question was last asked or
+        reworded, or Claude last added context (its reply to a follow-up)."""
+        rows = self.db.execute(
+            "SELECT q.project, MAX(MAX(q.created_at), MAX(COALESCE(v.created_at, '')),"
+            " MAX(COALESCE(e.created_at, ''))) AS latest FROM questions q"
+            " LEFT JOIN versions v ON v.question_id = q.id"
+            " LEFT JOIN entries e ON e.question_id = q.id AND e.author = 'claude'"
+            " AND e.kind IN ('context', 'reword')"
+            " GROUP BY q.project"
+        )
+        return {row["project"]: row["latest"] for row in rows}
+
     # Projects and their folders, renamed in Settings
 
     def see_folder(self, folder: str, path: str | None = None) -> bool:
