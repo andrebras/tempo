@@ -265,10 +265,22 @@ def _add_renames(db: sqlite3.Connection) -> None:
             db.execute("ALTER TABLE folders ADD COLUMN %s TEXT" % column)
 
 
+# Two kinds of database change (CONTRIBUTING.md, "Changing the database"):
+#
+# - Compatible: a change older code can ignore, such as a new table, a new index or a new
+#   column that may be empty. It goes into SCHEMA, and a new column also into ADDITIONS.
+#   Both run on every open and add only what is missing; user_version stays the same, so
+#   a session still running an older Tempo keeps working on the database.
+# - Incompatible: a change older code would get wrong, such as a renamed or dropped column
+#   or a value whose meaning changed. It is a numbered step in MIGRATIONS, which raises
+#   user_version, and older code then refuses the database (see _migrate).
+#
 # Steps that bring older databases up to SCHEMA, in order. The database's user_version
 # says how many have run; never reorder or remove one, only add new ones at the end.
 # Databases made before user_version was used are at 0 whatever their shape, so each
-# step must also be safe on a database that already has its change.
+# step must also be safe on a database that already has its change. The first steps are
+# compatible ones made before ADDITIONS existed; they stay numbered, since existing
+# databases count them in their user_version.
 MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _add_priority,
     _fill_folder_projects,
@@ -278,13 +290,29 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
 ]
 
 
+# Compatible additions, run on every open after SCHEMA, in the same transaction. Each must
+# add only what is missing (use _add_column), and must work on any older database, since
+# it runs before the numbered steps. An index on a new column is made here too, after the
+# column, as SCHEMA runs before the column exists on an older database.
+ADDITIONS: list[Callable[[sqlite3.Connection], None]] = []
+
+
+def _add_column(db: sqlite3.Connection, table: str, column: str, kind: str) -> None:
+    """Add a column to a table unless it has it already. Only for fixed names from this
+    module: SQLite cannot take a table or column name as a parameter."""
+    columns = [row["name"] for row in db.execute("PRAGMA table_info(%s)" % table)]
+    if column not in columns:
+        db.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, kind))
+
+
 def _version(db: sqlite3.Connection) -> int:
     return db.execute("PRAGMA user_version").fetchone()[0]
 
 
 def _migrate(db: sqlite3.Connection) -> None:
-    """Bring the database up to SCHEMA: create what is missing, then run each step it has
-    not had yet, once, in its own transaction.
+    """Bring the database up to SCHEMA: create what is missing and make the compatible
+    additions, then run each numbered step it has not had yet, once, in its own
+    transaction.
 
     A database a newer Tempo has moved past these steps is refused before anything is
     read or written, since this code cannot know what the newer steps changed."""
@@ -300,6 +328,10 @@ def _migrate(db: sqlite3.Connection) -> None:
         for statement in SCHEMA.split(";"):
             if statement.strip():
                 db.execute(statement)
+        # Inside the same write lock: two sessions opening at once cannot both find a
+        # column missing and both add it.
+        for addition in ADDITIONS:
+            addition(db)
     for number, step in enumerate(MIGRATIONS, start=1):
         if _version(db) >= number:
             continue
