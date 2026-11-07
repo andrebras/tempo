@@ -21,6 +21,9 @@ All notable changes to Tempo are listed here. The format follows
 - A session start replaces the page only when it runs an older version of Tempo, or is
   broken. A page of the same or a newer version keeps running, whatever folder it runs
   from, so the installed plugin and a checkout no longer keep replacing each other's page.
+- An open page reloads itself when the server behind it restarts, for example after an
+  update, so it never runs old code against new data (Settings showed folders as
+  "[object Object]").
 
 ## [0.5.0] - 2026-11-07
 
