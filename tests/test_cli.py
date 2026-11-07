@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from tempo import cli
+from tests import REAL_START_SERVER, TEST_PORT, RealServerStart
 from tests.helpers import DatabaseTest
 
 
@@ -71,7 +72,7 @@ class CliTest(DatabaseTest):
             "add", "--title", "T", "--context", "C", "--option", "x", "--option", "y"
         )
         self.assertEqual(code, 0)
-        self.assertIn("Added Q1 in demo: http://127.0.0.1:2204/#/demo/1", out)
+        self.assertIn("Added Q1 in demo: http://127.0.0.1:%d/#/demo/1" % TEST_PORT, out)
 
     def test_add_explains_what_is_missing(self):
         code, _, err = run("add", "--title", "T", "--context", "C", "--option", "x")
@@ -371,9 +372,11 @@ class CliTest(DatabaseTest):
         context = json.loads(out)["hookSpecificOutput"]
         self.assertEqual(context["hookEventName"], "SessionStart")
         self.assertIn("goes in Tempo with `tempo add`", context["additionalContext"])
-        self.assertIn("Q1 Which way? http://127.0.0.1:2204/#/demo/1", context["additionalContext"])
         self.assertIn(
-            "Q2 Ship it? [Release 0.4, start here] http://127.0.0.1:2204/#/demo/2",
+            "Q1 Which way? http://127.0.0.1:%d/#/demo/1" % TEST_PORT, context["additionalContext"]
+        )
+        self.assertIn(
+            "Q2 Ship it? [Release 0.4, start here] http://127.0.0.1:%d/#/demo/2" % TEST_PORT,
             context["additionalContext"],
         )
         self.assertIn("Give every question a goal", context["additionalContext"])
@@ -635,7 +638,10 @@ class CliTest(DatabaseTest):
         self.stop(*reply, active=True)
         with mock.patch.dict("os.environ", {"TEMPO_IN_THREAD": "1"}):
             run("hook", "stop", stdin="{}")
-        with mock.patch.object(cli, "session_note", side_effect=RuntimeError("broken")):
+        with (
+            mock.patch.object(cli, "start_server", return_value=True),
+            mock.patch.object(cli, "session_note", side_effect=RuntimeError("broken")),
+        ):
             run("hook", "session-start", stdin="{}")
         self.assertEqual(
             self.hook_log(),
@@ -709,7 +715,7 @@ class CliTest(DatabaseTest):
         self.add(project="ONZE HQ")
         self.store.follow_up("ONZE HQ", 1, "Why?")
         with mock.patch.dict("os.environ", {"OQ_PROJECT": "ONZE HQ", "OQ_PORT": "2299"}):
-            del os.environ["TEMPO_PROJECT"]
+            del os.environ["TEMPO_PROJECT"], os.environ["TEMPO_PORT"]
             _, out, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/onzehq"}))
         self.assertIn("ONZE HQ Q1", out)
         self.assertIn("http://127.0.0.1:2299/", out)
@@ -1140,6 +1146,8 @@ class StartServerTest(unittest.TestCase):
             "pid": 42,
             "db": cli.db_path(),
         }
+        # The real start_server; the suite swaps in one that fails (see tests/__init__.py).
+        self.patch("start_server", new=REAL_START_SERVER)
         self.patch("_listening", side_effect=lambda port: self.listening)
         self.fetch = self.patch("_fetch")
         self.tempo_pid = self.patch("_tempo_pid", return_value=None)
@@ -1265,6 +1273,26 @@ class PortTest(unittest.TestCase):
                 self.assertEqual(cli._port(), 2204)
             with mock.patch.dict(os.environ, {"TEMPO_PORT": "3000"}):
                 self.assertEqual(cli._port(), 3000)
+
+
+class NoRealServerTest(DatabaseTest):
+    """The suite never starts or stops a real page server. A test once ran the SessionStart
+    hook without mocking start_server: it started a server on 2204, on the test's database,
+    that replaced the user's page and kept running after the tests."""
+
+    def test_the_tests_page_is_not_the_real_one(self):
+        self.assertEqual(cli._port(), TEST_PORT)
+        self.assertNotEqual(TEST_PORT, cli.DEFAULT_PORT)
+        self.assertNotIn(TEST_PORT, cli.BRANCH_PORTS)
+
+    def test_a_hook_that_would_start_the_page_fails_the_test(self):
+        # The hook turns any Exception into "page not started"; this one gets through.
+        with self.assertRaises(RealServerStart):
+            run("hook", "session-start", stdin="{}")
+
+    def test_serving_in_the_background_fails_the_test(self):
+        with self.assertRaises(RealServerStart):
+            run("serve", "--background")
 
 
 class OlderTest(unittest.TestCase):
