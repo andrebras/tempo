@@ -245,14 +245,17 @@
   .card > p { color: var(--muted); margin: 4px 0 12px; }
   .row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
          padding: 14px 0; border-top: 1px solid var(--line); }
-  .row > div:first-child { min-width: 0; }
+  /* The label and its hint shrink and wrap before the control drops below them; if the
+     control still has to wrap, it stays on the right like the others. */
+  .row > div:first-child { min-width: 0; flex: 1 1 200px; }
+  .row > .segmented { margin-left: auto; }
   .row strong { display: block; font-weight: 600; overflow-wrap: anywhere; }
   .folders { list-style: none; margin: 4px 0 0; padding: 0; font-size: .8125rem; }
   .folders li + li { margin-top: 2px; }
   .folders .path { color: var(--muted); overflow-wrap: anywhere;
                    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: .75rem; }
-  .row > div:has(.folders) { flex: 1 1 260px; }
-  .row form { display: flex; gap: 8px; flex: 1 1 280px; max-width: 400px; }
+  /* Every project's name field and Rename button share one right-hand column. */
+  .row form { display: flex; gap: 8px; flex: 0 1 400px; margin-left: auto; }
   .row form > :not(button) { flex: 1 1 0; min-width: 0; }
   .row input { padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
   .row select { padding-top: 8px; padding-bottom: 8px; font-weight: 400; }

@@ -13,6 +13,8 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Changed
 
+- Settings keeps every control in the right-hand column: the Width choices no longer drop
+  below their label in monospace, and every project's name field and Rename button line up.
 - Settings lists each project's folders read-only: the menu to file a folder under another
   project is gone. Folders that no longer exist on disk, and old ones whose path isn't known,
   are hidden (they stay in the database).
