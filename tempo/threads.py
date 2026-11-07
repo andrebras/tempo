@@ -1,9 +1,9 @@
 """Conversations that start on the Tempo page, an early feature that is off by default.
 
 Each thread is one Claude Code session, run headless with `claude -p` in a project
-folder and resumed for every follow-up, so threads never mix. Only Claude's final
-reply is kept: the tool calls and logs stay in the session, out of the thread.
-TEMPO_THREADS=1 turns the feature on.
+folder and resumed for every follow-up, so threads never mix. Claude's final reply is
+the message; the tools it used are kept beside it as short "steps", which the page
+shows only when asked. TEMPO_THREADS=1 turns the feature on.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS thread_messages (
   thread_id INTEGER NOT NULL REFERENCES threads(id),
   author TEXT NOT NULL CHECK (author IN ('user', 'claude')),
   body TEXT NOT NULL,
+  steps TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL
 );
 """
@@ -52,6 +53,8 @@ PERMISSION_MODE = setting("THREADS_PERMISSION_MODE") or "acceptEdits"
 TIMEOUT = 30 * 60
 # How much of Claude's error output a failed run shows.
 ERROR_LENGTH = 500
+# How much of a step's input and result is kept: enough to see what happened.
+SUMMARY_LENGTH, RESULT_LENGTH = 200, 500
 
 
 def enabled() -> bool:
@@ -80,11 +83,14 @@ def thread(thread_id: int) -> dict[str, Any]:
         if not row:
             raise QuestionError("There is no thread %d" % thread_id)
         messages = db.execute(
-            "SELECT id, author, body, created_at FROM thread_messages"
+            "SELECT id, author, body, steps, created_at FROM thread_messages"
             " WHERE thread_id = ? ORDER BY id",
             (thread_id,),
         )
-        return dict(row, messages=[dict(message) for message in messages])
+        return dict(
+            row,
+            messages=[dict(message, steps=json.loads(message["steps"])) for message in messages],
+        )
 
 
 def start(folder: str, text: str) -> dict[str, Any]:
@@ -127,19 +133,20 @@ def _send(thread_id: int, text: str) -> dict[str, Any]:
 
 
 def _run(thread_id: int, folder: str, session_id: str | None, text: str) -> None:
-    """Run Claude on one message and keep only its final reply."""
+    """Run Claude on one message and keep its final reply and the steps it took."""
     claude = shutil.which("claude") or "claude"
     command = [claude, "-p", text, "--output-format", "stream-json", "--verbose"]
     command += ["--permission-mode", PERMISSION_MODE]
     command += ["--append-system-prompt", RULES]
     if session_id:
         command += ["--resume", session_id]
+    steps: list[dict[str, Any]] = []
     try:
         # The argument list is fixed apart from the user's own message; there is no shell.
         done = subprocess.run(  # noqa: S603
             command, cwd=folder, capture_output=True, text=True, timeout=TIMEOUT, check=False
         )
-        result = read_stream(done.stdout)
+        result, steps = read_stream(done.stdout)
         if result is None:
             raise ValueError((done.stderr or "no result").strip()[-ERROR_LENGTH:])
         body, status = result.get("result") or "(no reply)", "waiting"
@@ -150,9 +157,9 @@ def _run(thread_id: int, folder: str, session_id: str | None, text: str) -> None
         body, status = "Claude could not run: %s" % error, "failed"
     with open_db() as db:
         db.execute(
-            "INSERT INTO thread_messages (thread_id, author, body, created_at)"
-            " VALUES (?, 'claude', ?, ?)",
-            (thread_id, body, now()),
+            "INSERT INTO thread_messages (thread_id, author, body, steps, created_at)"
+            " VALUES (?, 'claude', ?, ?, ?)",
+            (thread_id, body, json.dumps(steps), now()),
         )
         db.execute(
             "UPDATE threads SET status = ?, session_id = ?, updated_at = ? WHERE id = ?",
@@ -160,18 +167,59 @@ def _run(thread_id: int, folder: str, session_id: str | None, text: str) -> None
         )
 
 
-def read_stream(output: str) -> dict[str, Any] | None:
-    """Read `claude -p --output-format stream-json` output, one JSON event per line, and
-    return the final result event."""
+def read_stream(output: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Read `claude -p --output-format stream-json` output: one JSON event per line.
+
+    Returns the final result event and the main conversation's tool calls, each with a
+    short summary of its input and the start of its result. Subagents' own steps are
+    left out, like their messages."""
     result: dict[str, Any] | None = None
+    steps: dict[str, dict[str, Any]] = {}
     for line in output.splitlines():
         try:
             event = json.loads(line)
         except ValueError:
             continue
-        if isinstance(event, dict) and event.get("type") == "result":
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "result":
             result = event
-    return result
+        if event.get("type") not in ("assistant", "user") or event.get("parent_tool_use_id"):
+            continue
+        content = (event.get("message") or {}).get("content")
+        for block in content if isinstance(content, list) else []:
+            if block.get("type") == "tool_use":
+                steps[block.get("id")] = {
+                    "tool": block.get("name") or "?",
+                    "input": _summary(block.get("input") or {}),
+                    "result": "",
+                    "error": False,
+                }
+            elif block.get("type") == "tool_result" and block.get("tool_use_id") in steps:
+                step = steps[block["tool_use_id"]]
+                step["result"] = _trim(_text(block.get("content")), RESULT_LENGTH)
+                step["error"] = bool(block.get("is_error"))
+    return result, list(steps.values())
+
+
+def _summary(tool_input: dict[str, Any]) -> str:
+    """The one input that says what a tool call did, else the whole input as JSON."""
+    for key in ("command", "file_path", "pattern", "url", "query", "description", "prompt"):
+        if isinstance(tool_input.get(key), str):
+            return _trim(tool_input[key], SUMMARY_LENGTH)
+    return _trim(json.dumps(tool_input), SUMMARY_LENGTH)
+
+
+def _text(content: Any) -> str:
+    """A tool result is either text or a list of blocks, of which only text is kept."""
+    if isinstance(content, list):
+        return "\n".join(str(block.get("text", "")) for block in content if isinstance(block, dict))
+    return str(content or "")
+
+
+def _trim(text: str, length: int) -> str:
+    text = text.strip()
+    return text if len(text) <= length else text[: length - 1] + "…"
 
 
 def _required(value: Any, name: str) -> str:

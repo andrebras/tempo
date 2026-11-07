@@ -4,6 +4,14 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Each reply in a thread has a "Details" toggle, closed at first, that lists the steps
+  Claude took on the way: each tool it used, a short summary of what it gave the tool, and
+  the start of the result.
+
 ## [0.5.0] - 2026-11-07
 
 ### Added

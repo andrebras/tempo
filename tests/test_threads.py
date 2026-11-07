@@ -53,11 +53,13 @@ class ThreadsTest(DatabaseTest):
         with mock.patch.dict("os.environ", {"TEMPO_THREADS": "1"}):
             self.assertTrue(threads.enabled())
 
-    def test_keeps_only_the_final_reply(self):
+    def test_keeps_the_reply_and_the_steps(self):
         self.output = stream(
             {"type": "system", "subtype": "init"},
-            tool_use("t1", "Bash", {"command": "bin/ci"}),
+            tool_use("t1", "Bash", {"command": "bin/ci", "description": "Run CI"}),
             tool_result("t1", "PASS"),
+            tool_use("t2", "Read", {"file_path": "/x/a.py"}),
+            tool_result("t2", [{"type": "text", "text": "line one"}], is_error=True),
             RESULT,
         )
         thread = self.start()
@@ -65,10 +67,30 @@ class ThreadsTest(DatabaseTest):
         self.assertIn("--verbose", self.command)
         self.assertEqual(thread["status"], "waiting")
         self.assertEqual(thread["session_id"], "s-1")
+        reply = thread["messages"][-1]
+        self.assertEqual(reply["body"], "Done: the tests pass.")
         self.assertEqual(
-            [(m["author"], m["body"]) for m in thread["messages"]],
-            [("user", "Run the tests"), ("claude", "Done: the tests pass.")],
+            reply["steps"],
+            [
+                {"tool": "Bash", "input": "bin/ci", "result": "PASS", "error": False},
+                {"tool": "Read", "input": "/x/a.py", "result": "line one", "error": True},
+            ],
         )
+        self.assertEqual(thread["messages"][0]["steps"], [])
+
+    def test_leaves_out_subagent_steps_and_trims_long_ones(self):
+        self.output = stream(
+            tool_use("t1", "Agent", {"prompt": "p" * 500}),
+            tool_use("s1", "Bash", {"command": "ls"}, parent="t1"),
+            tool_result("s1", "a.py", parent="t1"),
+            tool_result("t1", "x" * 2000),
+            RESULT,
+        )
+        (step,) = self.start()["messages"][-1]["steps"]
+        self.assertEqual(step["tool"], "Agent")
+        self.assertEqual(len(step["input"]), threads.SUMMARY_LENGTH)
+        self.assertEqual(len(step["result"]), threads.RESULT_LENGTH)
+        self.assertTrue(step["result"].endswith("…"))
 
     def test_resumes_the_session_for_a_follow_up(self):
         first = self.start()
