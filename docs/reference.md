@@ -77,7 +77,8 @@ database, so a broken database can't hide the server. It returns JSON with `app`
 
 The page asks for `/health` too, every few seconds. When the server it first talked to has
 been replaced (its `pid` or `started` changed), usually after an update, the page reloads
-itself, so its code always matches the server's.
+itself, so its code always matches the server's. A note you were typing and the option you
+picked are kept through the reload.
 
 ## Projects in the header
 
