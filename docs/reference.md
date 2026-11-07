@@ -56,6 +56,21 @@ Each open question also shows two facts that Tempo works out itself:
 - **quick**: it has a recommended option, at most three options, and was never reworded.
 - **open 3 days** (or hours, or minutes): how long ago it was asked.
 
+### What changed since you opened it
+
+Questions keep their place in the list; nothing moves when Claude changes one. Instead, a
+dot after the question's number, the same dot as on the project chips, means Claude changed
+it since you last opened it: it reworded the question, or added context (such as its reply
+to your follow-up). A question that arrives after your first visit to the project gets the
+dot too, until you open it. Opening the question clears the dot.
+
+While a question waits on Claude after you ask for more, its row shows the moving "Waiting
+on Claude" dots instead. When Claude replies or rewords, the wait ends and the dot appears.
+
+When you last opened each question is kept in your browser, not in the database, and only
+for open questions. On a browser's first visit to a project, every question counts as
+opened, so nothing is marked yet.
+
 Goals replace the earlier Now / Soon / Later priorities. Old questions keep their priority in
 the database, but nothing uses it. `--priority` and `tempo priority` still run for one
 release, but only print a note.

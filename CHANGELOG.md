@@ -4,6 +4,15 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A dot on a question in the list marks one Claude changed since you last opened it: reworded,
+  given more context, or new since your first visit to the project. Questions keep their
+  place. Opening the question clears the dot. See
+  [What changed since you opened it](docs/reference.md#what-changed-since-you-opened-it).
+
 ## [0.5.3] - 2026-11-07
 
 ### Changed
