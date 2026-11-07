@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from tempo import cli
@@ -36,6 +37,76 @@ class CliTest(DatabaseTest):
         self.assertEqual(code, 2)
         self.assertIn("at least two options", err)
 
+    def test_add_takes_a_goal_and_a_start_here_reason(self):
+        add = ("add", "--title", "T", "--context", "C", "--option", "x", "--option", "y")
+        run(*add, "--goal", "Release 0.4")
+        code, _, _ = run(*add, "--goal", "Release 0.4", "--start-here", "unlocks Q1")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.store.get("demo", 2)["start_here"], "unlocks Q1")
+        _, out, _ = run("list")
+        self.assertEqual(
+            out.splitlines(),
+            [
+                "Q2 [open, v1, goal: Release 0.4, start here, open 1 minute] T",
+                "Q1 [open, v1, goal: Release 0.4, open 1 minute] T",
+            ],
+        )
+
+    def test_add_ignores_the_old_priority_with_a_note(self):
+        add = ("add", "--title", "T", "--context", "C", "--option", "x", "--option", "y")
+        code, out, err = run(*add, "--priority", "now")
+        self.assertEqual(code, 0)
+        self.assertIn("Added Q1", out)
+        self.assertIn("priorities are no longer used", err)
+        code, _, err = run("priority", "1", "later")
+        self.assertEqual(code, 0)
+        self.assertIn("--goal", err)
+
+    def test_goal_sets_and_clears_without_rewording(self):
+        self.add(goal="Release")
+        self.add(goal="Release", start_here="unlocks Q1")
+        code, out, _ = run("goal", "1", "Release", "--start-here", "unlocks Q2")
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "Q1 goal: Release; start here: unlocks Q2.\n")
+        self.assertIsNone(self.store.get("demo", 2)["start_here"])
+        _, out, _ = run("goal", "1", "--no-start-here")
+        self.assertEqual(out, "Q1 goal: Release.\n")
+        _, out, _ = run("goal", "1", "")
+        self.assertEqual(out, "Q1 no goal.\n")
+        self.assertEqual(self.store.get("demo", 1)["version"], 1)
+        code, _, err = run("goal", "1", "--start-here", "unlocks Q2")
+        self.assertEqual(code, 2)
+        self.assertIn("goal first", err)
+
+    def test_reword_can_move_the_start_here_mark(self):
+        self.add(goal="Release", start_here="unlocks Q2")
+        self.add(goal="Release")
+        run("reword", "2", "--note", "Clearer", "--start-here", "unlocks Q1")
+        self.assertIsNone(self.store.get("demo", 1)["start_here"])
+        self.assertEqual(self.store.get("demo", 2)["start_here"], "unlocks Q1")
+        run("reword", "2", "--note", "No longer first", "--no-start-here")
+        self.assertIsNone(self.store.get("demo", 2)["start_here"])
+
+    def test_show_gives_the_goal_and_the_plain_facts(self):
+        self.add(goal="Release", start_here="unlocks the rest", recommended="a")
+        _, out, _ = run("show", "1")
+        self.assertIn(
+            "demo Q1 (open, version 1, goal: Release; start here: unlocks the rest, quick,"
+            " open 1 minute)",
+            out,
+        )
+
+    def test_open_for_uses_the_largest_whole_unit(self):
+        def ago(**delta):
+            stamp = datetime.now(timezone.utc) - timedelta(**delta)
+            return cli.open_for(stamp.strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+        self.assertEqual(ago(seconds=5), "open 1 minute")
+        self.assertEqual(ago(minutes=59), "open 59 minutes")
+        self.assertEqual(ago(hours=2, minutes=5), "open 2 hours")
+        self.assertEqual(ago(days=3, hours=23), "open 3 days")
+        self.assertEqual(ago(days=1), "open 1 day")
+
     def test_accepts_q_prefixed_numbers(self):
         self.add()
         code, out, _ = run("show", "q1")
@@ -65,6 +136,7 @@ class CliTest(DatabaseTest):
 
     def test_session_start_tells_claude_to_use_tempo_and_lists_open_questions(self):
         self.add()
+        self.add(title="Ship it?", goal="Release 0.4", start_here="unlocks the rest")
         with mock.patch.object(cli, "start_server") as start:
             _, out, _ = run("hook", "session-start", stdin="{}")
         start.assert_called_once()
@@ -72,6 +144,12 @@ class CliTest(DatabaseTest):
         self.assertEqual(context["hookEventName"], "SessionStart")
         self.assertIn("goes in Tempo with `tempo add`", context["additionalContext"])
         self.assertIn("Q1 Which way? http://127.0.0.1:2204/#/demo/1", context["additionalContext"])
+        self.assertIn(
+            "Q2 Ship it? [Release 0.4, start here] http://127.0.0.1:2204/#/demo/2",
+            context["additionalContext"],
+        )
+        self.assertIn("Give every question a goal", context["additionalContext"])
+        self.assertIn("only when its answer really unlocks", context["additionalContext"])
 
     def stop(self, *replies, active=False):
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as transcript:
