@@ -909,7 +909,12 @@ def project_name(cwd: str, record: bool = False) -> str:
 
 def folder_path(cwd: str) -> str:
     """The full path of the git repo's top folder (the main checkout, not a worktree), or
-    of cwd outside git. Symlinks are resolved, so one folder always has one path."""
+    of cwd outside git. Symlinks are resolved, so one folder always has one path.
+
+    Letter case is kept as given. On macOS a folder can be entered as Tempo or tempo, but
+    Claude Code sends hooks the cwd as the system reports it (getcwd, and `pwd -P` after
+    each Bash command), which is always the folder's own case, so it never splits a
+    project in two."""
     return repo_path(cwd) or os.path.realpath(cwd)
 
 
