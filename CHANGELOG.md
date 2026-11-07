@@ -19,6 +19,8 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Changed
 
+- On wide screens the question list and the question scroll separately, so scrolling a
+  long question no longer moves the list, and the list keeps its place.
 - Follow-ups from the page now tell Claude to answer them in the question itself with
   `tempo reword`, as the skill says, so the answer shows in the box the user reads.
 - When a session starts, Tempo replaces a Tempo page that is still running from another

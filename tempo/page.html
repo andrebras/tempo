@@ -249,6 +249,15 @@
 
   @media (min-width: 761px) {
     #list .empty.repeat { display: none; }
+    /* The page fills the window and each pane scrolls on its own, so a long question
+       doesn't scroll the list away, and a long list doesn't push the question down. */
+    body { display: flex; flex-direction: column; height: 100vh; }
+    header { flex: none; }
+    main, #settings { flex: 1; min-height: 0; }
+    main > * { min-height: 0; }
+    #side { overflow: hidden; }
+    #list { flex: 1; min-height: 0; }
+    #detail, #settings { overflow-y: auto; }
   }
   @media (max-width: 760px) {
     header { padding-left: 16px; padding-right: 16px; }
