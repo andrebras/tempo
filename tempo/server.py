@@ -8,8 +8,11 @@ this page's own origin.
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import os
+import subprocess
+import time
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -18,6 +21,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 from tempo.store import QuestionError, Store, connect
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The plugin folder this code runs from; /health names it so a stale server can be spotted.
+ROOT = os.path.dirname(HERE)
 PAGE = os.path.join(HERE, "page.html")
 SCRIPT = os.path.join(HERE, "page.js")
 
@@ -31,6 +36,10 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:
             if not self._trusted(write=False):
+                return
+            # Answered without the database, so a broken database cannot hide the server.
+            if _parts(urlparse(self.path).path) == ["health"]:
+                self._json(200, health())
                 return
             with Store(connect()) as store:
                 self._get(store)
@@ -144,6 +153,50 @@ def serve(port: int) -> None:
     print("Tempo on http://127.0.0.1:%d/" % port, flush=True)
     with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()
+
+
+def version() -> str | None:
+    """The plugin's version, from the same plugin.json that bin/check-version reads."""
+    try:
+        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json"), encoding="utf-8") as file:
+            return str(json.load(file)["version"])
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+_STARTED = time.gmtime()
+
+
+@functools.cache
+def health() -> dict[str, Any]:
+    """Who this server is, worked out once on the first /health request."""
+    return {
+        "app": "tempo",
+        "version": version(),
+        "commit": _commit(),
+        "root": ROOT,
+        "pid": os.getpid(),
+        "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", _STARTED),
+    }
+
+
+def _commit() -> str | None:
+    """The short git commit, or None when the code is not a git checkout (the plugin cache)."""
+    if not os.path.exists(os.path.join(ROOT, ".git")):
+        return None
+    try:
+        # git is looked up on PATH on purpose; the arguments are fixed.
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip() or None
 
 
 def _settings(store: Store) -> dict[str, Any]:
