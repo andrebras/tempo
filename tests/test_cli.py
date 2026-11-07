@@ -177,7 +177,7 @@ class CliTest(DatabaseTest):
     def test_stop_hook_stays_quiet_in_a_thread(self):
         with (
             mock.patch.dict("os.environ", {"TEMPO_IN_THREAD": "1"}),
-            mock.patch.object(cli, "stop_reason", return_value="Carry on") as reason,
+            mock.patch.object(cli, "stop_outcome", return_value=("Carry on", "demo", "")) as reason,
         ):
             code, out, _ = run("hook", "stop", stdin="{}")
         self.assertEqual((code, out), (0, ""))
@@ -328,6 +328,51 @@ class CliTest(DatabaseTest):
                 code, out, _ = run("hook", event, stdin=json.dumps({"cwd": "/"}))
                 self.assertEqual((code, out), (0, ""), event)
         start.assert_called_once()
+
+    def hook_log(self):
+        """The hook lines of server.log, without their times."""
+        with open(os.path.join(self.tmp.name, "server.log"), encoding="utf-8") as file:
+            lines = [line.split(" ", 1)[1] for line in file.read().splitlines()]
+        return [line for line in lines if line.startswith("hook ")]
+
+    def test_each_hook_run_writes_one_log_line(self):
+        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
+        options = [("user", "Go"), ("assistant", [{"type": "text", "text": "(a) Up (b) Down"}])]
+        self.add()
+        with mock.patch.object(cli, "start_server", return_value=True):
+            run("hook", "session-start", stdin="{}")
+        run("hook", "user-prompt-submit", stdin="{}")
+        self.store.answer("demo", 1, "b", "A private note")
+        run("hook", "user-prompt-submit", stdin="{}")
+        self.add()
+        self.stop(*options)
+        self.stop(*reply)
+        self.stop(*reply, active=True)
+        with mock.patch.dict("os.environ", {"TEMPO_IN_THREAD": "1"}):
+            run("hook", "stop", stdin="{}")
+        with mock.patch.object(cli, "session_note", side_effect=RuntimeError("broken")):
+            run("hook", "session-start", stdin="{}")
+        self.assertEqual(
+            self.hook_log(),
+            [
+                "hook session-start demo note sent, page started",
+                "hook user-prompt-submit demo nothing new",
+                "hook user-prompt-submit demo delivered 1",
+                "hook stop demo blocked: unrecorded question",
+                "hook stop demo blocked: no wait",
+                "hook stop - let through: already sent back once",
+                "hook stop - quiet: TEMPO_IN_THREAD",
+                "hook session-start demo error: broken",
+            ],
+        )
+
+    def test_a_log_problem_never_breaks_a_hook(self):
+        self.add()
+        self.store.answer("demo", 1, "b")
+        with mock.patch.object(cli.log, "open_log", side_effect=OSError("disk full")):
+            code, out, _ = run("hook", "user-prompt-submit", stdin="{}")
+        self.assertEqual(code, 0)
+        self.assertIn("answered (b) Right", out)
 
     def test_hooks_ignore_input_that_is_not_an_object(self):
         for event in ("user-prompt-submit", "stop"):
