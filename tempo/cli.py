@@ -558,8 +558,8 @@ def _take_inbox(store: Store, project: str | None) -> str:
         lines.append(line)
     if any(entry["kind"] == "followup" for entry in entries):
         lines.append(
-            "For each follow-up, add context (`tempo context`) or reword the question"
-            " (`tempo reword`); use a subagent when it needs research."
+            "Answer each follow-up in the question itself with `tempo reword --context`, so"
+            " the box the user reads shows it; use a subagent when it needs research."
         )
     store.mark_delivered([entry["id"] for entry in entries])
     return "\n".join(lines)
