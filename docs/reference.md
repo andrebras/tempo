@@ -47,9 +47,9 @@ Each answer is delivered once, whichever way it arrives: through a hook or `temp
 
 A Tempo problem never blocks your prompt or the session. When something goes wrong, such as
 a locked database or a folder Tempo can't name, the hooks exit cleanly and say nothing to the
-session. The error goes to standard error, which Claude Code doesn't pass to Claude. With
-`TEMPO_IN_THREAD=1` (see [Environment variables](#environment-variables)), the hooks do
-nothing at all.
+session. The error goes to standard error, which Claude Code doesn't pass to Claude, and to
+the page log. With `TEMPO_IN_THREAD=1` (see [Environment variables](#environment-variables)),
+the hooks do nothing but write their line in the log.
 
 A Claude session keeps the plugin version it started with, hooks included. After you update
 Tempo, restart open sessions, for example with `claude --continue`, so they use the new
