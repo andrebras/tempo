@@ -124,6 +124,32 @@ class CliTest(DatabaseTest):
             _, again, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/demo"}))
         self.assertEqual(again, "")
 
+    def test_session_start_hook_stays_quiet_in_a_thread(self):
+        with (
+            mock.patch.dict("os.environ", {"TEMPO_IN_THREAD": "1"}),
+            mock.patch.object(cli, "start_server") as start,
+        ):
+            code, out, _ = run("hook", "session-start", stdin="{}")
+        self.assertEqual((code, out), (0, ""))
+        start.assert_not_called()
+
+    def test_user_prompt_hook_stays_quiet_in_a_thread(self):
+        self.add()
+        self.store.answer("demo", 1, "b")
+        with mock.patch.dict("os.environ", {"TEMPO_IN_THREAD": "1"}):
+            code, out, _ = run("hook", "user-prompt-submit", stdin="{}")
+        self.assertEqual((code, out), (0, ""))
+        self.assertIn("answered (b) Right", run("inbox")[1])
+
+    def test_stop_hook_stays_quiet_in_a_thread(self):
+        with (
+            mock.patch.dict("os.environ", {"TEMPO_IN_THREAD": "1"}),
+            mock.patch.object(cli, "stop_reason", return_value="Carry on") as reason,
+        ):
+            code, out, _ = run("hook", "stop", stdin="{}")
+        self.assertEqual((code, out), (0, ""))
+        reason.assert_not_called()
+
     def test_a_changed_answer_says_what_it_was_before(self):
         self.add()
         self.store.answer("demo", 1, "a")

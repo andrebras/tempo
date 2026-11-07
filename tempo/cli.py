@@ -345,6 +345,10 @@ def _alive(pid: int) -> bool:
 
 
 def run_hook(args: argparse.Namespace) -> int:
+    # Another tool that runs Claude sessions on the user's behalf sets this, so Tempo's
+    # hooks stay quiet in those sessions.
+    if os.environ.get("TEMPO_IN_THREAD") == "1":
+        return 0
     try:
         payload = json.load(sys.stdin)
     except ValueError:
