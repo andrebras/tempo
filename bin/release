@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""Prepare a release of Tempo as a pull request.
+
+    bin/release 0.6.0
+
+Run it in the main checkout, on an up-to-date and clean `main`. It does the steps of a
+release by hand, in order, printing each one and stopping at the first that fails:
+
+1. checks the version (x.y.z, higher than the current one), that `main` is clean and the
+   same as `origin/main`, and that CHANGELOG.md has something under `## [Unreleased]`;
+2. makes the branch release/<version>, sets the version in .claude-plugin/plugin.json and
+   pyproject.toml, renames `## [Unreleased]` to `## [<version>] - <today>`, and commits
+   "Release <version>";
+3. runs bin/ci in a clean copy (a temporary git worktree outside this folder, so the
+   worktrees under .claude/ can't interfere);
+4. pushes the branch, opens a pull request and turns on auto-merge.
+
+It does not merge, update the installed plugin or restart the page. GitHub merges the pull
+request once its CI passes; the commands to run after that are printed at the end.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess  # nosec B404
+import sys
+import tempfile
+from datetime import date
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+UNRELEASED = "## [Unreleased]"
+# Settings that point git at another repository; a hook or a git command running this
+# script could have set them.
+GIT_SETTINGS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
+FOLLOW_UP = """\
+Next steps, once the pull request has merged and its Release workflow has run:
+
+    claude plugin marketplace update tempo
+    claude plugin update tempo@tempo
+
+Then restart the page so it runs the new code."""
+
+
+class Refusal(Exception):
+    """A check failed; the message says which and what to do."""
+
+
+def step(name: str) -> None:
+    print("==> %s" % name, flush=True)
+
+
+def run(args: list[str], cwd: Path, quiet: bool = False) -> str:
+    """Run a fixed command (git, gh or bin/ci) and return its output. Fails on an error."""
+    env = {key: value for key, value in os.environ.items() if key not in GIT_SETTINGS}
+    result = subprocess.run(  # noqa: S603
+        args,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE if quiet else None,
+        text=True,
+        check=True,
+    )
+    return (result.stdout or "").strip()
+
+
+def current_version(root: Path) -> str:
+    text = (root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+    return json.loads(text)["version"]
+
+
+def check_version(version: str, current: str) -> None:
+    new = VERSION.match(version)
+    if not new:
+        raise Refusal("'%s' is not a version like 1.2.3." % version)
+    old = VERSION.match(current)
+    if old and tuple(map(int, new.groups())) <= tuple(map(int, old.groups())):
+        raise Refusal("%s is not higher than the current version, %s." % (version, current))
+
+
+def check_main(root: Path) -> None:
+    """Refuse unless this checkout is on main, clean, and the same as origin/main."""
+    branch = run(["git", "branch", "--show-current"], root, quiet=True)
+    if branch != "main":
+        raise Refusal("This checkout is on '%s'. Run 'git switch main' first." % branch)
+    if run(["git", "status", "--porcelain"], root, quiet=True):
+        raise Refusal("main has uncommitted changes. Commit or remove them first.")
+    run(["git", "fetch", "--quiet", "origin"], root)
+    here = run(["git", "rev-parse", "HEAD"], root, quiet=True)
+    there = run(["git", "rev-parse", "origin/main"], root, quiet=True)
+    if here != there:
+        raise Refusal("main is not the same as origin/main. Run 'git pull --ff-only' first.")
+
+
+def unreleased_notes(changelog: str) -> str:
+    """What CHANGELOG.md lists under ## [Unreleased], without the heading."""
+    start = changelog.find("\n%s\n" % UNRELEASED)
+    if start < 0:
+        raise Refusal("CHANGELOG.md has no '%s' section." % UNRELEASED)
+    body = changelog[start + len(UNRELEASED) + 2 :]
+    end = re.search(r"^## ", body, re.M)
+    return (body[: end.start()] if end else body).strip()
+
+
+def check_changelog(changelog: str, version: str) -> None:
+    notes = unreleased_notes(changelog)
+    # Bare "### Added" headings with nothing under them don't count.
+    if not any(line.strip() and not line.startswith("#") for line in notes.splitlines()):
+        raise Refusal("'%s' in CHANGELOG.md is empty: nothing to release." % UNRELEASED)
+    if re.search(r"^## \[%s\]" % re.escape(version), changelog, re.M):
+        raise Refusal("CHANGELOG.md already has a section for %s." % version)
+
+
+def replace_once(path: Path, pattern: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    changed, count = re.subn(pattern, new, text, count=1, flags=re.M)
+    if count != 1:
+        raise Refusal("Could not find the version in %s." % path.name)
+    path.write_text(changed, encoding="utf-8")
+
+
+def apply_release(root: Path, version: str, today: date) -> None:
+    """Set the version in both files and give the Unreleased section its version and date."""
+    replace_once(
+        root / ".claude-plugin" / "plugin.json",
+        r'^(\s*"version":\s*)"[^"]*"',
+        r'\g<1>"%s"' % version,
+    )
+    replace_once(root / "pyproject.toml", r'^version = "[^"]*"', 'version = "%s"' % version)
+    replace_once(
+        root / "CHANGELOG.md",
+        r"^%s$" % re.escape(UNRELEASED),
+        "## [%s] - %s" % (version, today.isoformat()),
+    )
+
+
+def pr_body(version: str, current: str, notes: str, today: date) -> str:
+    return """\
+## Summary
+
+Releases Tempo %(version)s, with the pull requests merged since %(current)s. The CHANGELOG lists \
+the changes.
+
+## Why
+
+The installed plugin is %(current)s. Installed copies only update when the version changes. \
+This release brings:
+
+%(notes)s
+
+## What changed
+
+- `.claude-plugin/plugin.json` and `pyproject.toml`: version %(current)s → %(version)s.
+- `CHANGELOG.md`: Unreleased becomes %(version)s, dated %(today)s.
+
+## How it was tested
+
+The full local CI (`bin/ci`) passes on this branch, run from a clean copy by `bin/release`.
+
+## Notes for the reviewer
+
+After the merge, the plugin is updated on the development machine and the page restarted.
+
+- [x] `bin/ci` passes
+- [x] A line under "Unreleased" in `CHANGELOG.md`: the Unreleased section becomes this version.
+- [x] The version changes only in a release PR
+""" % {"version": version, "current": current, "notes": notes, "today": today.isoformat()}
+
+
+def clean_ci(root: Path, branch: str) -> None:
+    """Run bin/ci in a temporary worktree of the branch, outside this folder."""
+    with tempfile.TemporaryDirectory(prefix="tempo-release-") as parent:
+        copy = Path(parent) / "tempo"
+        run(["git", "worktree", "add", "--quiet", "--detach", str(copy), branch], root)
+        try:
+            run([str(copy / "bin" / "ci")], copy)
+        finally:
+            run(["git", "worktree", "remove", "--force", str(copy)], root)
+
+
+def publish(root: Path, branch: str, version: str, body: str) -> str:
+    """Push the branch, open the pull request with auto-merge on, and return its address."""
+    run(["git", "push", "--quiet", "--set-upstream", "origin", branch], root)
+    with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8") as file:
+        file.write(body)
+        file.flush()
+        title = "Release %s" % version
+        create = ["gh", "pr", "create", "--base", "main", "--head", branch, "--title", title]
+        url = run([*create, "--body-file", file.name], root, quiet=True)
+    run(["gh", "pr", "merge", "--auto", "--merge", url], root)
+    return url
+
+
+def release(version: str, root: Path = ROOT, today: date | None = None) -> None:
+    today = today or date.today()
+    branch = "release/%s" % version
+
+    step("Check the version")
+    current = current_version(root)
+    check_version(version, current)
+    step("Check that main is clean and up to date")
+    check_main(root)
+    step("Check the CHANGELOG")
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+    check_changelog(changelog, version)
+    notes = unreleased_notes(changelog)
+
+    step("Make the branch %s" % branch)
+    run(["git", "switch", "--quiet", "--create", branch], root)
+    step("Set the version to %s and date the CHANGELOG %s" % (version, today.isoformat()))
+    apply_release(root, version, today)
+    step("Commit")
+    run(["git", "commit", "--quiet", "--all", "--message", "Release %s" % version], root)
+
+    step("Run bin/ci in a clean copy")
+    clean_ci(root, branch)
+    step("Push, open the pull request and turn on auto-merge")
+    url = publish(root, branch, version, pr_body(version, current, notes, today))
+    run(["git", "switch", "--quiet", "main"], root)
+
+    print("\nOpened %s. GitHub merges it once its CI passes.\n" % url)
+    print(FOLLOW_UP)
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 1 or argv[0] in ("-h", "--help"):
+        print("usage: bin/release <version>, for example bin/release 0.6.0", file=sys.stderr)
+        return 2
+    try:
+        release(argv[0])
+    except Refusal as refusal:
+        print("Refused: %s" % refusal, file=sys.stderr)
+        return 1
+    except subprocess.CalledProcessError as error:
+        print("Stopped: '%s' failed." % " ".join(error.cmd), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
