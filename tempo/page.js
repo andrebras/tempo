@@ -606,7 +606,7 @@ function renderQuestion(question, draft) {
     // Answered questions are read-only; reopening is a deliberate step, so an old tab
     // can't add a second answer by accident.
     parts.push(el("div", { class: "actions" },
-      el("button", { onclick: () => post("reopen").then(refresh, () => {}) }, "Reopen to answer again")), error);
+      el("button", { onclick: () => post("reopen", {}).then(refresh, () => {}) }, "Reopen to answer again")), error);
   } else if (question.status === "open") {
     parts.push(el("div", { class: "options", role: "radiogroup" },
       question.options.map((option) => el("label", {},

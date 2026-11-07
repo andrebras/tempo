@@ -35,6 +35,8 @@ All notable changes to Tempo are listed here. The format follows
 - A request with a negative `Content-Length` no longer holds a server thread until the client
   hangs up. It gets a 400, a body over 1 MB gets a 413, and a client that stops sending is
   dropped after 30 seconds.
+- "Reopen to answer again" works on the page again. It sent its request the wrong way, so the
+  server answered "Not found" and the question stayed answered.
 
 ### Security
 
