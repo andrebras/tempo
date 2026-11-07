@@ -49,7 +49,8 @@ To try it for one session without installing it, clone the repo and run
 
 There's nothing to run. When a Claude Code session starts, Tempo starts its page at
 <http://127.0.0.1:2204/>. If a Tempo page is already running there, it is kept, unless it comes
-from an older version of Tempo or no longer works; then Tempo replaces it. When Claude needs a
+from an older version of Tempo or no longer works; then Tempo replaces it (details in
+[The page server](docs/reference.md#the-page-server)). When Claude needs a
 decision, it adds a question and links to it in chat. On the page you can:
 
 - **Answer**: pick an option, add a note if you like, and send it. The page moves on to the
