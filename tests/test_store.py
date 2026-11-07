@@ -511,6 +511,21 @@ class ProjectsTest(DatabaseTest):
             [("/home/api", "api"), ("/work/api", "Work API")],
         )
 
+    def test_a_second_folder_of_a_name_gets_its_own_project(self):
+        self.store.see_folder("api", "/work/api")
+        self.add(project="api")
+        self.assertTrue(self.store.see_folder("api", "/personal/api"))
+        self.assertEqual(self.store.project_for("api", "/work/api"), "api")
+        self.assertEqual(self.store.project_for("api", "/personal/api"), "api (personal)")
+        # A third one, whose parent's name is taken too, gets a number.
+        self.store.see_folder("api", "/old/personal/api")
+        self.assertEqual(self.store.project_for("api", "/old/personal/api"), "api (personal) 2")
+        # Questions filed under a folder's name before folders were remembered are the
+        # first folder's of that name: only another folder makes the name taken.
+        self.add(project="shop")
+        self.store.see_folder("shop", "/lab/shop")
+        self.assertEqual(self.store.project_for("shop", "/lab/shop"), "shop")
+
     def test_a_folder_known_by_name_only_gets_its_path(self):
         # Rows from before paths were stored: the first session in that name adopts one.
         self.store.db.execute(

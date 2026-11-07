@@ -111,6 +111,11 @@ All notable changes to Tempo are listed here. The format follows
   before you clicked it. They stayed in the folder's interim project, which no session used any
   more, so their answers were never delivered. They now move into the linked project after its
   own questions, each noting its old number, unless another folder still uses that project.
+- Two repos with the same folder name, such as `work/api` and `personal/api`, get a project
+  each. The second one used to land in the first one's project, with no way to split them; it
+  now starts in a project named after its parent folder too, such as `api (personal)`, which
+  you can rename in Settings. A folder moved to a new place under the same name also starts
+  its own project: link it from the banner, or rename its project in Settings to join them.
 
 ### Security
 

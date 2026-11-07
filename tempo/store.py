@@ -638,9 +638,24 @@ class Store:
             key = path if path and taken.fetchone() else folder
             self.db.execute(
                 "INSERT INTO folders (folder, path, project, seen_at) VALUES (?, ?, ?, ?)",
-                (key, path, folder, now()),
+                (key, path, self._new_project(folder, path), now()),
             )
             return True
+
+    def _new_project(self, folder: str, path: str | None) -> str:
+        """The project a new folder starts in: its name, unless another folder is filed
+        under that, as when two repos are both called api. Then its parent folder's name
+        is added, "api (personal)", and a number if that is in use too."""
+        used = self.db.execute("SELECT 1 FROM folders WHERE project = ?", (folder,)).fetchone()
+        if not path or not used:
+            return folder
+        names = {project["name"] for project in self.project_summaries()}
+        parent = os.path.basename(os.path.dirname(path))
+        base = "%s (%s)" % (folder, parent) if parent else folder
+        name, number = base, 2
+        while name in names:
+            name, number = "%s %d" % (base, number), number + 1
+        return name
 
     def project_for(self, folder: str, path: str | None = None) -> str:
         """The project a folder is filed under; a folder never seen is its own project."""
