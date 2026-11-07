@@ -325,10 +325,16 @@ def run_wait(args: argparse.Namespace) -> int:
 def wait_running(project: str) -> bool:
     """Whether a `tempo wait` covering the project is running. Markers left by waits
     that were killed are removed, and so are those whose pid has since been given to a
-    process that is not a wait."""
+    process that is not a wait.
+
+    A wait that left no marker here counts for every project, since it cannot say which
+    one it serves: one from an install older than markers, or one whose database, and so
+    its markers, are in another folder.
+    """
     folder = os.path.dirname(_db_path())
     waits = _wait_processes()
     running = False
+    marked: set[int] = set()
     for name in os.listdir(folder):
         if not (name.startswith("wait-") and name.endswith(".json")):
             continue
@@ -341,11 +347,12 @@ def wait_running(project: str) -> bool:
         except (OSError, ValueError, KeyError, TypeError):
             alive = False
         if alive:
+            marked.add(pid)
             running = running or marker.get("project") in (None, project)
         else:
             with contextlib.suppress(OSError):
                 os.remove(path)
-    return running
+    return running or bool(waits and waits - marked)
 
 
 # How a `tempo wait` process shows in ps: bin/tempo runs `python3 -m tempo wait …`.

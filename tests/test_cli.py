@@ -560,6 +560,14 @@ class CliTest(DatabaseTest):
         self.assertFalse(cli.wait_running("demo"))
         self.assertFalse(os.path.exists(reused))
 
+    def test_a_wait_that_left_no_marker_counts_for_every_project(self):
+        # An install from before markers, or one using another folder, runs `tempo wait`
+        # without leaving a marker here.
+        self.marker(4242, project="other")
+        self.assertFalse(cli.wait_running("demo"))
+        self.waits.add(4343)
+        self.assertTrue(cli.wait_running("demo"))
+
     def test_without_ps_a_marker_counts_while_its_process_lives(self):
         self.marker(os.getpid(), wait=False)
         with mock.patch.object(cli, "_wait_processes", return_value=None):

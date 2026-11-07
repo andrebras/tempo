@@ -86,6 +86,10 @@ All notable changes to Tempo are listed here. The format follows
 - A `tempo wait` that was killed no longer counts as running when the computer gives its process
   number to another program. The Stop hook now checks that the process really runs `tempo wait`,
   so it asks Claude to start a new wait instead of trusting a dead one.
+- A `tempo wait` started by an older install, which leaves no marker file, now counts as
+  running. Before, the Stop hook only looked for markers, so it sent Claude back after every
+  reply to start a wait that was already running. Such a wait counts for every project, as it
+  cannot say which one it serves.
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still
