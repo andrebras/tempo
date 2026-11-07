@@ -728,11 +728,17 @@ ASK = re.compile(
 )
 # What doesn't count as asking: code, quoted lines and quoted phrases.
 QUOTED = re.compile(r"```.*?(?:```|\Z)|`[^`\n]*`|^\s*>.*$|\"[^\"\n]*\"|“[^”\n]*”", re.S | re.M)
-# A list item naming a question and its link, as in the closing list of open questions:
-# "- Q3 Title http://127.0.0.1:2204/#/…" or "- **Q3** Title [Goal] http://…".
-LISTED = re.compile(r"^\s*[-*]\s.*\bQ\d+\b.*127\.0\.0\.1:\d+/#/.*$", re.MULTILINE)
+# A list item or table row naming a question and its link, as in the closing list of open
+# questions: "- Q3 Title http://127.0.0.1:2204/#/…", "1. **Q3** Title http://…" or
+# "| Q3 | Title | http://… |".
+LISTED = re.compile(r"^\s*(?:[-*]|\d+\.|\|)\s.*\bQ\d+\b.*127\.0\.0\.1:\d+/#/.*$", re.MULTILINE)
 TEMPO_LINK = re.compile(r"127\.0\.0\.1:\d+/#/")
-TEMPO_RUN = re.compile(r"\b(?:tempo|oq) (?:add|reword|context)\b")
+# A Bash command that runs `tempo add`, `reword` or `context`: first, or after `&&` or
+# `;`, with settings or a path before it, as in `cd x && TEMPO_PROJECT=y bin/tempo add`.
+TEMPO_RUN = re.compile(
+    r"(?:^|&&|\|\||;|\n)\s*(?:\w+=\S*\s+)*(?:\S*/)?(?:tempo|oq) (?:add|reword|context)\b"
+)
+PARAGRAPH = re.compile(r"\n[ \t]*\n")
 
 
 def unrecorded_options(payload: dict[str, Any]) -> str | None:
@@ -740,8 +746,10 @@ def unrecorded_options(payload: dict[str, Any]) -> str | None:
 
     A reply that asks the user something (lettered options, a yes-or-no question or a
     request for permission) is a question asked only in chat, unless the reply ran
-    `tempo add`, `tempo reword` or `tempo context`, or links a Tempo question outside the
-    closing list of open questions. Code and quoted text never count as asking. Runs once
+    `tempo add`, `tempo reword` or `tempo context` with the Bash tool and it worked, or
+    links a Tempo question next to what it asks: in the same paragraph, or for options
+    in the one before (a closing list of open questions doesn't count). Code and quoted
+    text never count as asking. Runs once
     per reply: when Claude was already sent back (stop_hook_active), it lets the reply
     end. Any problem reading the transcript lets it end too, so the check can never trap
     a session.
@@ -752,11 +760,16 @@ def unrecorded_options(payload: dict[str, Any]) -> str | None:
         text, commands = _last_reply(payload["transcript_path"])
     except (KeyError, OSError, ValueError, TypeError, AttributeError):
         return None
-    prose = QUOTED.sub(" ", text)
-    letters = {(inline or listed).lower() for inline, listed in OPTION.findall(prose)}
-    asks = {"a", "b"} <= letters or ASK.search(prose)
-    recorded = TEMPO_RUN.search(commands) or TEMPO_LINK.search(LISTED.sub("", prose))
-    if asks and not recorded:
+    if any(TEMPO_RUN.search(command) for command in commands):
+        return None
+    paragraphs = PARAGRAPH.split(QUOTED.sub(" ", text))
+    linked = [bool(TEMPO_LINK.search(LISTED.sub("", p))) for p in paragraphs]
+    asks = any(ASK.search(p) and not linked[i] for i, p in enumerate(paragraphs))
+    found = [_letters(p) for p in paragraphs]
+    if {"a", "b"} <= set().union(*found):
+        first = next(i for i, letters in enumerate(found) if letters)
+        asks = asks or not any(linked[max(0, first - 1) : first + 1])
+    if asks:
         return (
             "This reply asks the user to decide something (lettered options, a yes-or-no"
             " question or a request for permission), but it is not in Tempo. Add it with"
@@ -768,23 +781,32 @@ def unrecorded_options(payload: dict[str, Any]) -> str | None:
     return None
 
 
-def _last_reply(path: str) -> tuple[str, str]:
-    """What Claude wrote, and the tool inputs it ran, since the user's last message."""
+def _letters(paragraph: str) -> set[str]:
+    return {(inline or listed).lower() for inline, listed in OPTION.findall(paragraph)}
+
+
+def _last_reply(path: str) -> tuple[str, list[str]]:
+    """What Claude wrote since the user's last message, and the Bash commands it ran
+    that did not fail."""
     texts: list[str] = []
-    commands: list[str] = []
+    commands: dict[str, str] = {}
+    failed: set[str] = set()
     with open(path, encoding="utf-8") as transcript:
         for line in transcript:
             entry = json.loads(line)
             content = (entry.get("message") or {}).get("content")
             if entry.get("type") == "user" and not _tool_results(content):
-                texts, commands = [], []
+                texts, commands, failed = [], {}, set()
+            elif entry.get("type") == "user" and isinstance(content, list):
+                failed |= {block.get("tool_use_id") for block in content if block.get("is_error")}
             elif entry.get("type") == "assistant" and isinstance(content, list):
                 for block in content:
                     if block.get("type") == "text":
                         texts.append(block.get("text", ""))
-                    elif block.get("type") == "tool_use":
-                        commands.append(json.dumps(block.get("input", {})))
-    return "\n".join(texts), "\n".join(commands)
+                    elif block.get("type") == "tool_use" and block.get("name") == "Bash":
+                        command = (block.get("input") or {}).get("command")
+                        commands[block.get("id") or str(len(commands))] = str(command)
+    return "\n".join(texts), [c for key, c in commands.items() if key not in failed]
 
 
 def _tool_results(content: Any) -> bool:

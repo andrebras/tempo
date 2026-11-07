@@ -104,6 +104,11 @@ All notable changes to Tempo are listed here. The format follows
   "go ahead?", "Let me know if you want me to…", "Say whether I should…", and options written
   "- a)" or "**A.**". It no longer counts a question Claude answers at once ("…? No, …") or a
   sentence listing facts as "(a) … and (b) …".
+- Unrelated things no longer excuse a question asked only in chat. Before, any mention of
+  `tempo add` in a tool call (even a `grep`, or an add that failed) or any Tempo link anywhere
+  in the reply (even a numbered or table closing list) let it through. Now only a Bash command
+  that runs `tempo add`, `reword` or `context` and works counts, or a Tempo link in the same
+  paragraph as the question (for options, also the paragraph before).
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still
