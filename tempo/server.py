@@ -26,6 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PAGE = os.path.join(HERE, "page.html")
 SCRIPT = os.path.join(HERE, "page.js")
+# The largest request body the page sends is a note; a megabyte leaves plenty of room.
+MAX_BODY = 1_000_000
 
 
 def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
@@ -34,6 +36,8 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "tempo"
+        # A client that stops sending mid-request frees its thread after this many seconds.
+        timeout = 30
 
         def do_GET(self) -> None:
             if not self._trusted(write=False):
@@ -98,6 +102,15 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
             parts = _parts(urlparse(self.path).path)
             try:
                 length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if length < 0:
+                self._json(400, {"error": "Invalid Content-Length"})
+                return
+            if length > MAX_BODY:
+                self._json(413, {"error": "The request is too large"})
+                return
+            try:
                 body = json.loads(self.rfile.read(length) or b"{}")
             except ValueError:
                 self._json(400, {"error": "Invalid JSON"})

@@ -32,6 +32,9 @@ All notable changes to Tempo are listed here. The format follows
   text is expected, or an unexpected error such as a locked database used to close the
   connection, so the page showed a network error. Bad input now gets a 400 with a clear message,
   and an unexpected error a 500, with the details in the server log.
+- A request with a negative `Content-Length` no longer holds a server thread until the client
+  hangs up. It gets a 400, a body over 1 MB gets a 413, and a client that stops sending is
+  dropped after 30 seconds.
 
 ### Security
 

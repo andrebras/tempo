@@ -107,6 +107,12 @@ class ServerTest(DatabaseTest):
                 self.assertEqual(self.post_raw(path, data)[0], 400)
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
 
+    def test_a_negative_or_huge_length_is_refused_without_waiting(self):
+        status, _ = self.post_raw("/api/questions/demo/1/answer", b"", length=-1)
+        self.assertEqual(status, 400)
+        status, _ = self.post_raw("/api/questions/demo/1/answer", b"", length=10**9)
+        self.assertEqual(status, 413)
+
     def test_an_unexpected_error_answers_with_a_json_500(self):
         error = RuntimeError("database is locked")
         log = mock.patch("sys.stderr", io.StringIO())
