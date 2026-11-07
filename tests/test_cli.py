@@ -679,6 +679,93 @@ class OlderTest(unittest.TestCase):
         self.assertFalse(cli._older("0.4.0", None))
 
 
+class RestartNoteTest(DatabaseTest):
+    """The hooks of a session older than the installed plugin ask for a restart, once."""
+
+    def setUp(self):
+        super().setUp()
+        self.installed = os.path.join(self.tmp.name, "installed_plugins.json")
+        self.root = os.path.join(self.tmp.name, "plugin")  # An installed copy: no .git.
+        os.mkdir(self.root)
+        for patch in (
+            mock.patch.object(cli, "INSTALLED_PLUGINS", self.installed),
+            mock.patch.object(cli, "CODE_ROOT", self.root),
+            mock.patch("tempo.server.version", return_value="0.4.0"),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def install(self, *versions):
+        entries = [{"scope": "user", "version": v, "installPath": "/x/" + v} for v in versions]
+        with open(self.installed, "w") as file:
+            json.dump({"version": 2, "plugins": {"tempo@tempo": entries}}, file)
+
+    def hook(self, event, session="s1"):
+        _, out, _ = run("hook", event, stdin=json.dumps({"cwd": "/x", "session_id": session}))
+        return json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else ""
+
+    def test_an_older_session_is_told_once(self):
+        self.install("0.5.4", "0.5.1")
+        note = cli.restart_note("s1")
+        self.assertEqual(
+            note,
+            "Tempo in this session is 0.4.0 but 0.5.4 is installed: tell the user to restart"
+            " this session (`claude --continue`) to use it.",
+        )
+        self.assertEqual(cli.restart_note("s1"), "")
+        self.assertEqual(cli.restart_note("s2"), note)
+
+    def test_the_prompt_hook_puts_the_line_first_and_says_it_once(self):
+        self.install("0.5.4")
+        self.add()
+        self.store.answer("demo", 1, "b")
+        context = self.hook("user-prompt-submit")
+        self.assertTrue(context.startswith("Tempo in this session is 0.4.0 but 0.5.4"))
+        self.assertIn("answered (b) Right", context)
+        self.assertEqual(self.hook("user-prompt-submit"), "")
+
+    def test_the_session_start_hook_says_it(self):
+        self.install("0.5.4")
+        with mock.patch.object(cli, "start_server"):
+            self.assertIn("restart this session", self.hook("session-start"))
+
+    def test_the_same_or_a_newer_session_is_not_told(self):
+        for version in ("0.4.0", "0.3.9"):
+            with self.subTest(version=version):
+                self.install(version)
+                self.assertEqual(cli.restart_note("s1"), "")
+
+    def test_an_unreadable_list_says_nothing(self):
+        self.assertEqual(cli.restart_note("s1"), "")  # No file at all.
+        for content in ("not json", "[]", '{"plugins": {"tempo@tempo": "0.5.4"}}', "{}"):
+            with self.subTest(content=content):
+                with open(self.installed, "w") as file:
+                    file.write(content)
+                self.assertEqual(cli.restart_note("s1"), "")
+
+    def test_a_checkout_or_worktree_says_nothing(self):
+        self.install("0.5.4")
+        for make in (os.mkdir, lambda path: open(path, "w").close()):
+            with self.subTest(make=make):
+                git = os.path.join(self.root, ".git")
+                make(git)
+                self.assertEqual(cli.restart_note("s1"), "")
+                (os.rmdir if os.path.isdir(git) else os.remove)(git)
+
+    def test_no_session_id_or_own_version_says_nothing(self):
+        self.install("0.5.4")
+        self.assertEqual(cli.restart_note(None), "")
+        with mock.patch("tempo.server.version", return_value=None):
+            self.assertEqual(cli.restart_note("s1"), "")
+
+    def test_a_marker_that_cannot_be_used_says_nothing(self):
+        self.install("0.5.4")
+        os.mkdir(os.path.join(self.tmp.name, "restart-noted"))  # A folder, not a file.
+        with redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(cli.restart_note("s1"), "")
+        self.assertIn("version check skipped", err.getvalue())
+
+
 class TempoPidTest(unittest.TestCase):
     def test_only_names_a_process_running_tempo_serve(self):
         def ran(stdout):

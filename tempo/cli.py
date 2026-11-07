@@ -17,6 +17,7 @@ from typing import Any
 
 from tempo import log
 from tempo.store import (
+    CODE_ROOT,
     Entries,
     Entry,
     Question,
@@ -28,6 +29,8 @@ from tempo.store import (
 )
 
 DEFAULT_PORT = 2204
+# Where Claude Code lists the installed plugins and their versions.
+INSTALLED_PLUGINS = "~/.claude/plugins/installed_plugins.json"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -376,6 +379,7 @@ def run_hook(args: argparse.Namespace) -> int:
         page = ", page not started"
         print("tempo: the page did not start: %s" % error, file=sys.stderr)
     project = "-"
+    note = restart_note(payload.get("session_id"))
     try:
         override = setting("PROJECT")
         project = override or project_name(cwd, record=True)
@@ -388,8 +392,11 @@ def run_hook(args: argparse.Namespace) -> int:
     except Exception as error:
         log.write("hook", args.event, project, "error: %s" % error)
         print("tempo: hook skipped: %s" % error, file=sys.stderr)
-        return 0
-    log.write("hook", args.event, project, outcome)
+        # The restart line still goes out when the rest of the hook fails.
+        text, outcome = "", ""
+    if outcome:
+        log.write("hook", args.event, project, outcome)
+    text = "\n".join(part for part in (note, text) if part)
     if text:
         event = "SessionStart" if args.event == "session-start" else "UserPromptSubmit"
         print(
@@ -430,6 +437,59 @@ def session_note(project: str, port: int, path: str | None = None) -> str:
                 "- %s %s%s %s" % (q["label"], q["title"], goal if q["goal"] else "", _url(q))
             )
     return "\n".join(lines)
+
+
+def restart_note(session_id: object) -> str:
+    """One line asking for a restart when the plugin installed since this session started
+    is newer than the code its hooks run. Said once per session, and never by code that
+    runs from a git checkout or worktree. Any problem means no line."""
+    from tempo import server
+
+    try:
+        if not isinstance(session_id, str) or not session_id:
+            return ""
+        if os.path.exists(os.path.join(CODE_ROOT, ".git")):
+            return ""
+        ours, installed = server.version(), installed_version()
+        if not ours or not installed or not _older(ours, installed):
+            return ""
+        # The sessions already told, one id per line, next to the database.
+        marker = os.path.join(os.path.dirname(_db_path()), "restart-noted")
+        told: list[str] = []
+        with contextlib.suppress(FileNotFoundError), open(marker, encoding="utf-8") as file:
+            told = file.read().split()
+        if session_id in told:
+            return ""
+        # The last hundred sessions are plenty, so the file stays small.
+        with open(marker, "w", encoding="utf-8") as file:
+            file.write("\n".join([*told[-99:], session_id]) + "\n")
+    except Exception as error:
+        print("tempo: version check skipped: %s" % error, file=sys.stderr)
+        return ""
+    return (
+        "Tempo in this session is %s but %s is installed: tell the user to restart this"
+        " session (`claude --continue`) to use it." % (ours, installed)
+    )
+
+
+def installed_version() -> str | None:
+    """The highest version of Tempo that Claude Code lists as installed, or None when the
+    list is missing or not in a shape this code knows."""
+    try:
+        with open(os.path.expanduser(INSTALLED_PLUGINS), encoding="utf-8") as file:
+            entries = json.load(file)["plugins"]["tempo@tempo"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if isinstance(entries, dict):
+        entries = [entries]
+    if not isinstance(entries, list):
+        return None
+    best: str | None = None
+    for entry in entries:
+        version = entry.get("version") if isinstance(entry, dict) else None
+        if isinstance(version, str) and _older(best, version):
+            best = version
+    return best
 
 
 def rename_note(rename: dict[str, Any]) -> str:
