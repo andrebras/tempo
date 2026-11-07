@@ -545,6 +545,14 @@ def _take_inbox(store: Store, project: str | None) -> str:
             line = "- %s %s %s" % (heading, verb, _describe_answer(question, entry))
             if earlier:
                 line += "\n  Before: %s" % _describe_answer(question, earlier[-1])
+            if "?" in (entry["body"] or ""):
+                # Rewording reopens an answered question, so its reply goes in the thread.
+                how = (
+                    "`tempo context %d`" % entry["number"]
+                    if question["status"] == "answered"
+                    else "`tempo reword %d --context`" % entry["number"]
+                )
+                line += "\n  The note asks something: answer it in the question with %s." % how
         else:
             line = "- %s asks for more: %s" % (heading, entry["body"])
         lines.append(line)

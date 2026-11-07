@@ -321,6 +321,16 @@ class CliTest(DatabaseTest):
         self.assertIn("asks for more: What is left?", out)
         self.assertIn("tempo reword", out)
 
+    def test_a_note_that_asks_something_needs_a_reply(self):
+        self.add()
+        self.add()
+        self.store.answer("demo", 1, "a", "Fine. Do we still need the skill?")
+        self.store.answer("demo", 2, "b", "Nicer view")
+        _, out, _ = run("inbox")
+        self.assertIn("answer it in the question with `tempo context 1`", out)
+        self.assertEqual(out.count("The note asks something"), 1)
+        self.assertNotIn("reword", out)
+
     def test_wait_returns_as_soon_as_something_arrives(self):
         self.add()
         self.store.follow_up("demo", 1, "Hm?")
