@@ -420,7 +420,21 @@ function renamed(from, to) {
   if (back && decodeURIComponent(back[1]) === from) state.back = `#/${encodeURIComponent(to)}/${back[2]}`;
 }
 
+// Names being typed are kept, by field, so a redraw from elsewhere (such as the rename
+// banner) doesn't wipe them. A saved rename's field has a new label, so it starts fresh.
 function renderSettings(data) {
+  const typed = new Map([...document.querySelectorAll("#settings input")]
+    .filter((input) => input.value !== input.defaultValue)
+    .map((input) => [input.getAttribute("aria-label"), input.value]));
+  drawSettings(data);
+  for (const input of document.querySelectorAll("#settings input")) {
+    if (!typed.has(input.getAttribute("aria-label"))) continue;
+    input.value = typed.get(input.getAttribute("aria-label"));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+function drawSettings(data) {
   $("#settings").replaceChildren(el("div", { class: "settings" },
     el("button", { class: "back", onclick: closeSettings }, "← Back to questions"),
     el("h2", {}, "Settings"),

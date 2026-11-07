@@ -49,6 +49,8 @@ All notable changes to Tempo are listed here. The format follows
   joined) says "Question not found". Before, it opened another question without saying so.
 - When Claude changes the question you are typing a note on, the note box keeps focus and the
   cursor stays where it was.
+- Clicking "Link" or "Keep" in the rename banner while Settings is open no longer clears a
+  project name you are typing.
 
 ### Security
 
