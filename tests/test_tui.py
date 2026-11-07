@@ -7,6 +7,7 @@ from tempo import cli
 from tempo.store import Store, connect
 from tempo.tui.model import NARROW, Board, detail_lines, layout
 from tempo.tui.text import cell_width, clip, plain, rich, wrap
+from tempo.tui.view import TextCanvas, draw
 from tests.helpers import DatabaseTest
 
 
@@ -273,3 +274,94 @@ class LayoutTest(unittest.TestCase):
         self.assertEqual(list(panels), ["detail"])
         self.assertEqual(panels["detail"].width, NARROW - 1)
         self.assertEqual(list(layout(80, 6, "projects", projects=3)), ["projects"])
+
+
+class ViewTest(DatabaseTest):
+    """The screen as text, drawn by the same code that draws it in the terminal."""
+
+    def setUp(self):
+        super().setUp()
+        self.board = Board(self.store, "demo")
+
+    def screen(self, width=80, height=24):
+        canvas = TextCanvas(height, width)
+        cursor = draw(self.board, canvas)
+        return canvas.text().split("\n"), cursor
+
+    def test_wide_screens_show_the_three_panels_and_the_keys(self):
+        self.add(title="Left or right?", goal="Release")
+        self.board.reload()
+        lines, cursor = self.screen()
+        self.assertEqual(len(lines), 24)
+        self.assertTrue(all(cell_width(line) <= 80 for line in lines))
+        self.assertIn("┌─ Projects ", lines[0])
+        self.assertIn("┌─ Detail ", lines[0])
+        text = "\n".join(lines)
+        self.assertIn("● demo", text)
+        self.assertIn("│Release", text)
+        self.assertIn(" Q1 Left or right?", text)
+        self.assertIn("(b) Right", text)
+        self.assertTrue(lines[-1].startswith("j/k question  Enter detail"))
+        self.assertIn("a-b answer", lines[-1])
+        self.assertIsNone(cursor)
+
+    def test_narrow_screens_show_the_focused_panel_alone(self):
+        self.add(title="Left or right?")
+        self.board.reload()
+        lines, _ = self.screen(width=50)
+        self.assertIn("Questions 2/3 · h/l", lines[0])
+        self.assertNotIn("Detail", "\n".join(lines))
+        self.board.press("l")
+        lines, _ = self.screen(width=50)
+        self.assertIn("Detail 3/3", lines[0])
+
+    def test_nothing_open(self):
+        lines, _ = self.screen()
+        text = "\n".join(lines)
+        self.assertIn("Nothing open here.", text)
+        self.assertIn("No open questions in demo.", text)
+
+    def test_the_bottom_line_asks_to_confirm_then_takes_a_note(self):
+        self.add(title="Left or right?")
+        self.board.reload()
+        self.board.press("b")
+        lines, _ = self.screen()
+        self.assertEqual(lines[-1], "Answer Q1 with (b) Right?  y send  e add a note  n cancel")
+        for key in ("e", "O", "k"):
+            self.board.press(key)
+        lines, cursor = self.screen()
+        self.assertEqual(lines[-1], "Note for (b) (Enter sends, Esc cancels): Ok")
+        self.assertEqual(cursor, (23, len(lines[-1])))
+        self.board.press("enter")
+        lines, _ = self.screen()
+        self.assertEqual(lines[-1], "Answered Q1: (b) Right / Note: Ok")
+
+    def test_long_text_scrolls_and_says_where_it_is(self):
+        self.add(context="\n\n".join("Paragraph %d." % n for n in range(30)))
+        self.board.reload()
+        lines, _ = self.screen(height=12)
+        self.assertIn(" 1-9 of ", lines[10])
+        self.board.press("pgdn")
+        lines, _ = self.screen(height=12)
+        # A page is the panel's height less one line, kept for context.
+        self.assertIn(" 9-17 of ", lines[10])
+        for _ in range(20):
+            self.board.press("ctrl-d")
+            self.screen(height=12)
+        lines, _ = self.screen(height=12)
+        total = int(lines[10].split(" of ")[1].split()[0])
+        # Scrolled no further than the last page.
+        self.assertIn(" %d-%d of %d " % (total - 8, total, total), lines[10])
+
+    def test_help_lists_the_keys(self):
+        self.board.press("?")
+        text = "\n".join(self.screen()[0])
+        self.assertIn("─ Help ", text)
+        self.assertIn("Shift is needed for h j k l q r", text)
+        self.board.press("x")
+        self.assertNotIn("─ Help ", "\n".join(self.screen()[0]))
+
+    def test_wide_characters_fill_two_cells(self):
+        canvas = TextCanvas(1, 6)
+        canvas.put(0, 0, "数据库表")
+        self.assertEqual(canvas.text(), "数据库")
