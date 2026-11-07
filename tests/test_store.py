@@ -140,6 +140,14 @@ class ThreadTest(DatabaseTest):
             self.store.answer("demo", 1, None, "  ")
         self.assertEqual(self.store.answer("demo", 1, None, "Neither")["status"], "answered")
 
+    def test_a_blank_option_letter_counts_as_no_option(self):
+        self.add()
+        with self.assertRaisesRegex(QuestionError, "Pick an option or write an answer"):
+            self.store.answer("demo", 1, "  ", "")
+        question = self.store.answer("demo", 1, "  ", "Neither")
+        self.assertEqual(question["answer"]["choice"], None)
+        self.assertEqual(question["answer"]["body"], "Neither")
+
     def test_rewording_an_answered_question_opens_it_again(self):
         self.add()
         self.store.answer("demo", 1, None, "Give me more options")
@@ -442,6 +450,14 @@ class ProjectsTest(DatabaseTest):
         )
         self.assertEqual(self.store.get("Tempo", 3)["entries"], [])
 
+    def test_a_join_keeps_one_start_here_per_goal(self):
+        self.add(project="Tempo", goal="Release", start_here="unlocks the rest")
+        self.add(project="tempo", goal="Release", start_here="sets the pattern")
+        self.add(project="tempo", goal="Docs", start_here="unlocks the docs")
+        self.store.rename_project("tempo", "Tempo")
+        marked = {q["number"]: q["start_here"] for q in self.store.list("Tempo")}
+        self.assertEqual(marked, {1: "unlocks the rest", 2: None, 3: "unlocks the docs"})
+
     def test_rename_into_a_project_with_questions_keeps_numbers_when_it_has_none(self):
         self.add(project="onzehq")
         self.store.see_folder("onzehq-api")
@@ -575,6 +591,62 @@ class RenameTest(DatabaseTest):
         for path, project in [("/lab/tempo", " "), ("/nowhere", "Tempo")]:
             with self.subTest(path=path), self.assertRaises(QuestionError):
                 self.store.link_folder(path, project)
+
+
+class RaceTest(DatabaseTest):
+    """Another connection (a second tab, the page and the tempo command) writes between
+    this store's checks and its own write."""
+
+    def meanwhile(self, change):
+        """Run change on a second connection just before this store's next transaction."""
+        real = self.store._transaction
+
+        def first_the_other():
+            self.store._transaction = real
+            with Store(connect(self.env["TEMPO_DB"])) as other:
+                change(other)
+            return real()
+
+        self.store._transaction = first_the_other
+
+    def answers(self, number):
+        return [e for e in self.store.get("demo", number)["entries"] if e["kind"] == "answer"]
+
+    def test_a_second_answer_at_the_same_moment_is_refused(self):
+        self.add()
+        self.meanwhile(lambda other: other.answer("demo", 1, "a"))
+        with self.assertRaisesRegex(QuestionError, "already answered"):
+            self.store.answer("demo", 1, "b")
+        self.assertEqual([e["choice"] for e in self.answers(1)], ["a"])
+
+    def test_an_answer_for_an_option_a_reword_just_removed_is_refused(self):
+        self.add(options=["Left", "Right", "Up"])
+        self.meanwhile(lambda other: other.reword("demo", 1, "Fewer", options=["Left", "Right"]))
+        with self.assertRaisesRegex(QuestionError, r"Option \(c\) does not exist"):
+            self.store.answer("demo", 1, "c")
+        self.assertEqual(self.answers(1), [])
+
+    def test_a_follow_up_on_a_question_archived_meanwhile_is_refused(self):
+        self.add()
+        self.store.answer("demo", 1, "a")
+        self.meanwhile(lambda other: other.archive_answered("demo"))
+        with self.assertRaisesRegex(QuestionError, "archived"):
+            self.store.follow_up("demo", 1, "Why?")
+
+    def test_an_entry_taken_by_another_reader_meanwhile_is_not_taken_again(self):
+        self.add()
+        self.store.follow_up("demo", 1, "Why?")
+        taken = []
+        self.meanwhile(lambda other: taken.extend(other.take_undelivered("demo")))
+        self.assertEqual(self.store.take_undelivered("demo"), [])
+        self.assertEqual([entry["body"] for entry in taken], ["Why?"])
+        self.assertEqual(self.store.undelivered("demo"), [])
+
+    def test_two_rewords_at_the_same_moment_both_save(self):
+        self.add()
+        self.meanwhile(lambda other: other.reword("demo", 1, "First", title="One?"))
+        question = self.store.reword("demo", 1, "Second", title="Two?")
+        self.assertEqual((question["version"], question["title"]), (3, "Two?"))
 
 
 class MigrateTest(DatabaseTest):

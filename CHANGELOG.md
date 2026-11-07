@@ -4,6 +4,24 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Two answers sent to one question at the same moment (a double click, two tabs, or the page
+  and the `tempo` command) no longer both save; the second is refused as already answered.
+  An answer, follow-up or reopen also checks the question again inside its write, so it
+  cannot land on a question archived or reworded a moment before, or pick an option the
+  reword removed.
+- Two rewords of one question at the same moment both save, as versions one after the
+  other, instead of the second failing with a database error.
+- A blank option letter with a written answer saves the written answer, instead of failing
+  with "Option () does not exist".
+- Joining a project into another one keeps one "start here" mark per goal. When both had a
+  marked question in the same goal, the joined project's mark is dropped.
+- An answer or follow-up reaches Claude once, even when two sessions in the same project,
+  or a session and `tempo wait`, pick up the user's news at the same moment.
+
 ## [0.5.4] - 2026-11-07
 
 ### Added

@@ -333,18 +333,20 @@ class Store:
         clear_start_here: bool = False,
     ) -> Question:
         note = _required(note, "note (why it was reworded)")
-        question = self._find(project, number)
-        if question["status"] == "archived":
-            raise QuestionError("Archived questions cannot be reworded")
-        goals = self._goal_change(question, goal, start_here, clear_start_here)
-        current = self._current_version(question["id"])
-        lettered = _letter(options) if options is not None else json.loads(current["options"])
-        if recommended is None and lettered is not None:
-            letters = [option["letter"] for option in lettered]
-            recommended = current["recommended"] if current["recommended"] in letters else None
-        recommended = _recommended(recommended, lettered)
-        version = current["version"] + 1
+        # The current version is read inside the lock, so two rewords at once number
+        # their versions one after the other instead of both taking the same number.
         with self._transaction():
+            question = self._find(project, number)
+            if question["status"] == "archived":
+                raise QuestionError("Archived questions cannot be reworded")
+            goals = self._goal_change(question, goal, start_here, clear_start_here)
+            current = self._current_version(question["id"])
+            lettered = _letter(options) if options is not None else json.loads(current["options"])
+            if recommended is None and lettered is not None:
+                letters = [option["letter"] for option in lettered]
+                recommended = current["recommended"] if current["recommended"] in letters else None
+            recommended = _recommended(recommended, lettered)
+            version = current["version"] + 1
             self._insert_version(
                 question["id"],
                 version,
@@ -404,31 +406,41 @@ class Store:
 
     def follow_up(self, project: str, number: int, body: str) -> Question:
         body = _required(body, "follow-up")
-        question = self._find(project, number)
-        if question["status"] == "archived":
-            raise QuestionError("This question is archived")
-        self._insert_entry(question, "followup", "user", body)
+        with self._transaction():
+            question = self._find(project, number)
+            if question["status"] == "archived":
+                raise QuestionError("This question is archived")
+            self._insert_entry(question, "followup", "user", body)
         return self.get(project, number)
 
     def answer(
         self, project: str, number: int, choice: str | None = None, body: str | None = ""
     ) -> Question:
-        question = self._find(project, number)
-        if question["status"] == "archived":
-            raise QuestionError("This question is archived")
-        if question["status"] == "answered":
-            raise QuestionError("This question is already answered; reopen it to answer again")
         body = (body or "").strip()
-        current = self._current_version(question["id"])
-        letters = [option["letter"] for option in json.loads(current["options"])]
-        if choice:
-            choice = choice.strip().lower()
-            if choice not in letters:
-                raise QuestionError("Option (%s) does not exist" % choice)
-        elif not body:
-            raise QuestionError("Pick an option or write an answer")
+        choice = (choice or "").strip().lower()
+        # The checks run inside the write's lock, so a second answer or a reword from
+        # another tab or the tempo command cannot slip in between them and the write.
         with self._transaction():
-            self._insert_entry(question, "answer", "user", body, choice=choice or None)
+            question = self._find(project, number)
+            if question["status"] == "archived":
+                raise QuestionError("This question is archived")
+            if question["status"] == "answered":
+                raise QuestionError("This question is already answered; reopen it to answer again")
+            current = self._current_version(question["id"])
+            letters = [option["letter"] for option in json.loads(current["options"])]
+            if choice:
+                if choice not in letters:
+                    raise QuestionError("Option (%s) does not exist" % choice)
+            elif not body:
+                raise QuestionError("Pick an option or write an answer")
+            self._insert_entry(
+                question,
+                "answer",
+                "user",
+                body,
+                choice=choice or None,
+                version=current["version"],
+            )
             self.db.execute(
                 "UPDATE questions SET status = 'answered', updated_at = ? WHERE id = ?",
                 (now(), question["id"]),
@@ -440,13 +452,14 @@ class Store:
 
         The earlier answers stay in the thread; the next one is delivered as a change.
         """
-        question = self._find(project, number)
-        if question["status"] != "answered":
-            raise QuestionError("Only answered questions can be reopened")
-        self.db.execute(
-            "UPDATE questions SET status = 'open', updated_at = ? WHERE id = ?",
-            (now(), question["id"]),
-        )
+        with self._transaction():
+            question = self._find(project, number)
+            if question["status"] != "answered":
+                raise QuestionError("Only answered questions can be reopened")
+            self.db.execute(
+                "UPDATE questions SET status = 'open', updated_at = ? WHERE id = ?",
+                (now(), question["id"]),
+            )
         return self.get(project, number)
 
     # Reading
@@ -718,12 +731,21 @@ class Store:
         rows = self.db.execute(
             "SELECT * FROM questions WHERE project = ? ORDER BY number", (old,)
         ).fetchall()
+        # Only one question per project and goal is marked "start here": the target
+        # project's mark wins over a moved question's.
+        marked = {
+            row["goal"]
+            for row in self.db.execute(
+                "SELECT goal FROM questions WHERE project = ? AND start_here IS NOT NULL", (new,)
+            )
+        }
         moves = []
         for position, row in enumerate(rows):
             number = start + position
+            start_here = None if row["goal"] in marked else row["start_here"]
             self.db.execute(
-                "UPDATE questions SET project = ?, number = ? WHERE id = ?",
-                (new, number, row["id"]),
+                "UPDATE questions SET project = ?, number = ?, start_here = ? WHERE id = ?",
+                (new, number, start_here, row["id"]),
             )
             self._insert_entry(
                 row,
@@ -738,6 +760,18 @@ class Store:
         return moves
 
     def undelivered(self, project: str | None = None) -> Entries:
+        return self._undelivered(project)
+
+    def take_undelivered(self, project: str | None = None) -> Entries:
+        """Return the user's undelivered entries and mark them delivered in one
+        transaction, so two readers at once (two sessions' hooks, or a hook and tempo
+        wait) never both pass on the same entry."""
+        with self._transaction():
+            entries = self._undelivered(project)
+            self.mark_delivered([entry["id"] for entry in entries])
+        return entries
+
+    def _undelivered(self, project: str | None) -> Entries:
         sql = (
             "SELECT e.*, q.project, q.number FROM entries e"
             " JOIN questions q ON q.id = e.question_id"
