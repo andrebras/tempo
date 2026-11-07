@@ -730,8 +730,13 @@ def session_note(project: str, port: int, path: str | None = None) -> str:
         " forward, named the same way across questions (e.g. 'Release 0.4')."
         ' Mark one question in a goal `--start-here "unlocks …"` only when its answer'
         " really unlocks or sets the pattern for the others.",
-        "- End every update with the open questions of this project, one line each:"
-        " number, title and %s." % ("link" if on else "`tempo show N`"),
+        "- End every update with the open questions of this project, one line each: %s"
+        % (
+            "the number as a link to the question, then the title, as in"
+            " `- [Q3](http://127.0.0.1:2204/#/shop/3) Pick a colour`. Never print a bare link."
+            if on
+            else "the number, then the title, as in `- Q3 Pick a colour`."
+        ),
         "- An answer %s never approves merging, publishing or installing:"
         " record the question in Tempo and also ask for a one-line OK in chat."
         % ("on the Tempo page" if on else "in Tempo"),
@@ -943,6 +948,7 @@ TEMPO_RUN = re.compile(
     r"(?:^|&&|\|\||;|\n)\s*(?:\w+=\S*\s+)*(?:\S*/)?(?:tempo|oq) (?:add|reword|context)\b"
 )
 PARAGRAPH = re.compile(r"\n[ \t]*\n")
+LINKED_NUMBER = "its number linked to it, as in [Q5](http://127.0.0.1:2204/#/…)"
 
 
 def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None:
@@ -979,10 +985,14 @@ def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None
             "This reply asks the user to decide something (lettered options, a yes-or-no"
             " question or a request for permission), but it is not in Tempo. Add it with"
             " `tempo add` (see the tempo skill; a yes-or-no question gets the options Yes"
-            " and No), then give the question in full with its %s. If it is already in"
-            " Tempo, give its %s in the body of the reply. Merging, publishing and"
+            " and No), then give the question in full with %s. If it is already in"
+            " Tempo, give %s in the body of the reply. Merging, publishing and"
             " installing still also need a one-line OK in chat."
-            % (("link", "link") if page else ("number", "number (such as Q5)"))
+            % (
+                (LINKED_NUMBER, "its number as a link")
+                if page
+                else ("its number", "its number (such as Q5)")
+            )
         )
     return None
 
