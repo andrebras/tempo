@@ -1230,13 +1230,26 @@ class TempoPidTest(unittest.TestCase):
 
 
 class WaitProcessesTest(unittest.TestCase):
+    def start(self, *args, env=None):
+        """Start a Python that sleeps, and return once it runs.
+
+        Popen returns as soon as the new program is loaded, which can be before Linux has
+        filled in its command line and environment in /proc. Waiting for the child to print
+        a line means its Python is already running, so both are in place.
+        """
+        code = "import sys, time; print('ready', flush=True); time.sleep(30)"
+        process = subprocess.Popen(
+            [sys.executable, "-c", code, *args], env=env, stdout=subprocess.PIPE, text=True
+        )
+        self.addCleanup(process.stdout.close)
+        self.addCleanup(process.wait)
+        self.addCleanup(process.kill)
+        self.assertEqual(process.stdout.readline(), "ready\n")
+        return process
+
     def test_lists_the_processes_running_tempo_wait(self):
-        sleep = [sys.executable, "-c", "import time; time.sleep(30)"]
-        wait = subprocess.Popen([*sleep, "-m", "tempo", "wait", "--timeout", "1800"])
-        other = subprocess.Popen([*sleep, "-m", "tempo", "serve"])
-        for process in (wait, other):
-            self.addCleanup(process.wait)
-            self.addCleanup(process.kill)
+        wait = self.start("-m", "tempo", "wait", "--timeout", "1800")
+        other = self.start("-m", "tempo", "serve")
         waits = cli._wait_processes()
         self.assertIn("-m tempo wait --timeout 1800", waits[wait.pid])
         self.assertNotIn(other.pid, waits)
@@ -1252,13 +1265,8 @@ class WaitProcessesTest(unittest.TestCase):
         self.assertIsNone(cli._process_cwd(-1))
 
     def test_finds_a_process_project_setting(self):
-        env = dict(os.environ, TEMPO_PROJECT="ONZE HQ")
-        process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], env=env)
-        self.addCleanup(process.wait)
-        self.addCleanup(process.kill)
+        process = self.start(env=dict(os.environ, TEMPO_PROJECT="ONZE HQ"))
         self.assertEqual(cli._process_project_setting(process.pid), "ONZE HQ")
         plain = {k: v for k, v in os.environ.items() if not k.endswith("_PROJECT")}
-        other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], env=plain)
-        self.addCleanup(other.wait)
-        self.addCleanup(other.kill)
+        other = self.start(env=plain)
         self.assertIsNone(cli._process_project_setting(other.pid))
