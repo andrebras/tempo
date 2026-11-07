@@ -312,6 +312,55 @@ class CliTest(DatabaseTest):
                 reply = [("user", "Go"), ("assistant", [{"type": "text", "text": text}])]
                 self.assertEqual(self.stop(*reply), "")
 
+    def test_stop_catches_questions_in_their_many_forms(self):
+        # From the second bug hunt's replies (stop_detect.py, stop_detect2.py).
+        cases = [
+            "Should I go ahead and delete the old branch?",
+            "Which do you prefer:\n(a) Postgres\n(b) SQLite",
+            "Which do you prefer:\n- a) Postgres\n- b) SQLite",
+            "Which do you prefer?\n1. Postgres\n2. SQLite",
+            "Which do you prefer:\n**A.** Postgres\n**B.** SQLite",
+            "Shall we merge it now?",
+            "Let me know if you want me to push the branch.",
+            "Want me to open the PR?",
+            "I'll push it once you confirm: should I push to origin?",
+            "Next steps for you:\n- Say whether I should delete the branch.",
+            'Should I delete "old-branch" now?',
+            "Should I run `git push --force` now?",
+            "Is it OK if I delete the branch?",
+            "Would you prefer Postgres or SQLite?",
+            "Ready to merge — go ahead?",
+            "Should I merge? I recommend yes, the tests pass.",
+            # A dot inside the question: versions, file names, paths, abbreviations.
+            "Should I tag v0.5.4 now?",
+            "Should I edit README.md as well?",
+            "May I delete ~/.claude/tempo/server.log?",
+            "Do you want me to bump it to 0.6.0?",
+            "Should I open the PR, e.g. against main?",
+            "Should I tag v0.5.4 now? (y/n)",
+        ]
+        for text in cases:
+            with self.subTest(text):
+                out = self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
+                self.assertEqual(json.loads(out or "{}").get("decision"), "block")
+
+    def test_stop_lets_statements_and_questions_it_answers_itself_through(self):
+        cases = [
+            "I asked myself: should I refactor this? No, it's fine as is.",
+            'The docs say: "Can I use WAL mode?" Yes.',
+            "Fixed the bug where (a) the hook crashed and (b) the server hung.",
+            "Done. The test asks `Should I retry?` and returns.",
+            "Do you want to know why? Because the lock was missing.",
+            "Two bugs: (a) the race and (b) the leak. Both fixed.",
+            "Let me know if anything looks off.",
+            "Tell me if I missed something.",
+            "Let me know whether the page loads now.",
+        ]
+        for text in cases:
+            with self.subTest(text):
+                reply = [("user", "Go"), ("assistant", [{"type": "text", "text": text}])]
+                self.assertEqual(self.stop(*reply), "")
+
     def test_stop_lets_tempo_questions_and_old_replies_through(self):
         options = [{"type": "text", "text": "(a) Left (b) Right"}]
         linked = [{"type": "text", "text": "(a) Left (b) Right http://127.0.0.1:2204/#/demo/1"}]

@@ -700,12 +700,29 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
     return None, project, "let through"
 
 
-# Lettered options such as "(a) …" and "(b) …" on separate items of one reply.
-OPTION = re.compile(r"(?:^|\s)\(([a-e])\)\s", re.MULTILINE)
-# A yes-or-no question or a request for permission, starting a sentence or a list item.
+# Lettered options: "(a) …" and "(b) …" in a sentence, or one per line or list item, as
+# "(a) …", "- a) …" or "**A.** …". A "(b)" after "and" lists facts, not a choice.
+OPTION = re.compile(
+    r"(?:^|(?<!\band)\s)\(([a-e])\)\s"
+    r"|^[ \t]*(?:[-*+][ \t]+)?(?:\*\*)?\(?([a-eA-E])[).](?:\*\*)?[ \t]",
+    re.MULTILINE,
+)
+# A question's words up to its "?": a dot counts when it isn't ending a sentence, as in
+# v0.5.4, README.md or "e.g. ".
+QUESTION = r"(?:[^.!?\n]|\.(?=\S)|(?<=e\.g|i\.e)\.)*\?"
+# A "?" Claude answers at once ("…? No, …", "…? Because …") is not asked of the user.
+UNANSWERED = r"(?![ \t]*(?:yes|no|nope|not|because)\b)"
+# A yes-or-no question, a choice or a request for permission, starting a sentence or a
+# list item, or a request to say which.
 ASK = re.compile(
     r"(?:^|[.!?:]\s+|^\s*[-*]\s+)(?:(?:may|can|could|should|shall) (?:i|we)"
-    r"|do you want|would you like|want me to|ok(?:ay)? to)\b[^.!?\n]*\?"
+    r"|do you (?:want|prefer)|would you (?:like|prefer)|want me to|ok(?:ay)? to"
+    r"|is it ok(?:ay)? (?:if|to)|which (?:one |option )?(?:do|would|should) (?:you|i|we))\b"
+    + QUESTION
+    + UNANSWERED
+    + r"|\b(?:go ahead|proceed|ok(?:ay)?)\?"
+    r"|\b(?:say|tell me|let me know|confirm) (?:whether|if|which)"
+    r" (?:(?:i|we) (?:should|can|may)|you(?:'d)? (?:want|like|prefer)|one|option)\b"
     r"|\byes or no\b|\breply (?:yes|no|ok)\b|\(y(?:es)?/n(?:o)?\)",
     re.IGNORECASE | re.MULTILINE,
 )
@@ -736,7 +753,8 @@ def unrecorded_options(payload: dict[str, Any]) -> str | None:
     except (KeyError, OSError, ValueError, TypeError, AttributeError):
         return None
     prose = QUOTED.sub(" ", text)
-    asks = {"a", "b"} <= set(OPTION.findall(prose)) or ASK.search(prose)
+    letters = {(inline or listed).lower() for inline, listed in OPTION.findall(prose)}
+    asks = {"a", "b"} <= letters or ASK.search(prose)
     recorded = TEMPO_RUN.search(commands) or TEMPO_LINK.search(LISTED.sub("", prose))
     if asks and not recorded:
         return (
