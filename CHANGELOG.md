@@ -8,6 +8,11 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Added
 
+- Threads, an early feature that is off by default. With `TEMPO_THREADS=1` set where the
+  Tempo server starts, `/threads` opens a page where each conversation with Claude is its
+  own thread: Claude works on it in a background session in the chosen project folder and
+  replies there with the result only. Settings links to the page while it is on. With the
+  setting off, the page and its API answer "Not found".
 - Answers always reach Claude. When a reply ends, the Stop hook hands Claude the project's
   new answers and follow-ups, so it carries on with them instead of stopping. If the project
   has open questions and no `tempo wait` is running, it sends Claude back once to start one.

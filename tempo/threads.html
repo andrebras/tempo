@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tempo threads</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f5f0; --panel: #ffffff; --sunken: #f1eee7; --text: #23211c; --muted: #77726a;
+    --line: #e7e2d8; --accent: #4f46e5; --accent-soft: #eeedfd; --bad: #c2410c;
+    --radius: 14px;
+    --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #15141a; --panel: #1d1c24; --sunken: #18171e; --text: #ecebf2; --muted: #9b98a8;
+      --line: #2d2b36; --accent: #8b85ff; --accent-soft: #26244a; --bad: #fb923c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 var(--font); }
+  .app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
+  aside { border-right: 1px solid var(--line); overflow: auto; padding: 16px; }
+  aside h1 { font-size: 1rem; margin: 0 0 12px; }
+  .thread { display: block; width: 100%; text-align: left; border: 1px solid var(--line);
+    background: var(--panel); color: inherit; border-radius: 10px; padding: 10px 12px;
+    margin-bottom: 8px; cursor: pointer; font: inherit; }
+  .thread.on { border-color: var(--accent); }
+  .thread .title { font-weight: 600; }
+  .thread .last { color: var(--muted); font-size: .85rem; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: .75rem; padding: 1px 8px; border-radius: 99px;
+    background: var(--accent-soft); color: var(--accent); }
+  .badge.failed { color: var(--bad); }
+  main { display: flex; flex-direction: column; min-width: 0; }
+  #messages { flex: 1; overflow: auto; padding: 24px; max-width: 80ch; width: 100%;
+    margin: 0 auto; }
+  .msg { margin-bottom: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg .who { font-size: .8rem; color: var(--muted); }
+  .msg.user .body { background: var(--accent-soft); border-radius: var(--radius); padding: 10px 14px; }
+  .msg.claude .body { background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 10px 14px; }
+  form { border-top: 1px solid var(--line); padding: 12px 16px; display: grid; gap: 8px;
+    max-width: 80ch; width: 100%; margin: 0 auto; }
+  textarea, input { font: inherit; color: inherit; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
+  textarea { min-height: 80px; resize: vertical; }
+  button.send { justify-self: end; background: var(--accent); color: #fff; border: 0;
+    border-radius: 10px; padding: 8px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.send:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--muted); font-size: .85rem; }
+  .error { color: var(--bad); font-size: .85rem; }
+  @media (max-width: 720px) {
+    .app { grid-template-columns: 1fr; height: auto; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 40vh; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Threads</h1>
+    <button class="thread" id="new" type="button"><span class="title">+ New thread</span></button>
+    <div id="list"></div>
+  </aside>
+  <main>
+    <div id="messages"><p class="hint">Start a thread: one topic per thread. Claude works on it in its own session and replies here with the result only.</p></div>
+    <form id="composer">
+      <input id="folder" placeholder="Project folder, e.g. ~/Lab/tempo">
+      <textarea id="body" placeholder="Ask or tell Claude something…"></textarea>
+      <div class="error" id="error"></div>
+      <button class="send" type="submit">Send</button>
+    </form>
+  </main>
+</div>
+<script>
+const state = { current: null, threads: [] };
+const $ = (id) => document.getElementById(id);
+
+function remembered(key) {
+  try { return localStorage.getItem(key) || ""; } catch { return ""; }
+}
+function remember(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* storage may be blocked */ }
+}
+
+async function api(path, body) {
+  const response = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+function el(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  Object.assign(node, attrs || {});
+  node.append(...children.filter((child) => child !== null && child !== undefined));
+  return node;
+}
+
+function renderList() {
+  $("list").replaceChildren(...state.threads.map((thread) => {
+    const button = el("button", { className: "thread" + (thread.id === state.current ? " on" : ""), type: "button" },
+      el("div", { className: "title" }, thread.title),
+      el("div", { className: "last" }, thread.last || ""),
+      el("span", { className: "badge " + thread.status }, label(thread.status)));
+    button.onclick = () => { state.current = thread.id; refresh(); };
+    return button;
+  }));
+}
+
+function label(status) {
+  return { working: "Claude is working…", waiting: "Your turn", failed: "Failed" }[status];
+}
+
+async function renderThread() {
+  const folder = $("folder");
+  if (!state.current) {
+    folder.hidden = false;
+    $("messages").replaceChildren(el("p", { className: "hint" },
+      "Start a thread: one topic per thread. Claude works on it in its own session and replies here with the result only."));
+    return;
+  }
+  const thread = await api("/api/threads/" + state.current);
+  folder.hidden = true;
+  const nodes = [el("p", { className: "hint" }, thread.folder)];
+  for (const message of thread.messages) {
+    nodes.push(el("div", { className: "msg " + message.author },
+      el("div", { className: "who" }, message.author === "user" ? "You" : "Claude"),
+      el("div", { className: "body" }, message.body)));
+  }
+  if (thread.status === "working") nodes.push(el("p", { className: "hint" }, "Claude is working…"));
+  const box = $("messages");
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+  box.replaceChildren(...nodes);
+  if (atBottom) box.scrollTop = box.scrollHeight;
+  document.querySelector("button.send").disabled = thread.status === "working";
+}
+
+async function refresh() {
+  try {
+    state.threads = (await api("/api/threads")).threads;
+    renderList();
+    await renderThread();
+  } catch (error) {
+    $("error").textContent = error.message;
+  }
+}
+
+$("new").onclick = () => { state.current = null; refresh(); };
+$("folder").value = remembered("tempo-threads-folder");
+$("composer").onsubmit = async (event) => {
+  event.preventDefault();
+  const body = $("body").value.trim();
+  if (!body) return;
+  $("error").textContent = "";
+  try {
+    if (state.current) {
+      await api("/api/threads/" + state.current, { body });
+    } else {
+      const folder = $("folder").value.trim();
+      remember("tempo-threads-folder", folder);
+      state.current = (await api("/api/threads", { folder, body })).id;
+    }
+    $("body").value = "";
+    refresh();
+  } catch (error) {
+    $("error").textContent = error.message;
+  }
+};
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
