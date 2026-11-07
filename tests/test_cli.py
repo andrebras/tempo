@@ -282,6 +282,7 @@ class CliTest(DatabaseTest):
         _, out, _ = run("hook", "user-prompt-submit", stdin=hook)
         self.assertEqual(out, "")
         self.assertEqual(self.store.folders()[0]["project"], "onzehq")
+        self.assertEqual(self.store.folders()[0]["path"], os.path.realpath("/x/onzehq"))
         self.store.rename_project("onzehq", "ONZE HQ")
         self.store.follow_up("ONZE HQ", 1, "Why?")
         _, out, _ = run("hook", "user-prompt-submit", stdin=hook)
@@ -294,7 +295,7 @@ class CliTest(DatabaseTest):
     def test_add_remembers_the_folder_and_uses_its_project(self):
         del os.environ["TEMPO_PROJECT"]
         add = ("add", "--title", "T", "--context", "C", "--option", "x", "--option", "y")
-        with mock.patch.object(cli, "folder_name", return_value="tempo-settings"):
+        with mock.patch.object(cli, "folder_path", return_value="/x/tempo-settings"):
             _, out, _ = run(*add)
             self.assertIn("Added Q1 in tempo-settings", out)
             self.store.rename_project("tempo-settings", "Tempo")
@@ -373,7 +374,7 @@ class CliTest(DatabaseTest):
         self.assertFalse(os.path.exists(dead))
 
 
-class ProjectNameTest(unittest.TestCase):
+class ProjectNameTest(DatabaseTest):
     def test_uses_the_main_checkout_folder_from_subfolders_and_worktrees(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -387,7 +388,13 @@ class ProjectNameTest(unittest.TestCase):
         subprocess.run([*git, "-C", repo, "worktree", "add", "-q", worktree], check=True)
         for folder in [repo, os.path.join(repo, "sub"), worktree]:
             with self.subTest(folder=folder):
+                self.assertEqual(cli.folder_path(folder), os.path.realpath(repo))
                 self.assertEqual(cli.project_name(folder), "shop")
+
+    def test_uses_the_folder_itself_outside_git(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.assertEqual(cli.folder_path(tmp.name), os.path.realpath(tmp.name))
 
 
 class StartServerTest(unittest.TestCase):
