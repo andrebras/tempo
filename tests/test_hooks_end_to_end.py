@@ -1,6 +1,7 @@
 """The hooks as Claude Code runs them: `bin/tempo hook …` in a separate process, with the
 JSON Claude Code sends on stdin, against a temporary database. An answer saved the way
-the page saves it must reach Claude exactly once."""
+the page saves it must reach Claude exactly once, and a follow-up left unanswered is
+raised when the reply ends."""
 
 import json
 import os
@@ -126,6 +127,22 @@ class HooksEndToEndTest(unittest.TestCase):
         self.assertEqual(self.prompt(), "")
         with Store(connect(self.db)) as store:
             self.assertEqual(store.undelivered(), [])
+
+    def test_a_follow_up_left_unanswered_is_raised_until_answered(self):
+        self.tempo("add", "--title", "Ship?", "--context", "C", "--option", "Yes", "--option", "No")
+        with Store(connect(self.db)) as store:
+            store.follow_up("shop", 1, "What is left?")
+        self.assertIn("shop Q1 (Ship?) asks for more: What is left?", self.prompt())
+        # The reply that got it ended without an answer, and some minutes went by.
+        with Store(connect(self.db)) as store:
+            store.db.execute("UPDATE entries SET delivered_at = '2026-01-01T10:00:00Z'")
+        reason = self.stop()
+        self.assertIn("shop Q1 (Ship?) asked: What is left?", reason)
+        self.assertIn("`tempo reword 1 --context`", reason)
+        self.assertEqual(self.stop(active=True), "")
+        self.tempo("reword", "1", "--note", "Answered the follow-up", "--context", "Docs only.")
+        # Answered, so it is not raised again (the hook may still ask for a wait).
+        self.assertNotIn("What is left?", self.stop())
 
 
 if __name__ == "__main__":
