@@ -101,8 +101,30 @@ async function checkServer() {
   try {
     const now = await api("/health");
     if (!firstServer) firstServer = now;
-    else if (serverChanged(firstServer, now)) location.reload();
+    else if (serverChanged(firstServer, now)) {
+      keepDraft();
+      location.reload();
+    }
   } catch { /* restarting or down: try again on the next tick */ }
+}
+
+// What the user is typing for the question on screen, so a reload doesn't lose it. Kept
+// for this tab only; loadDetail takes it back when it draws the same question.
+function typedDraft() {
+  return { text: $("#note").value, choice: document.querySelector("input[name=choice]:checked")?.value };
+}
+
+function keepDraft() {
+  if (!state.shown || !$("#note")) return;
+  try { sessionStorage.setItem(`draft:${state.shown}`, JSON.stringify(typedDraft())); } catch { /* lost on reload */ }
+}
+
+function takeDraft(id) {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem(`draft:${id}`));
+    sessionStorage.removeItem(`draft:${id}`);
+    return draft;
+  } catch { return null; }
 }
 
 function route() {
@@ -553,12 +575,12 @@ async function loadDetail(force) {
   const key = JSON.stringify([question.project, question.number, question.version,
                               question.status, question.entries.length, question.goal, question.start_here]);
   if (!force && key === state.current) return;
-  // Keep what the user is typing when the same question refreshes underneath them.
+  // Keep what the user is typing when the same question refreshes underneath them, or
+  // what they had typed before the page reloaded.
   const id = `${question.project}/${question.number}`;
   const draft = state.shown === id && $("#note")
-    ? { text: $("#note").value,
-        choice: document.querySelector("input[name=choice]:checked")?.value }
-    : { text: "", choice: null };
+    ? typedDraft()
+    : takeDraft(id) || { text: "", choice: null };
   state.current = key;
   state.shown = id;
   detail.replaceChildren(renderQuestion(question, draft));

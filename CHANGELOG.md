@@ -39,6 +39,8 @@ All notable changes to Tempo are listed here. The format follows
   server answered "Not found" and the question stayed answered.
 - After you reopen a question, the page switches to the Open tab and stays on it. Before, the
   next refresh jumped to another question and the note you were typing was lost.
+- When the page reloads itself after a server restart (for example after an update), the note
+  you were typing and the option you picked are kept.
 
 ### Security
 
