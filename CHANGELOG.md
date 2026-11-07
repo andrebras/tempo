@@ -93,6 +93,10 @@ All notable changes to Tempo are listed here. The format follows
 - A running `tempo wait` follows its folder's project when the project is renamed or joined
   into another in Settings. Before, it kept waiting under the old name, so it missed every
   answer and the Stop hook no longer saw it as running.
+- One session no longer takes other sessions' news. `tempo inbox --all-projects` now only shows
+  every project's answers and follow-ups, without marking them seen, and `tempo wait` no longer
+  waits for every project: `--all-projects` is still accepted for one release, with a note, and
+  waits for the folder's project only.
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still

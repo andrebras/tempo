@@ -148,14 +148,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     inbox = commands.add_parser("inbox", help="Print answers and follow-ups not yet seen")
     inbox.add_argument("--project")
-    inbox.add_argument("--all-projects", action="store_true")
+    inbox.add_argument(
+        "--all-projects",
+        action="store_true",
+        help="Show every project's news without marking it seen, so its sessions still get it",
+    )
     inbox.set_defaults(run=run_inbox)
 
     wait = commands.add_parser(
         "wait", help="Block until the user answers or follows up, print it, then exit"
     )
     wait.add_argument("--project")
-    wait.add_argument("--all-projects", action="store_true")
+    # Waiting for every project took other sessions' news; the option is still accepted,
+    # with a note, for one release.
+    wait.add_argument("--all-projects", action="store_true", help=argparse.SUPPRESS)
     wait.add_argument("--timeout", type=int, default=0, help="Seconds; 0 waits forever")
     wait.add_argument("--interval", type=float, default=2.0)
     wait.set_defaults(run=run_wait)
@@ -190,6 +196,12 @@ def _start_here_arguments(parser: argparse.ArgumentParser) -> None:
 PRIORITY_GONE = (
     "tempo: priorities are no longer used, so the priority was ignored."
     " Give each question a --goal instead (see `tempo goal --help`)."
+)
+
+
+WAIT_ALL_GONE = (
+    "tempo: wait --all-projects is no longer used, because it took news meant for other"
+    " sessions. This waits for this folder's project only."
 )
 
 
@@ -296,15 +308,24 @@ def run_set_next(args: argparse.Namespace) -> None:
 
 
 def run_inbox(args: argparse.Namespace) -> None:
-    text = take_inbox(None if args.all_projects else _project(args.project))
+    if args.all_projects:
+        # Taking every project's news would keep it from the sessions it is meant for.
+        store = _store()
+        text = _describe_inbox(store, store.undelivered())
+        if text:
+            text += "\n(This is only shown: each project's sessions still receive it.)"
+    else:
+        text = take_inbox(_project(args.project))
     print(text or "Nothing new from the user.")
 
 
 def run_wait(args: argparse.Namespace) -> int:
-    named = None if args.all_projects else args.project or setting("PROJECT")
+    if args.all_projects:
+        print(WAIT_ALL_GONE, file=sys.stderr)
+    named = args.project or setting("PROJECT")
     # Without a name, the folder's project is looked up again on every check, so a
     # project renamed or joined in Settings while the wait runs is followed.
-    path = None if named or args.all_projects else folder_path(os.getcwd())
+    path = None if named else folder_path(os.getcwd())
     project = _folder_project(path) if path else named
     deadline = time.time() + args.timeout if args.timeout else None
     # A marker tells the Stop hook that a wait is running for this project.

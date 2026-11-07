@@ -543,6 +543,27 @@ class CliTest(DatabaseTest):
         self.assertFalse(cli.wait_running("demo"))
         self.assertEqual([n for n in os.listdir(self.tmp.name) if n.startswith("wait-")], [])
 
+    def test_inbox_for_every_project_shows_news_without_taking_it(self):
+        self.add(project="blog")
+        self.store.answer("blog", 1, "a")
+        _, out, _ = run("inbox", "--all-projects")
+        self.assertIn("blog Q1 (Which way?) answered (a) Left", out)
+        self.assertIn("only shown", out)
+        self.assertEqual(len(self.store.undelivered("blog")), 1)
+
+    def test_wait_no_longer_waits_for_every_project(self):
+        # One session's wait took other sessions' news; the option stays for one release.
+        self.add(project="blog")
+        self.store.answer("blog", 1, "a")
+        self.add()
+        self.store.follow_up("demo", 1, "Hm?")
+        code, out, err = run("wait", "--all-projects", "--timeout", "5", "--interval", "0.1")
+        self.assertEqual(code, 0)
+        self.assertIn("demo Q1 (Which way?) asks for more: Hm?", out)
+        self.assertNotIn("blog", out)
+        self.assertIn("--all-projects is no longer used", err)
+        self.assertEqual(len(self.store.undelivered("blog")), 1)
+
     def test_wait_follows_its_folder_when_the_project_is_renamed(self):
         del os.environ["TEMPO_PROJECT"]
         self.store.see_folder("shop", "/x/shop")
