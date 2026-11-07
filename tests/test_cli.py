@@ -543,6 +543,30 @@ class CliTest(DatabaseTest):
         self.assertFalse(cli.wait_running("demo"))
         self.assertEqual([n for n in os.listdir(self.tmp.name) if n.startswith("wait-")], [])
 
+    def test_wait_follows_its_folder_when_the_project_is_renamed(self):
+        del os.environ["TEMPO_PROJECT"]
+        self.store.see_folder("shop", "/x/shop")
+        self.add(project="shop")
+        self.waits.add(os.getpid())  # The wait runs in this process.
+        seen = []
+
+        def meanwhile(seconds):
+            # The user renames the project in Settings, then follows up under the new name.
+            if not seen:
+                self.store.rename_project("shop", "Shop")
+            else:
+                self.store.follow_up("Shop", 1, "Why?")
+            seen.append(cli.wait_running("Shop"))
+
+        with (
+            mock.patch.object(cli, "folder_path", return_value="/x/shop"),
+            mock.patch.object(cli.time, "sleep", meanwhile),
+        ):
+            _, out, _ = run("wait", "--timeout", "5", "--interval", "0.1")
+        self.assertIn("Shop Q1 (Which way?) asks for more: Why?", out)
+        # Its marker named the new project from the first check after the rename.
+        self.assertEqual(seen, [False, True])
+
     def test_wait_running_matches_the_project_and_drops_dead_markers(self):
         self.marker(os.getpid(), project="other")
         self.assertFalse(cli.wait_running("demo"))

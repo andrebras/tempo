@@ -90,6 +90,9 @@ All notable changes to Tempo are listed here. The format follows
   running. Before, the Stop hook only looked for markers, so it sent Claude back after every
   reply to start a wait that was already running. Such a wait counts for every project, as it
   cannot say which one it serves.
+- A running `tempo wait` follows its folder's project when the project is renamed or joined
+  into another in Settings. Before, it kept waiting under the old name, so it missed every
+  answer and the Stop hook no longer saw it as running.
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still

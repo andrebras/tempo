@@ -301,14 +301,21 @@ def run_inbox(args: argparse.Namespace) -> None:
 
 
 def run_wait(args: argparse.Namespace) -> int:
-    project = None if args.all_projects else _project(args.project)
+    named = None if args.all_projects else args.project or setting("PROJECT")
+    # Without a name, the folder's project is looked up again on every check, so a
+    # project renamed or joined in Settings while the wait runs is followed.
+    path = None if named or args.all_projects else folder_path(os.getcwd())
+    project = _folder_project(path) if path else named
     deadline = time.time() + args.timeout if args.timeout else None
     # A marker tells the Stop hook that a wait is running for this project.
     marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
-    with open(marker, "w", encoding="utf-8") as file:
-        json.dump({"pid": os.getpid(), "project": project}, file)
+    _write_marker(marker, project)
     try:
         while True:
+            current = _folder_project(path) if path else project
+            if current != project:
+                project = current
+                _write_marker(marker, project)
             text = take_inbox(project)
             if text:
                 print(text)
@@ -320,6 +327,18 @@ def run_wait(args: argparse.Namespace) -> int:
     finally:
         with contextlib.suppress(OSError):
             os.remove(marker)
+
+
+def _folder_project(path: str) -> str:
+    with Store(connect()) as store:
+        return store.project_for(os.path.basename(path), path)
+
+
+def _write_marker(marker: str, project: str | None) -> None:
+    """Write the wait marker whole, so the Stop hook never reads half of one."""
+    with open(marker + ".tmp", "w", encoding="utf-8") as file:
+        json.dump({"pid": os.getpid(), "project": project}, file)
+    os.replace(marker + ".tmp", marker)
 
 
 def wait_running(project: str) -> bool:
