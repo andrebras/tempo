@@ -24,6 +24,21 @@ def run(*argv, stdin=""):
     return code, out.getvalue(), err.getvalue()
 
 
+class FakeClock:
+    """Stands in for time.time and time.sleep: sleeping moves the clock on at once."""
+
+    def __init__(self):
+        self.now = 1_000_000.0
+        self.slept = []
+
+    def time(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+        self.now += seconds
+
+
 class CliTest(DatabaseTest):
     def test_add_prints_the_number_and_link(self):
         code, out, _ = run(
@@ -398,8 +413,15 @@ class CliTest(DatabaseTest):
         self.assertIn("asks for more: Hm?", out)
 
     def test_wait_gives_up_after_the_timeout(self):
-        _, out, _ = run("wait", "--timeout", "1", "--interval", "0.2")
+        clock = FakeClock()
+        with (
+            mock.patch.object(cli.time, "time", clock.time),
+            mock.patch.object(cli.time, "sleep", clock.sleep),
+        ):
+            _, out, _ = run("wait", "--timeout", "1", "--interval", "0.25")
         self.assertIn("Nothing new", out)
+        # It checked the inbox every 0.25 seconds until the second was up, without waiting.
+        self.assertEqual(clock.slept, [0.25] * 4)
 
     def marker(self, pid, project="demo"):
         path = os.path.join(self.tmp.name, "wait-%d.json" % pid)
