@@ -8,6 +8,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Added
 
+- `bin/ci` reports test coverage: a per-file summary of how much of `tempo/` the tests run,
+  including the `bin/tempo` processes some tests start. It is a report only and never fails the
+  run. On GitHub the same table appears on the job's summary page.
 - `server.log` now has one line for each change made through the page (method, path and status
   code) and for each hook run (event, project and what happened, such as "delivered 2" or
   "blocked: no wait"), so you can see afterwards what Tempo did. It never holds request bodies or
