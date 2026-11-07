@@ -87,6 +87,21 @@ class ServerTest(DatabaseTest):
         self.assertEqual(health["pid"], os.getpid())
         self.assertRegex(health["started"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 
+    def test_health_and_page_files_are_read_when_the_server_starts(self):
+        # A checkout updated under a running server must not make it claim the new
+        # version, which would stop a newer session from replacing it, nor serve the
+        # new page script against its old code.
+        # The server in setUp has started but not been asked anything yet.
+        newer = os.path.join(self.tmp.name, "page.js")
+        with open(newer, "w") as file:
+            file.write("// a newer script")
+        with (
+            mock.patch("tempo.server.version", return_value="9.9.9"),
+            mock.patch("tempo.server.SCRIPT", newer),
+        ):
+            self.assertNotEqual(json.loads(self.request("GET", "/health")[1])["version"], "9.9.9")
+            self.assertIn(b"function rich(", self.request("GET", "/page.js")[1])
+
     def test_a_body_that_is_not_an_object_is_refused(self):
         for data in (b"null", b"[]", b"5"):
             with self.subTest(data=data):

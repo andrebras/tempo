@@ -21,6 +21,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- The page's server reads its version and its page files once, when it starts. Before, a
+  server started from a git checkout that was then updated reported the new version, so a
+  newer session never replaced it, and it served the new page script against its old code.
 - Two answers sent to one question at the same moment (a double click, two tabs, or the page
   and the `tempo` command) no longer both save; the second is refused as already answered.
   An answer, follow-up or reopen also checks the question again inside its write, so it

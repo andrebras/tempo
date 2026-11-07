@@ -8,7 +8,6 @@ this page's own origin.
 from __future__ import annotations
 
 import contextlib
-import functools
 import json
 import os
 import subprocess
@@ -35,6 +34,13 @@ MAX_BODY = 1_000_000
 def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
     allowed_hosts = {"127.0.0.1:%d" % port, "localhost:%d" % port}
     allowed_origins = {"http://" + host for host in allowed_hosts}
+    # Read once, when the server starts. A checkout updated under a running server must
+    # not make it claim the new version, or serve the new page against its old code.
+    about = health()
+    with open(PAGE, "rb") as file:
+        page = file.read()
+    with open(SCRIPT, "rb") as file:
+        script = file.read()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "tempo"
@@ -46,7 +52,7 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
                 return
             # Answered without the database, so a broken database cannot hide the server.
             if _parts(urlparse(self.path).path) == ["health"]:
-                self._json(200, health())
+                self._json(200, about)
                 return
             self._safely(self._get)
 
@@ -71,11 +77,9 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
             url = urlparse(self.path)
             parts = _parts(url.path)
             if parts == []:
-                with open(PAGE, "rb") as page:
-                    self._send(200, page.read(), "text/html; charset=utf-8")
+                self._send(200, page, "text/html; charset=utf-8")
             elif parts == ["page.js"]:
-                with open(SCRIPT, "rb") as script:
-                    self._send(200, script.read(), "text/javascript; charset=utf-8")
+                self._send(200, script, "text/javascript; charset=utf-8")
             elif parts == ["api", "questions"]:
                 query = parse_qs(url.query)
                 status = query.get("status", ["open"])[0]
@@ -224,9 +228,8 @@ def version() -> str | None:
 _STARTED = time.gmtime()
 
 
-@functools.cache
 def health() -> dict[str, Any]:
-    """Who this server is, worked out once on the first /health request."""
+    """Who this server is."""
     return {
         "app": "tempo",
         "version": version(),
