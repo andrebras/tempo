@@ -685,7 +685,9 @@ def start_server(port: int) -> bool:
         return False
     # The child gets its own copy of the log file handle, so ours can close. The
     # argument list is fixed and there is no shell, so nothing outside reaches it.
-    with open(os.path.join(os.path.dirname(_db_path()), "server.log"), "a") as log:
+    log_path = os.path.join(os.path.dirname(_db_path()), "server.log")
+    # Errors in the log may quote questions, so it is private like the database.
+    with open(log_path, "a", opener=lambda name, flags: os.open(name, flags, 0o600)) as log:
         subprocess.Popen(  # noqa: S603
             [sys.executable, "-m", "tempo", "serve", "--port", str(port)],
             cwd=ROOT,
@@ -842,7 +844,7 @@ def _port() -> int:
 
 def _db_path() -> str:
     path = db_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
     return path
 
 

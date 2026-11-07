@@ -29,6 +29,13 @@ All notable changes to Tempo are listed here. The format follows
   every command fail, and a `~` left unexpanded (as in Claude Code's `env` settings) gave each
   folder its own database in a folder literally named `~`.
 
+### Security
+
+- The database and the server log are now readable by your account only (mode 0600), and a new
+  data folder is made with mode 0700. Before, they used the default permissions, so other
+  accounts on a shared machine could read every question and answer. An existing database is
+  tightened the next time Tempo opens it; an existing folder is left as it is.
+
 ## [0.5.4] - 2026-11-07
 
 ### Added

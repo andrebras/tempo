@@ -511,6 +511,7 @@ class StartServerTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.current = {"app": "tempo", "version": server.version(), "root": server.ROOT, "pid": 42}
         self.listening = True
+        self.folder = tmp.name
         self.patch("_db_path", return_value=os.path.join(tmp.name, "tempo.db"))
         self.patch("_listening", side_effect=lambda port: self.listening)
         self.fetch = self.patch("_fetch")
@@ -537,6 +538,12 @@ class StartServerTest(unittest.TestCase):
         self.listening = False
         self.assertTrue(cli.start_server(2204))
         self.popen.assert_called_once()
+
+    def test_the_log_is_private(self):
+        self.listening = False
+        cli.start_server(2204)
+        mode = os.stat(os.path.join(self.folder, "server.log")).st_mode & 0o777
+        self.assertEqual(mode, 0o600)
 
     def test_keeps_a_current_tempo(self):
         self.serve(health=self.current)

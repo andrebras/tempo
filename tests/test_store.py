@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import stat
 import tempfile
 import unittest
 from unittest import mock
@@ -807,6 +808,33 @@ class DbPathTest(unittest.TestCase):
         self.addCleanup(os.chdir, old)
         connect("questions.db").close()
         self.assertTrue(os.path.exists(os.path.join(self.home, "questions.db")))
+
+class PermissionsTest(unittest.TestCase):
+    """Questions and answers are private: other accounts on the machine cannot read them."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.path = os.path.join(tmp.name, "data", "questions.db")
+
+    def mode(self, path):
+        return stat.S_IMODE(os.stat(path).st_mode)
+
+    def test_a_new_folder_and_database_are_private(self):
+        with Store(connect(self.path)) as store:
+            store.add("demo", "Which way?", "We need to pick one.", ["Left", "Right"])
+            self.assertEqual(self.mode(self.path + "-wal"), 0o600)
+        self.assertEqual(self.mode(os.path.dirname(self.path)), 0o700)
+        self.assertEqual(self.mode(self.path), 0o600)
+
+    def test_an_existing_database_is_made_private(self):
+        os.makedirs(os.path.dirname(self.path), mode=0o755)
+        connect(self.path).close()
+        os.chmod(self.path, 0o644)
+        connect(self.path).close()
+        self.assertEqual(self.mode(self.path), 0o600)
+        # A folder Tempo did not create is left as it is.
+        self.assertEqual(self.mode(os.path.dirname(self.path)), 0o755)
 
 
 class BranchDbTest(unittest.TestCase):
