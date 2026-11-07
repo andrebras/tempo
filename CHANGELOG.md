@@ -21,6 +21,11 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- Tempo code running from a git worktree serves its page on a port of its own, worked out
+  from its database's path, instead of taking port 2204. Before, a worktree's page could
+  replace the real one, so the page showed the worktree's throwaway questions. `/health`
+  now names the database a server shows, and a session never replaces a server on another
+  database, whatever its version.
 - The page's server reads its version and its page files once, when it starts. Before, a
   server started from a git checkout that was then updated reported the new version, so a
   newer session never replaced it, and it served the new page script against its old code.

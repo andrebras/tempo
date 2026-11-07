@@ -20,7 +20,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from tempo import log
-from tempo.store import QuestionError, Store, connect
+from tempo.store import QuestionError, Store, connect, db_path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # The plugin folder this code runs from; /health names it so a stale server can be spotted.
@@ -229,12 +229,14 @@ _STARTED = time.gmtime()
 
 
 def health() -> dict[str, Any]:
-    """Who this server is."""
+    """Who this server is: its code, and the database it shows, so a session on another
+    database leaves it alone."""
     return {
         "app": "tempo",
         "version": version(),
         "commit": _commit(),
         "root": ROOT,
+        "db": db_path(),
         "pid": os.getpid(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", _STARTED),
     }

@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import time
+import zlib
 from datetime import datetime, timezone
 from typing import Any
 
@@ -23,12 +24,16 @@ from tempo.store import (
     Question,
     QuestionError,
     Store,
+    branch_db,
     connect,
     db_path,
     setting,
 )
 
 DEFAULT_PORT = 2204
+# Code on a branch database serves its page on a port in this range, picked from the
+# database's path, so it never takes the real page's port.
+BRANCH_PORTS = range(22100, 23000)
 # Where Claude Code lists the installed plugins and their versions.
 INSTALLED_PLUGINS = "~/.claude/plugins/installed_plugins.json"
 
@@ -756,7 +761,8 @@ def start_server(port: int) -> bool:
     """Start the page in the background, replacing a Tempo server that is old or broken.
 
     A Tempo server of this version or a newer one is left running, whatever folder it runs
-    from, and so is anything on the port that cannot be shown to be Tempo.
+    from, and so is one on another database and anything on the port that cannot be shown
+    to be Tempo.
     """
     from tempo.server import ROOT
 
@@ -793,6 +799,10 @@ def _stop_stale(port: int) -> bool:
     except ValueError:
         health = None
     if isinstance(health, dict) and health.get("app") == "tempo":
+        # A Tempo on another database is someone else's page: never replaced, whatever
+        # its version. One from before /health named its database is judged by version.
+        if health.get("db") and health["db"] != db_path():
+            return False
         if not _older(health.get("version"), server.version()):
             return False
         pid = health.get("pid")
@@ -916,7 +926,15 @@ def _number(value: str) -> int:
 
 
 def _port() -> int:
-    return int(setting("PORT") or DEFAULT_PORT)
+    """TEMPO_PORT if set; else, for code on a branch database, a port of its own, so its
+    page never takes the place of the real one; else 2204."""
+    chosen = setting("PORT")
+    if chosen:
+        return int(chosen)
+    branch = None if setting("DB") else branch_db()
+    if branch:
+        return BRANCH_PORTS[zlib.crc32(branch.encode()) % len(BRANCH_PORTS)]
+    return DEFAULT_PORT
 
 
 def _db_path() -> str:

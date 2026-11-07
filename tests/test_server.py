@@ -86,6 +86,7 @@ class ServerTest(DatabaseTest):
         self.assertEqual(health["root"], ROOT)
         self.assertEqual(health["pid"], os.getpid())
         self.assertRegex(health["started"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertEqual(health["db"], self.env["TEMPO_DB"])
 
     def test_health_and_page_files_are_read_when_the_server_starts(self):
         # A checkout updated under a running server must not make it claim the new
