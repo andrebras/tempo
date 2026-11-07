@@ -4,6 +4,16 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Two answers sent to one question at the same moment (a double click, two tabs, or the page
+  and the `tempo` command) no longer both save; the second is refused as already answered.
+  An answer, follow-up or reopen also checks the question again inside its write, so it
+  cannot land on a question archived or reworded a moment before, or pick an option the
+  reword removed.
+
 ## [0.5.4] - 2026-11-07
 
 ### Added

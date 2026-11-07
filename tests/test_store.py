@@ -577,6 +577,47 @@ class RenameTest(DatabaseTest):
                 self.store.link_folder(path, project)
 
 
+class RaceTest(DatabaseTest):
+    """Another connection (a second tab, the page and the tempo command) writes between
+    this store's checks and its own write."""
+
+    def meanwhile(self, change):
+        """Run change on a second connection just before this store's next transaction."""
+        real = self.store._transaction
+
+        def first_the_other():
+            self.store._transaction = real
+            with Store(connect(self.env["TEMPO_DB"])) as other:
+                change(other)
+            return real()
+
+        self.store._transaction = first_the_other
+
+    def answers(self, number):
+        return [e for e in self.store.get("demo", number)["entries"] if e["kind"] == "answer"]
+
+    def test_a_second_answer_at_the_same_moment_is_refused(self):
+        self.add()
+        self.meanwhile(lambda other: other.answer("demo", 1, "a"))
+        with self.assertRaisesRegex(QuestionError, "already answered"):
+            self.store.answer("demo", 1, "b")
+        self.assertEqual([e["choice"] for e in self.answers(1)], ["a"])
+
+    def test_an_answer_for_an_option_a_reword_just_removed_is_refused(self):
+        self.add(options=["Left", "Right", "Up"])
+        self.meanwhile(lambda other: other.reword("demo", 1, "Fewer", options=["Left", "Right"]))
+        with self.assertRaisesRegex(QuestionError, r"Option \(c\) does not exist"):
+            self.store.answer("demo", 1, "c")
+        self.assertEqual(self.answers(1), [])
+
+    def test_a_follow_up_on_a_question_archived_meanwhile_is_refused(self):
+        self.add()
+        self.store.answer("demo", 1, "a")
+        self.meanwhile(lambda other: other.archive_answered("demo"))
+        with self.assertRaisesRegex(QuestionError, "archived"):
+            self.store.follow_up("demo", 1, "Why?")
+
+
 class MigrateTest(DatabaseTest):
     def test_folders_keyed_by_name_keep_their_projects(self):
         path = os.path.join(self.tmp.name, "old.db")
