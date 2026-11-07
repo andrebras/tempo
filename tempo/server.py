@@ -16,7 +16,7 @@ import traceback
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import parse_qs, unquote, urlparse
 
 from tempo import log
@@ -32,181 +32,245 @@ MAX_BODY = 1_000_000
 
 
 def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
-    allowed_hosts = {"127.0.0.1:%d" % port, "localhost:%d" % port}
-    allowed_origins = {"http://" + host for host in allowed_hosts}
+    hosts = frozenset({"127.0.0.1:%d" % port, "localhost:%d" % port})
     # Read once, when the server starts. A checkout updated under a running server must
     # not make it claim the new version, or serve the new page against its old code.
-    about = health()
+    started = health()
     with open(PAGE, "rb") as file:
-        page = file.read()
+        page_html = file.read()
     with open(SCRIPT, "rb") as file:
-        script = file.read()
+        page_script = file.read()
 
-    class Handler(BaseHTTPRequestHandler):
-        server_version = "tempo"
-        # A client that stops sending mid-request frees its thread after this many seconds.
-        timeout = 30
+    class PortHandler(Handler):
+        allowed_hosts = hosts
+        allowed_origins = frozenset("http://" + host for host in hosts)
+        about = started
+        page = page_html
+        script = page_script
 
-        def do_GET(self) -> None:
-            if not self._trusted(write=False):
+    return PortHandler
+
+
+class Handler(BaseHTTPRequestHandler):
+    """Answers one request; make_handler fills in the port's hosts and the files read at
+    start. Each path is looked up in ROUTES."""
+
+    server_version = "tempo"
+    # A client that stops sending mid-request frees its thread after this many seconds.
+    timeout = 30
+    allowed_hosts: ClassVar[frozenset[str]] = frozenset()
+    allowed_origins: ClassVar[frozenset[str]] = frozenset()
+    about: ClassVar[dict[str, Any]]
+    page: ClassVar[bytes] = b""
+    script: ClassVar[bytes] = b""
+
+    def do_GET(self) -> None:
+        if not self._trusted(write=False):
+            return
+        # Answered without the database, so a broken database cannot hide the server.
+        if _parts(urlparse(self.path).path) == ["health"]:
+            self._json(200, self.about)
+            return
+        self._safely(lambda store: self._route(store, "GET", {}))
+
+    def do_POST(self) -> None:
+        if not self._trusted(write=True):
+            return
+        self._safely(self._post)
+
+    def _safely(self, run: Callable[[Store], None]) -> None:
+        """Run a request with the database; an unexpected error, such as a locked
+        database, answers 500 with JSON instead of dropping the connection. The
+        traceback goes to stderr, which is the server log."""
+        try:
+            with Store(connect()) as store:
+                run(store)
+        except Exception:
+            traceback.print_exc()
+            with contextlib.suppress(OSError):
+                self._json(500, {"error": "Something went wrong in Tempo"})
+
+    def _post(self, store: Store) -> None:
+        """Check the body first, so a bad body is refused whatever the path."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length < 0:
+            self._json(400, {"error": "Invalid Content-Length"})
+            return
+        if length > MAX_BODY:
+            self._json(413, {"error": "The request is too large"})
+            return
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            self._json(400, {"error": "Invalid JSON"})
+            return
+        if not isinstance(body, dict):
+            self._json(400, {"error": "The body must be a JSON object"})
+            return
+        self._route(store, "POST", body)
+
+    def _route(self, store: Store, method: str, body: dict[str, Any]) -> None:
+        parts = _parts(urlparse(self.path).path)
+        for route_method, pattern, run in ROUTES:
+            args = _match(pattern, parts)
+            if route_method == method and args is not None:
+                run(self, store, args, body)
                 return
-            # Answered without the database, so a broken database cannot hide the server.
-            if _parts(urlparse(self.path).path) == ["health"]:
-                self._json(200, about)
-                return
-            self._safely(self._get)
+        self._json(404, {"error": "Not found"})
 
-        def do_POST(self) -> None:
-            if not self._trusted(write=True):
-                return
-            self._safely(self._post)
+    def _save_setting(self, store: Store, change: Callable[[], dict[str, Any]]) -> None:
+        """Make a change from Settings and answer with the new Settings state, plus
+        whatever the change reports."""
 
-        def _safely(self, run: Callable[[Store], None]) -> None:
-            """Run a request with the database; an unexpected error, such as a locked
-            database, answers 500 with JSON instead of dropping the connection. The
-            traceback goes to stderr, which is the server log."""
-            try:
-                with Store(connect()) as store:
-                    run(store)
-            except Exception:
-                traceback.print_exc()
-                with contextlib.suppress(OSError):
-                    self._json(500, {"error": "Something went wrong in Tempo"})
+        def run() -> dict[str, Any]:
+            return {**change(), **_settings(store)}
 
-        def _get(self, store: Store) -> None:
-            url = urlparse(self.path)
-            parts = _parts(url.path)
-            if parts == []:
-                self._send(200, page, "text/html; charset=utf-8")
-            elif parts == ["page.js"]:
-                self._send(200, script, "text/javascript; charset=utf-8")
-            elif parts == ["api", "questions"]:
-                query = parse_qs(url.query)
-                status = query.get("status", ["open"])[0]
-                project = query.get("project", [None])[0]
-                # Projects whose folders have no questions yet are listed too.
-                projects = [summary["name"] for summary in store.project_summaries()]
-                # New folders that may be renamed ones: the banner shows on every screen.
-                self._json(
-                    200,
-                    {
-                        "questions": store.list(project, status),
-                        "projects": projects,
-                        # When each project last had news, for the header's "new" dot.
-                        "activity": store.project_activity(),
-                        "renames": store.renames(),
-                    },
-                )
-            elif len(parts) == 4 and parts[:2] == ["api", "questions"]:
-                self._handle(lambda: store.get(parts[2], _int(parts[3])))
-            elif parts == ["api", "settings"]:
-                self._json(200, _settings(store))
-            else:
-                self._json(404, {"error": "Not found"})
+        self._handle(run)
 
-        def _post(self, store: Store) -> None:
-            parts = _parts(urlparse(self.path).path)
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-            except ValueError:
-                length = -1
-            if length < 0:
-                self._json(400, {"error": "Invalid Content-Length"})
-                return
-            if length > MAX_BODY:
-                self._json(413, {"error": "The request is too large"})
-                return
-            try:
-                body = json.loads(self.rfile.read(length) or b"{}")
-            except ValueError:
-                self._json(400, {"error": "Invalid JSON"})
-                return
-            if not isinstance(body, dict):
-                self._json(400, {"error": "The body must be a JSON object"})
-                return
-            if len(parts) == 5 and parts[:2] == ["api", "questions"]:
-                self._question_action(store, parts[2], parts[3], parts[4], body)
-            elif len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "rename":
-                self._save_setting(
-                    store, lambda: {"moved": store.rename_project(parts[2], _text(body, "name"))}
-                )
-            elif parts == ["api", "folders", "link"]:
-                self._save_setting(store, lambda: _link(store, body))
-            elif parts == ["api", "folders", "keep"]:
-                self._save_setting(store, lambda: _keep(store, body))
-            else:
-                self._json(404, {"error": "Not found"})
+    def log_message(self, format: str, *args: Any) -> None:
+        pass
 
-        def _question_action(
-            self, store: Store, project: str, number: str, action: str, body: Any
-        ) -> None:
-            if action == "answer":
-                self._handle(
-                    lambda: store.answer(
-                        project, _int(number), _text(body, "choice"), _text(body, "body", "")
-                    )
-                )
-            elif action == "followup":
-                self._handle(
-                    lambda: store.follow_up(project, _int(number), _text(body, "body", ""))
-                )
-            elif action == "reopen":
-                self._handle(lambda: store.reopen(project, _int(number)))
-            else:
-                self._json(404, {"error": "Not found"})
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        """One line in server.log for each request that is not a plain GET: method,
+        path and status code. Never the body or the query, which may quote answers."""
+        if self.command == "GET":
+            return
+        if isinstance(code, HTTPStatus):
+            code = code.value
+        path = urlparse(getattr(self, "path", "") or "").path
+        log.write(self.command or "-", path or "-", code)
 
-        def _save_setting(self, store: Store, change: Callable[[], dict[str, Any]]) -> None:
-            """Make a change from Settings and answer with the new Settings state, plus
-            whatever the change reports."""
-
-            def run() -> dict[str, Any]:
-                return {**change(), **_settings(store)}
-
-            self._handle(run)
-
-        def log_message(self, format: str, *args: Any) -> None:
-            pass
-
-        def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
-            """One line in server.log for each request that is not a plain GET: method,
-            path and status code. Never the body or the query, which may quote answers."""
-            if self.command == "GET":
-                return
-            if isinstance(code, HTTPStatus):
-                code = code.value
-            path = urlparse(getattr(self, "path", "") or "").path
-            log.write(self.command or "-", path or "-", code)
-
-        def _trusted(self, write: bool) -> bool:
-            if self.headers.get("Host") not in allowed_hosts:
-                self._json(403, {"error": "Unknown host"})
+    def _trusted(self, write: bool) -> bool:
+        if self.headers.get("Host") not in self.allowed_hosts:
+            self._json(403, {"error": "Unknown host"})
+            return False
+        if write:
+            origin = self.headers.get("Origin")
+            content_type = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+            if origin not in self.allowed_origins or content_type != "application/json":
+                self._json(403, {"error": "Writes must come from this page"})
                 return False
-            if write:
-                origin = self.headers.get("Origin")
-                content_type = (self.headers.get("Content-Type") or "").split(";")[0].strip()
-                if origin not in allowed_origins or content_type != "application/json":
-                    self._json(403, {"error": "Writes must come from this page"})
-                    return False
-            return True
+        return True
 
-        def _handle(self, action: Callable[[], Any]) -> None:
-            try:
-                self._json(200, action())
-            except QuestionError as error:
-                self._json(400, {"error": str(error)})
+    def _handle(self, action: Callable[[], Any]) -> None:
+        try:
+            self._json(200, action())
+        except QuestionError as error:
+            self._json(400, {"error": str(error)})
 
-        def _json(self, status: int, data: Any) -> None:
-            self._send(status, json.dumps(data).encode(), "application/json")
+    def _json(self, status: int, data: Any) -> None:
+        self._send(status, json.dumps(data).encode(), "application/json")
 
-        def _send(self, status: int, body: bytes, content_type: str) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+    def _send(self, status: int, body: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
 
-    return Handler
+
+# What a route runs: it gets the request, the database, the path's ANY parts in order,
+# and the JSON body (empty for a GET), and sends the answer.
+Run = Callable[[Handler, Store, list[str], dict[str, Any]], None]
+
+
+def _page(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    request._send(200, request.page, "text/html; charset=utf-8")
+
+
+def _script(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    request._send(200, request.script, "text/javascript; charset=utf-8")
+
+
+def _questions(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    query = parse_qs(urlparse(request.path).query)
+    status = query.get("status", ["open"])[0]
+    project = query.get("project", [None])[0]
+    # Projects whose folders have no questions yet are listed too.
+    projects = [summary["name"] for summary in store.project_summaries()]
+    # New folders that may be renamed ones: the banner shows on every screen.
+    request._json(
+        200,
+        {
+            "questions": store.list(project, status),
+            "projects": projects,
+            # When each project last had news, for the header's "new" dot.
+            "activity": store.project_activity(),
+            "renames": store.renames(),
+        },
+    )
+
+
+def _question(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    project, number = args
+    request._handle(lambda: store.get(project, _int(number)))
+
+
+def _get_settings(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    request._json(200, _settings(store))
+
+
+def _answer(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    project, number = args
+    request._handle(
+        lambda: store.answer(project, _int(number), _text(body, "choice"), _text(body, "body", ""))
+    )
+
+
+def _follow_up(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    project, number = args
+    request._handle(lambda: store.follow_up(project, _int(number), _text(body, "body", "")))
+
+
+def _reopen(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    project, number = args
+    request._handle(lambda: store.reopen(project, _int(number)))
+
+
+def _rename(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    (old,) = args
+    request._save_setting(store, lambda: {"moved": store.rename_project(old, _text(body, "name"))})
+
+
+def _link_folder(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    request._save_setting(store, lambda: _link(store, body))
+
+
+def _keep_folder(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    request._save_setting(store, lambda: _keep(store, body))
+
+
+# A part of a route's path that matches any one part, which is passed to the route.
+ANY = None
+
+# Every path the server answers, besides /health: method, the path's parts, and what runs.
+# A path that matches no route gets 404.
+ROUTES: list[tuple[str, tuple[str | None, ...], Run]] = [
+    ("GET", (), _page),
+    ("GET", ("page.js",), _script),
+    ("GET", ("api", "questions"), _questions),
+    ("GET", ("api", "questions", ANY, ANY), _question),
+    ("GET", ("api", "settings"), _get_settings),
+    ("POST", ("api", "questions", ANY, ANY, "answer"), _answer),
+    ("POST", ("api", "questions", ANY, ANY, "followup"), _follow_up),
+    ("POST", ("api", "questions", ANY, ANY, "reopen"), _reopen),
+    ("POST", ("api", "projects", ANY, "rename"), _rename),
+    ("POST", ("api", "folders", "link"), _link_folder),
+    ("POST", ("api", "folders", "keep"), _keep_folder),
+]
+
+
+def _match(pattern: tuple[str | None, ...], parts: list[str]) -> list[str] | None:
+    """The parts that fill the pattern's ANY places, or None when the path does not fit."""
+    if len(pattern) != len(parts):
+        return None
+    if any(want is not ANY and want != part for want, part in zip(pattern, parts)):
+        return None
+    return [part for want, part in zip(pattern, parts) if want is ANY]
 
 
 def serve(port: int) -> None:
