@@ -1,9 +1,10 @@
 import http.client
 import json
+import os
 import threading
 from http.server import ThreadingHTTPServer
 
-from tempo.server import make_handler
+from tempo.server import ROOT, make_handler
 from tests.helpers import DatabaseTest
 
 
@@ -52,6 +53,20 @@ class ServerTest(DatabaseTest):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.getheader("Content-Type"), "text/javascript; charset=utf-8")
         self.assertIn(b"function rich(", script)
+
+    def test_health_says_which_tempo_this_is(self):
+        status, data = self.request("GET", "/health")
+        self.assertEqual(status, 200)
+        health = json.loads(data)
+        with open(os.path.join(ROOT, ".claude-plugin", "plugin.json")) as plugin:
+            self.assertEqual(health["version"], json.load(plugin)["version"])
+        self.assertEqual(health["app"], "tempo")
+        self.assertEqual(health["root"], ROOT)
+        self.assertEqual(health["pid"], os.getpid())
+        self.assertRegex(health["started"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+
+    def test_health_needs_this_server_as_its_host(self):
+        self.assertEqual(self.request("GET", "/health", host="evil.example")[0], 403)
 
     def test_the_list_names_projects_without_questions_yet(self):
         self.store.see_folder("onzehq")
