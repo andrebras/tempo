@@ -21,6 +21,10 @@ All notable changes to Tempo are listed here. The format follows
   marked question in the same goal, the joined project's mark is dropped.
 - An answer or follow-up reaches Claude once, even when two sessions in the same project,
   or a session and `tempo wait`, pick up the user's news at the same moment.
+- A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
+  a session started in `/` was discarded, because the folder has no name. The hooks now always
+  exit cleanly and say nothing to the session when something goes wrong, and the page still
+  starts.
 
 ## [0.5.4] - 2026-11-07
 

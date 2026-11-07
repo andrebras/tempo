@@ -305,6 +305,20 @@ class CliTest(DatabaseTest):
         with mock.patch.object(cli, "wait_running", side_effect=RuntimeError):
             self.assertEqual(run("hook", "stop", stdin="{}")[1], "")
 
+    def test_hooks_never_block_the_session_on_a_tempo_error(self):
+        # A session started in / has no folder name, so finding its project fails.
+        del os.environ["TEMPO_PROJECT"]
+        with mock.patch.object(cli, "start_server") as start:
+            for event in ("user-prompt-submit", "session-start"):
+                code, out, _ = run("hook", event, stdin=json.dumps({"cwd": "/"}))
+                self.assertEqual((code, out), (0, ""), event)
+        start.assert_called_once()
+
+    def test_hooks_ignore_input_that_is_not_an_object(self):
+        for event in ("user-prompt-submit", "stop"):
+            code, out, _ = run("hook", event, stdin="[]")
+            self.assertEqual((code, out), (0, ""), event)
+
     def test_user_prompt_hook_ignores_other_projects(self):
         self.add(project="other")
         self.store.follow_up("other", 1, "Why?")
