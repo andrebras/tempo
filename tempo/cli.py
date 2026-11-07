@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 import zlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from tempo import log
@@ -667,8 +667,9 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
     a short outcome for the log.
 
     In order: the user's new answers and follow-ups (handed over and marked delivered),
-    a question asked only in chat, then open questions with no `tempo wait` running to
-    bring the answers back. Blocks at most once per reply (stop_hook_active), and any
+    a question asked only in chat, follow-ups Claude was given a while ago and has not
+    answered, then open questions with no `tempo wait` running to bring the answers
+    back. Blocks at most once per reply (stop_hook_active), and any
     error lets the reply end, so the hook can never trap a session.
     """
     if payload.get("stop_hook_active"):
@@ -686,6 +687,11 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
         if unrecorded:
             return unrecorded, project, "blocked: unrecorded question"
         with Store(connect()) as store:
+            cutoff = datetime.now(timezone.utc) - FOLLOW_UP_GRACE
+            unanswered = store.unanswered_follow_ups(project, cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"))
+            if unanswered:
+                reason = unanswered_note(store, unanswered)
+                return reason, project, "blocked: unanswered follow-ups %d" % len(unanswered)
             questions = store.list(project, "open")
         if questions and not wait_running(project):
             reason = (
@@ -698,6 +704,32 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
     except Exception as error:
         return None, project, "error: %s" % error
     return None, project, "let through"
+
+
+# How long Claude has to answer a follow-up it was given before the Stop hook raises it.
+FOLLOW_UP_GRACE = timedelta(minutes=5)
+
+
+def unanswered_note(store: Store, entries: Entries) -> str:
+    """Sends Claude back to answer follow-ups it was given but left without a reply."""
+    lines = ["The user asked for more on these questions and has had no answer yet:"]
+    for entry in entries:
+        question = store.get(entry["project"], entry["number"])
+        lines.append(
+            "- %s %s (%s) asked: %s Answer it with `tempo reword %d --context`."
+            % (
+                entry["project"],
+                question["label"],
+                question["title"],
+                entry["body"],
+                entry["number"],
+            )
+        )
+    lines.append(
+        "Answer each in the question itself, so the box the user reads on the page shows"
+        " it, then end the reply."
+    )
+    return "\n".join(lines)
 
 
 # Lettered options: "(a) …" and "(b) …" in a sentence, or one per line or list item, as

@@ -459,6 +459,25 @@ class CliTest(DatabaseTest):
         self.assertIn("answered (a) Left", json.loads(self.stop(*options))["reason"])
         self.assertIn("tempo add", json.loads(self.stop(*options))["reason"])
 
+    def test_stop_raises_follow_ups_left_unanswered(self):
+        self.add(title="Ship it?")
+        self.add()
+        self.store.follow_up("demo", 1, "What is left?")
+        self.marker(os.getpid())  # A wait is running, so only the follow-up can block.
+        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
+        # New news is handed over first; the follow-up then gets a few minutes.
+        self.assertIn("asks for more: What is left?", json.loads(self.stop(*reply))["reason"])
+        self.assertEqual(self.stop(*reply), "")
+        self.store.db.execute("UPDATE entries SET delivered_at = '2026-01-01T10:00:00Z'")
+        out = json.loads(self.stop(*reply))
+        self.assertEqual(out["decision"], "block")
+        self.assertIn("demo Q1 (Ship it?) asked: What is left?", out["reason"])
+        self.assertIn("`tempo reword 1 --context`", out["reason"])
+        self.assertEqual(self.stop(*reply, active=True), "")
+        self.store.reword("demo", 1, "Answered the follow-up", context="Only the docs.")
+        self.assertEqual(self.stop(*reply), "")
+        self.assertIn("hook stop demo blocked: unanswered follow-ups 1", self.hook_log())
+
     def test_stop_asks_for_a_wait_while_questions_are_open(self):
         reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
         self.assertEqual(self.stop(*reply), "")

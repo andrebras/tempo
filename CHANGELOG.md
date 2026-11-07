@@ -21,6 +21,10 @@ All notable changes to Tempo are listed here. The format follows
 - A test runs the prompt and Stop hooks the way Claude Code does (`bin/tempo hook …` in its
   own process, with Claude Code's JSON on stdin) and checks that an answer from the page
   reaches Claude exactly once.
+- When a reply ends, the Stop hook also looks for follow-ups Claude was given more than five
+  minutes ago and never answered (no context or reword from Claude after them, on an open
+  question of this project). It sends Claude back once, listing them, to answer each with
+  `tempo reword N --context`. Before, a session could pass over a follow-up without a word.
 
 ### Fixed
 

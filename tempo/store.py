@@ -891,6 +891,25 @@ class Store:
             for row in self.db.execute(sql, params)
         ]
 
+    def unanswered_follow_ups(self, project: str, before: str) -> Entries:
+        """The latest follow-up of each open question in the project that reached Claude
+        before the given time and still has no context or reword from Claude after it."""
+        rows = self.db.execute(
+            "SELECT e.*, q.project, q.number FROM entries e"
+            " JOIN questions q ON q.id = e.question_id"
+            " WHERE q.project = ? AND q.status = 'open'"
+            " AND e.id = (SELECT MAX(id) FROM entries WHERE question_id = q.id"
+            " AND kind = 'followup' AND author = 'user')"
+            " AND e.delivered_at < ?"
+            " AND NOT EXISTS (SELECT 1 FROM entries c WHERE c.question_id = q.id"
+            " AND c.author = 'claude' AND c.id > e.id)"
+            " ORDER BY q.number",
+            (project, before),
+        )
+        return [
+            dict(_entry_dict(row), project=row["project"], number=row["number"]) for row in rows
+        ]
+
     def mark_delivered(self, entry_ids: Ids) -> None:
         if not entry_ids:
             return
