@@ -579,6 +579,31 @@ class RenameTest(DatabaseTest):
         self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "Tempo")
         self.assertEqual(self.store.renames(), [])
 
+    def test_linking_brings_the_questions_asked_before_it(self):
+        self.add(project="Tempo")
+        self.see("/lab/tempo")
+        self.add(project="tempo", title="Asked before linking?")
+        self.store.link_folder("/lab/tempo", "Tempo")
+        self.assertEqual(self.store.list("tempo", "all"), [])
+        [_, moved] = self.store.list("Tempo", "all")
+        self.assertEqual((moved["number"], moved["title"]), (2, "Asked before linking?"))
+        entries = [e["body"] for e in self.store.get("Tempo", 2)["entries"]]
+        self.assertIn("Moved from tempo Q1 when tempo joined Tempo.", entries)
+        # A later answer is news for the sessions in the folder, now in Tempo.
+        self.store.answer("Tempo", 2, "a")
+        self.assertEqual(len(self.store.undelivered("Tempo")), 1)
+
+    def test_linking_leaves_questions_of_a_project_other_folders_still_use(self):
+        self.see("/lab/tempo")
+        self.store.see_folder("tempo", "/elsewhere/tempo")
+        self.store.db.execute(
+            "UPDATE folders SET project = 'tempo' WHERE path = '/elsewhere/tempo'"
+        )
+        self.add(project="tempo")
+        self.store.link_folder("/lab/tempo", "Tempo")
+        self.assertEqual(len(self.store.list("tempo", "all")), 1)
+        self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "Tempo")
+
     def test_keeping_it_apart_settles_it_and_keeps_its_project(self):
         self.see("/lab/tempo")
         self.store.keep_folder("/lab/tempo")

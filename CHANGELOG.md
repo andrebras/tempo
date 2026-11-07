@@ -107,6 +107,10 @@ All notable changes to Tempo are listed here. The format follows
   folder outside git, and "Keep as its own project" on that wrong banner used it up. Now only
   a new git repo is offered missing folders, a missing folder stays on offer until a folder
   is linked to it, and banners left with nothing to offer go away.
+- "Link to <project>" in the rename banner brings along the questions asked in the folder
+  before you clicked it. They stayed in the folder's interim project, which no session used any
+  more, so their answers were never delivered. They now move into the linked project after its
+  own questions, each noting its old number, unless another folder still uses that project.
 
 ### Security
 

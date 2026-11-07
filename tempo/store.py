@@ -713,13 +713,25 @@ class Store:
     def link_folder(self, path: str, project: str | None) -> None:
         """File the folder at path under a project, and settle any rename it waited on.
         The missing folders of that project it was offered are forgotten: the folder
-        was found, so no other new folder is offered it again."""
+        was found, so no other new folder is offered it again.
+
+        Questions asked in the folder before it was linked went to its own project; when
+        no other folder uses that project, it joins the one linked to, so their answers
+        reach the folder's sessions."""
         project = (project or "").strip()
         if not project:
             raise QuestionError("Pick a project for the folder")
-        row = self.db.execute("SELECT renamed_from FROM folders WHERE path = ?", (path,)).fetchone()
+        row = self.db.execute(
+            "SELECT project, renamed_from FROM folders WHERE path = ?", (path,)
+        ).fetchone()
         if row is None:
             raise QuestionError("There is no folder at %s" % path)
+        own = row["project"]
+        shared = self.db.execute(
+            "SELECT 1 FROM folders WHERE project = ? AND path IS NOT ?", (own, path)
+        ).fetchone()
+        if own != project and not shared and self._question_count(own):
+            self.rename_project(own, project)
         with self._transaction():
             self.db.execute(
                 "UPDATE folders SET project = ?, rename_answered_at = ? WHERE path = ?",
