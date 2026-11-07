@@ -187,8 +187,11 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode = WAL")
     db.execute("PRAGMA foreign_keys = ON")
-    db.executescript(SCHEMA)
-    _migrate(db)
+    try:
+        _migrate(db)
+    except BaseException:
+        db.close()
+        raise
     return db
 
 
@@ -264,7 +267,18 @@ def _version(db: sqlite3.Connection) -> int:
 
 
 def _migrate(db: sqlite3.Connection) -> None:
-    """Run each step this database has not had yet, once, in its own transaction."""
+    """Bring the database up to SCHEMA: create what is missing, then run each step it has
+    not had yet, once, in its own transaction.
+
+    A database a newer Tempo has moved past these steps is refused before anything is
+    read or written, since this code cannot know what the newer steps changed."""
+    if _version(db) > len(MIGRATIONS):
+        raise QuestionError(
+            "The database was last changed by a newer Tempo (step %d; this one knows %d)."
+            " Update Tempo, or restart the session to use the installed version."
+            % (_version(db), len(MIGRATIONS))
+        )
+    db.executescript(SCHEMA)
     for number, step in enumerate(MIGRATIONS, start=1):
         if _version(db) >= number:
             continue

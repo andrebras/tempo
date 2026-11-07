@@ -21,6 +21,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- Tempo refuses a database that a newer Tempo has changed in ways it doesn't know. Every
+  command stops with a clear error before reading or writing anything. Before, it went on
+  silently and could fail halfway through, or misread the newer data.
 - Tempo code run from the main checkout on a branch other than `main`, or on no branch, uses
   its own database, `.tempo-dev/questions.db`, like a worktree does. Before, it used and
   migrated the real database, so older sessions then ran on a database changed by code that

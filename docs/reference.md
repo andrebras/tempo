@@ -188,6 +188,10 @@ worktree, whatever its branch, and the main checkout on another branch or on no 
 the installed plugin and the main checkout on `main` use the real database. Code on a branch
 database serves its page on a port of its own too, unless `TEMPO_PORT` is set.
 
+A database last changed by a newer Tempo, with changes this code doesn't know, is refused:
+every command stops with an error that says so, before it reads or changes anything. Update
+Tempo, or restart the session so it uses the installed version.
+
 The page log, `server.log`, also gets one line for each change made through the page (the
 time in UTC, the method, the path and the status code, such as
 `2026-11-07T10:00:00Z POST /api/questions/demo/1/answer 200`) and one for each hook run (the

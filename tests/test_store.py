@@ -727,6 +727,23 @@ class MigrateTest(DatabaseTest):
             self.assertEqual(store.get("demo", 1)["start_here"], "unlocks the rest")
             self.assertEqual(store.folders()[0]["project"], "demo")
 
+    def test_a_database_from_a_newer_tempo_is_refused_untouched(self):
+        # A newer Tempo ran a step this code doesn't know, and dropped a table on the way.
+        path = os.path.join(self.tmp.name, "newer.db")
+        newer = sqlite3.connect(path)
+        newer.executescript(SCHEMA)
+        newer.execute("DROP TABLE folders")
+        newer.execute("PRAGMA user_version = %d" % (len(MIGRATIONS) + 1))
+        newer.commit()
+        newer.close()
+        with self.assertRaisesRegex(QuestionError, "newer Tempo"):
+            connect(path)
+        check = sqlite3.connect(path)
+        self.addCleanup(check.close)
+        tables = [row[0] for row in check.execute("SELECT name FROM sqlite_master")]
+        self.assertNotIn("folders", tables)
+        self.assertEqual(_user_version(check), len(MIGRATIONS) + 1)
+
     def test_connecting_again_does_not_redo_the_steps(self):
         # Filling folder projects is a step; a second connect must leave this one alone.
         self.store.db.execute("INSERT INTO folders (folder) VALUES ('dataforge')")
