@@ -20,6 +20,66 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 
 `oq`, the command's old name, still works as an alias.
 
+## Hooks
+
+Hooks are small commands that Claude Code runs at fixed moments of a session. Tempo uses
+three, each a call to `tempo hook …`:
+
+- **SessionStart**, when a session starts: starts the page (see
+  [The page server](#the-page-server)) and tells Claude how to use Tempo: every decision
+  goes in Tempo, each question gets a goal, and every update ends with the project's open
+  questions. It then lists those open questions. When the session's folder looks like a
+  known folder renamed or moved, it asks Claude to tell you about the banner on the page.
+- **UserPromptSubmit**, when you send a message: adds the answers and follow-ups Claude
+  hasn't seen yet, so Claude reads them before your message.
+- **Stop**, when Claude finishes a reply: sends Claude back to work, at most once per
+  reply, in the first of these cases that applies:
+  1. You answered or followed up and Claude hasn't seen it yet. The hook hands it over, so
+     an answer sent from the page while Claude worked doesn't wait for your next message.
+  2. The reply asks you something (lettered options, a yes-or-no question or a request for
+     permission) that isn't in Tempo. Claude is asked to add it with `tempo add`. Code and
+     quoted text don't count as asking.
+  3. The project has open questions but no `tempo wait` is running. Claude is asked to
+     start one in the background, so your answers from the page reach it without you
+     writing in chat.
+
+Each answer is delivered once, whichever way it arrives: through a hook or `tempo wait`.
+
+A Tempo problem never blocks your prompt or the session. When something goes wrong, such as
+a locked database or a folder Tempo can't name, the hooks exit cleanly and say nothing to the
+session. The error goes to standard error, which Claude Code doesn't pass to Claude. With
+`TEMPO_IN_THREAD=1` (see [Environment variables](#environment-variables)), the hooks do
+nothing at all.
+
+A Claude session keeps the plugin version it started with, hooks included. After you update
+Tempo, restart open sessions, for example with `claude --continue`, so they use the new
+hooks.
+
+## The page server
+
+The page is served by a small web server on `127.0.0.1`, port 2204 by default. Every new
+session checks what is running on that port:
+
+- Nothing: Tempo starts its server in the background.
+- A Tempo server of the same version or a newer one: it is kept, whatever folder it runs
+  from. So when sessions run different versions of Tempo, the newest one wins.
+- A Tempo server that reports an older version: Tempo stops it and starts its own.
+- A server that no longer answers: Tempo stops it and starts its own, but only if the
+  process on the port is a Tempo server (`python -m tempo serve`).
+- Anything else that answers, such as a Tempo too old to have `/health` or another
+  program: it is left alone.
+
+To tell, Tempo asks the server for `/health`. That address answers without opening the
+database, so a broken database can't hide the server. It returns JSON with `app`
+(`"tempo"`), `version`, `commit` (the git commit, when Tempo runs from a git checkout),
+`root` (the folder the server's code runs from), `pid` (its process number) and `started`
+(when it started, in UTC).
+
+The page asks for `/health` too, every few seconds. When the server it first talked to has
+been replaced (its `pid` or `started` changed), usually after an update, the page reloads
+itself, so its code always matches the server's. A note you were typing and the option you
+picked are kept through the reload.
+
 ## Projects in the header
 
 The page shows one project at a time. The header has a chip for each project that has

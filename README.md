@@ -48,16 +48,24 @@ To try it for one session without installing it, clone the repo and run
 ## Usage
 
 There's nothing to run. When a Claude Code session starts, Tempo starts its page at
-<http://127.0.0.1:2204/>, replacing a Tempo page left running there from another version or
-folder. When Claude needs a decision, it adds a question and links to it in chat. On the page
-you can:
+<http://127.0.0.1:2204/>. If a Tempo page is already running there, it is kept, unless it comes
+from an older version of Tempo or no longer works; then Tempo replaces it (details in
+[The page server](docs/reference.md#the-page-server)). When Claude needs a
+decision, it adds a question and links to it in chat. On the page you can:
 
 - **Answer**: pick an option, add a note if you like, and send it. The page moves on to the
   next open question.
 - **Ask for more context**: say what's unclear. Claude adds an explanation or rewords the
   question, and the question's thread shows what changed.
 - **Reopen** an answered question to change your answer.
-- **Adjust Settings** with the gear button: theme, font and text size, and project names.
+- **Switch projects** with the chips in the header: one per project with something for you,
+  showing its open count. A dot on a chip means something new arrived there since you last
+  looked. **All projects ▾** lists every project.
+- **Spot what changed**: a dot after a question's number in the list means Claude reworded
+  it or added context since you last opened it.
+- **Adjust Settings** with the gear button: theme, font, text size and line width, and project
+  names. Settings also lists the folders each project covers. When a folder looks renamed or
+  moved, a banner asks whether to link it to its old project.
 
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too.
@@ -67,18 +75,33 @@ works too.
 ```
  Claude ──tempo add / context / reword──▶  SQLite  ◀──answer / follow-up── Page (127.0.0.1:2204)
    ▲                                          │
-   └──── hook on your next message ───────────┤
-   └──── tempo wait (running in background) ──┘
+   ├──── hook on your next message ───────────┤
+   ├──── tempo wait (running in background) ──┤
+   └──── hook when a reply ends ──────────────┘
 ```
 
-Claude writes questions with the bundled `tempo` command, following the bundled skill. At the
-start of every session a hook tells Claude that every decision goes through Tempo and lists the
-project's open questions; when a reply asks you something (lettered options, a yes-or-no
-question or a request for permission) without a Tempo question, a second hook sends Claude back
-to add it.
-Your answers reach Claude in one of two ways: a hook adds them before Claude reads your next
-message, or a `tempo wait` that Claude keeps running in the background wakes it as soon as you
-answer. Each answer is delivered once, and only to sessions of its own project.
+Claude writes questions with the bundled `tempo` command, following the bundled skill. Tempo
+uses three hooks: small commands that Claude Code runs at fixed moments of a session. At the
+start of every session, one tells Claude that every decision goes through Tempo and lists the
+project's open questions.
+
+Your answers reach Claude in one of three ways:
+
+- a hook adds them before Claude reads your next message;
+- a `tempo wait` that Claude keeps running in the background wakes it as soon as you answer;
+- when Claude finishes a reply, a hook hands over any answers it hasn't seen yet, so Claude
+  carries on instead of stopping.
+
+Each answer is delivered once, and only to sessions of its own project.
+
+The hook that runs when a reply ends also keeps the loop going. If the reply asks you something
+(lettered options, a yes-or-no question or a request for permission) without a Tempo question,
+it sends Claude back to add one. If the project has open questions and no `tempo wait` is
+running, it sends Claude back to start one, so your answers from the page reach it without you
+writing in chat. More in [Hooks](docs/reference.md#hooks).
+
+A Claude session keeps the plugin version it started with. After you update Tempo, restart
+open sessions (for example with `claude --continue`) so they use the new hooks.
 
 Commands, settings and environment variables are listed in [docs/reference.md](docs/reference.md).
 
@@ -88,6 +111,15 @@ The page only listens on `127.0.0.1`. It refuses requests addressed to any other
 only accepts answers sent as JSON from the page itself, so other websites open in your browser
 can't answer for you. There is no login: anyone using your account on this machine can read
 and answer your questions.
+
+The database and the page's log are private to your account: only you can read or write them
+(file permissions 0600), and Tempo makes their folder readable by you only (0700). So other
+accounts on a shared machine can't read your questions. A database from an older Tempo is
+made private the next time Tempo opens it; a folder that already existed is left as it is.
+
+Another tool that runs Claude sessions for you, such as Harp, can set `TEMPO_IN_THREAD=1` in
+those sessions. Tempo's hooks then do nothing and print nothing there, so Tempo stays out of
+sessions you don't drive yourself.
 
 Please report security issues privately through
 [GitHub security advisories](https://github.com/andrebras/tempo/security/advisories/new).
