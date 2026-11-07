@@ -36,6 +36,10 @@ All notable changes to Tempo are listed here. The format follows
   text don't count as asking.
 - The skill puts yes/no confirmations and requests for permission in Tempo too. Merging,
   publishing and installing still also need a one-line OK in chat.
+- Joining two projects in Settings works even when both have questions. The renamed
+  project's questions move after the other's, in their order, with new numbers (for
+  example tempo Q1–Q5 become Tempo Q28–Q32). Each gets a note in its thread saying its old
+  number, and Settings says how many moved and where. Before, Tempo refused the join.
 
 ## [0.4.0] - 2026-11-07
 
