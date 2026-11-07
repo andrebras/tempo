@@ -102,6 +102,11 @@ All notable changes to Tempo are listed here. The format follows
   project name you are typing.
 - A send that fails always shows its error, even when the question was redrawn while the
   request ran.
+- The "renamed or moved" banner reaches the folder that was really renamed. Before, a missing
+  folder was offered once only, to the first new folder any session opened, even a scratch
+  folder outside git, and "Keep as its own project" on that wrong banner used it up. Now only
+  a new git repo is offered missing folders, a missing folder stays on offer until a folder
+  is linked to it, and banners left with nothing to offer go away.
 
 ### Security
 

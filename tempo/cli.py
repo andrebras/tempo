@@ -895,12 +895,14 @@ def _tempo_pid(port: int) -> int | None:
 def project_name(cwd: str, record: bool = False) -> str:
     """The project a folder is filed under, named after the folder until renamed.
 
-    With record, the folder is remembered, so its project shows in Settings.
+    With record, the folder is remembered, so its project shows in Settings. Only a new
+    git repo may be a renamed or moved one: a scratch folder outside git never is.
     """
-    path = folder_path(cwd)
+    repo = repo_path(cwd)
+    path = repo or os.path.realpath(cwd)
     folder = os.path.basename(path)
     with Store(connect()) as store:
-        if record and store.see_folder(folder, path):
+        if record and store.see_folder(folder, path) and repo:
             store.spot_rename(path, gone=lambda known: not os.path.exists(known))
         return store.project_for(folder, path)
 
@@ -908,6 +910,12 @@ def project_name(cwd: str, record: bool = False) -> str:
 def folder_path(cwd: str) -> str:
     """The full path of the git repo's top folder (the main checkout, not a worktree), or
     of cwd outside git. Symlinks are resolved, so one folder always has one path."""
+    return repo_path(cwd) or os.path.realpath(cwd)
+
+
+def repo_path(cwd: str) -> str | None:
+    """The full path of the git repo's top folder (the main checkout, not a worktree),
+    or None outside git."""
     try:
         # git is looked up on PATH on purpose; the arguments are fixed.
         common = subprocess.run(
@@ -921,7 +929,7 @@ def folder_path(cwd: str) -> str:
         common = os.path.normpath(os.path.join(os.path.abspath(cwd), common))
         return os.path.realpath(os.path.dirname(common))
     except (OSError, subprocess.CalledProcessError):
-        return os.path.realpath(cwd)
+        return None
 
 
 def _project(value: str | None, record: bool = False) -> str:

@@ -677,21 +677,14 @@ class Store:
 
     def spot_rename(self, path: str, gone: Callable[[str], bool]) -> Folders:
         """Note that the new folder at path may be a known folder renamed or moved: one
-        whose path is gone (no longer on disk). A gone folder is offered once only, so a
-        folder deleted long ago doesn't come up for every new folder. Returns the
+        whose path is gone (no longer on disk). A gone folder stays on offer to each new
+        folder until one is linked to it, so a banner the user kept apart, or one not
+        answered yet, never hides it from the real renamed folder. Returns the
         candidates; the folder keeps its own project until the user picks."""
-        offered = set()
-        for row in self.db.execute(
-            "SELECT renamed_from FROM folders WHERE renamed_from IS NOT NULL"
-        ):
-            offered.update(json.loads(row["renamed_from"]))
         candidates = [
             folder
             for folder in self.folders()
-            if folder["path"]
-            and folder["path"] != path
-            and folder["path"] not in offered
-            and gone(str(folder["path"]))
+            if folder["path"] and folder["path"] != path and gone(str(folder["path"]))
         ]
         if candidates:
             self.db.execute(
@@ -701,31 +694,41 @@ class Store:
         return candidates
 
     def renames(self) -> Summaries:
-        """New folders that may be renamed or moved ones, waiting for the user to say."""
+        """New folders that may be renamed or moved ones, waiting for the user to say.
+        A folder whose every candidate was since linked to another folder has none left."""
         known = {folder["path"]: folder for folder in self.folders()}
         rows = self.db.execute(
             "SELECT path, renamed_from FROM folders"
             " WHERE renamed_from IS NOT NULL AND rename_answered_at IS NULL ORDER BY path"
         )
-        return [
+        renames = [
             dict(
                 known[row["path"]],
                 candidates=[known[old] for old in json.loads(row["renamed_from"]) if old in known],
             )
             for row in rows
         ]
+        return [rename for rename in renames if rename["candidates"]]
 
     def link_folder(self, path: str, project: str | None) -> None:
-        """File the folder at path under a project, and settle any rename it waited on."""
+        """File the folder at path under a project, and settle any rename it waited on.
+        The missing folders of that project it was offered are forgotten: the folder
+        was found, so no other new folder is offered it again."""
         project = (project or "").strip()
         if not project:
             raise QuestionError("Pick a project for the folder")
-        moved = self.db.execute(
-            "UPDATE folders SET project = ?, rename_answered_at = ? WHERE path = ?",
-            (project, now(), path),
-        ).rowcount
-        if not moved:
+        row = self.db.execute("SELECT renamed_from FROM folders WHERE path = ?", (path,)).fetchone()
+        if row is None:
             raise QuestionError("There is no folder at %s" % path)
+        with self._transaction():
+            self.db.execute(
+                "UPDATE folders SET project = ?, rename_answered_at = ? WHERE path = ?",
+                (project, now(), path),
+            )
+            for old in json.loads(row["renamed_from"] or "[]"):
+                self.db.execute(
+                    "DELETE FROM folders WHERE path = ? AND project = ?", (old, project)
+                )
 
     def keep_folder(self, path: str) -> None:
         """The folder at path is not a renamed one: it stays its own project."""

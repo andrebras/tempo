@@ -446,7 +446,7 @@ class CliTest(DatabaseTest):
     def test_add_remembers_the_folder_and_uses_its_project(self):
         del os.environ["TEMPO_PROJECT"]
         add = ("add", "--title", "T", "--context", "C", "--option", "x", "--option", "y")
-        with mock.patch.object(cli, "folder_path", return_value="/x/tempo-settings"):
+        with mock.patch.object(cli, "repo_path", return_value="/x/tempo-settings"):
             _, out, _ = run(*add)
             self.assertIn("Added Q1 in tempo-settings", out)
             self.store.rename_project("tempo-settings", "Tempo")
@@ -541,7 +541,7 @@ class RenameNoteTest(DatabaseTest):
         self.lab = os.path.realpath(self.tmp.name)
         self.old = os.path.join(self.lab, "open-questions")
         self.new = os.path.join(self.lab, "tempo")
-        os.makedirs(self.old)
+        subprocess.run(["git", "init", "-q", self.old], check=True)
         self.store.see_folder("open-questions", self.old)
         self.store.rename_project("open-questions", "Tempo")
 
@@ -570,8 +570,17 @@ class RenameNoteTest(DatabaseTest):
         self.assertNotIn("Settings", note)
         self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
 
+    def test_a_new_folder_outside_git_is_not_offered(self):
+        # A quick session in a scratch folder must not take the renamed repo's banner.
+        os.rename(self.old, self.new)
+        scratch = os.path.join(self.lab, "scratch")
+        os.makedirs(scratch)
+        self.assertNotIn("is new to Tempo", self.start(scratch))
+        self.assertIn("looks renamed or moved", self.start(self.new))
+        self.assertEqual([r["path"] for r in self.store.renames()], [self.new])
+
     def test_no_missing_folder_starts_a_new_project_as_before(self):
-        os.makedirs(self.new)
+        subprocess.run(["git", "init", "-q", self.new], check=True)
         note = self.start(self.new)
         self.assertNotIn("is new to Tempo", note)
         self.assertEqual(self.store.renames(), [])
