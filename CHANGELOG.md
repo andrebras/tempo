@@ -19,6 +19,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Changed
 
+- Tempo code running from a git worktree uses its own database, `.tempo-dev/questions.db`
+  inside the worktree, so code still being built never touches the real questions. The
+  installed plugin and the main checkout keep the real database; `TEMPO_DB` still wins.
 - On wide screens the question list and the question scroll separately, so scrolling a
   long question no longer moves the list, and the list keeps its place.
 - Follow-ups from the page now tell Claude to answer them in the question itself with
