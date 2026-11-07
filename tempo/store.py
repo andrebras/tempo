@@ -66,7 +66,8 @@ def db_path() -> str:
     moved or copied."""
     chosen = setting("DB") or branch_db()
     if chosen:
-        return chosen
+        # Settings such as Claude Code's env block pass "~" and relative paths as written.
+        return os.path.abspath(os.path.expanduser(chosen))
     path, old = os.path.expanduser(DEFAULT_DB), os.path.expanduser(OLD_DEFAULT_DB)
     if not os.path.exists(path) and os.path.exists(old):
         return old
@@ -160,7 +161,7 @@ def now() -> str:
 
 def connect(path: str | None = None) -> sqlite3.Connection:
     path = path or db_path()
-    if path != ":memory:":
+    if path != ":memory:" and os.path.dirname(path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
     db = sqlite3.connect(path, timeout=10, isolation_level=None)
     db.row_factory = sqlite3.Row

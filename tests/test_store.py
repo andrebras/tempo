@@ -788,6 +788,26 @@ class DbPathTest(unittest.TestCase):
         with mock.patch.dict("os.environ", {"OQ_DB": "/elsewhere/questions.db"}):
             self.assertEqual(db_path(), "/elsewhere/questions.db")
 
+    def test_an_explicit_path_may_be_relative_or_start_with_a_tilde(self):
+        old = os.getcwd()
+        os.chdir(self.home)
+        self.addCleanup(os.chdir, old)
+        with mock.patch.dict("os.environ", {"TEMPO_DB": "questions.db"}):
+            self.assertEqual(db_path(), os.path.join(os.path.realpath(self.home), "questions.db"))
+            connect().close()
+        with mock.patch.dict("os.environ", {"TEMPO_DB": "~/data/questions.db"}):
+            self.assertEqual(db_path(), os.path.join(self.home, "data", "questions.db"))
+            connect().close()
+        self.assertTrue(os.path.exists(os.path.join(self.home, "data", "questions.db")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, "~")))
+
+    def test_connect_takes_a_bare_file_name(self):
+        old = os.getcwd()
+        os.chdir(self.home)
+        self.addCleanup(os.chdir, old)
+        connect("questions.db").close()
+        self.assertTrue(os.path.exists(os.path.join(self.home, "questions.db")))
+
 
 class BranchDbTest(unittest.TestCase):
     def setUp(self):

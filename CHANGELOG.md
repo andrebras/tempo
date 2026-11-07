@@ -25,6 +25,9 @@ All notable changes to Tempo are listed here. The format follows
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still
   starts.
+- `TEMPO_DB` may be a relative path or start with `~`. A relative path such as `questions.db` made
+  every command fail, and a `~` left unexpanded (as in Claude Code's `env` settings) gave each
+  folder its own database in a folder literally named `~`.
 
 ## [0.5.4] - 2026-11-07
 
