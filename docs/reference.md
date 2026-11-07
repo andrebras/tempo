@@ -16,14 +16,38 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo set-next <n>` | Continue numbering from an older list |
 | `tempo inbox` | Print answers and follow-ups Claude hasn't seen yet (`--all-projects` shows every project's without marking them seen) |
 | `tempo wait --timeout 1800` | Wait until you answer or follow up, then print it |
-| `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`) |
+| `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`). The option may also be named by its whole text, in any case and without trailing punctuation, such as `tempo answer 61 yes`; a valid letter wins |
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
 | `tempo status` | For you, not Claude: print `? 3` when 3 questions of the current folder's project wait for you, nothing when none do, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
 | `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
 | `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) |
 | `tempo serve [--background]` | Run the page; works whether or not sessions start it |
+| `tempo slash <name>` | Run by the slash commands below, with the typed text on stdin; not for direct use |
 
 `oq`, the command's old name, still works as an alias.
+
+## Slash commands
+
+Four slash commands let you read and answer questions inside a Claude Code session. Each is a
+skill in `skills/<name>/SKILL.md` with `disable-model-invocation: true`, so only you can run
+it: Claude Code refuses when Claude tries. Before Claude reads the command, Claude Code runs
+`bin/tempo slash <name>` from the plugin's folder, passing what you typed after the command on
+stdin through a quoted heredoc, so the shell never reads your text. The output becomes the
+text Claude gets.
+
+| Command | What it does |
+| --- | --- |
+| `/tempo:list` | This project's open questions |
+| `/tempo:show 57` | One question with its options and thread (`57b` works too) |
+| `/tempo:answer 57a [note]` | Answer with option (a), with an optional note. The code may be `57a`, `57 a`, `Q57a` or `Q57 a)`, and the option may be named by the start of its text, such as `61 yes, but later` (a valid letter wins). Claude then acts on it |
+| `/tempo:dive 57 [follow-up]` | Ask for more, like the page's follow-up; without text it records "Tell me more.", and `57b` asks about option (b). Claude then answers it in the question with `tempo reword` |
+
+An answer or follow-up made this way is saved already marked delivered, in the same write:
+Claude has it from the command's output, so the hooks and `tempo wait` don't hand it over a
+second time. The page shows it as seen. When the question or option doesn't exist, nothing is
+saved: the output says "Nothing was recorded:" with Tempo's error, and Claude passes it on.
+The project is the one of the session's project folder (`TEMPO_PROJECT` still wins). With
+`disableSkillShellExecution` on in your Claude Code settings, the commands can't run.
 
 ## Hooks
 

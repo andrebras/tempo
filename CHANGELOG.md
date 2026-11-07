@@ -28,6 +28,15 @@ All notable changes to Tempo are listed here. The format follows
   `tempo config page on` brings back the default. `tempo config` shows the current value. The
   setting is kept in the database; existing databases get it without a version change. The
   page's Settings has the same switch, under Sessions.
+- Four slash commands answer from inside the Claude Code session: `/tempo:list`,
+  `/tempo:show 57`, `/tempo:answer 57a` (also `57 a`, `Q57a` or `Q57 a)`, with an optional
+  note after the code) and `/tempo:dive 57` (ask for more, with an optional question; "Tell
+  me more." without one). Only you can run them. They save the answer or follow-up before
+  Claude reads anything, already marked delivered, so it reaches Claude once. Claude then acts
+  on the answer, or answers the follow-up in the question.
+- `tempo answer` and `/tempo:answer` take an option by its text as well as its letter, in any
+  case and without trailing punctuation: `tempo answer 61 yes` on a Yes/No question. A valid
+  letter still wins.
 
 ### Changed
 
