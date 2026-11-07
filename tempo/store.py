@@ -32,6 +32,8 @@ from typing import Any, Optional, cast
 DEFAULT_DB = "~/.claude/tempo/questions.db"
 # Where the database lived before the plugin was renamed to Tempo.
 OLD_DEFAULT_DB = "~/.claude/open-questions/questions.db"
+# The folder this code runs from: the installed plugin, the main checkout or a worktree.
+CODE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The shapes passed around, as plain dicts that turn straight into JSON. A question has
 # the keys of _question_dict, plus its latest version, thread and answer from get().
@@ -59,15 +61,24 @@ def setting(name: str) -> str | None:
 
 
 def db_path() -> str:
-    """The database file: TEMPO_DB if set, else the default, or the old default if only
-    that one exists. The old file is used where it is, never moved or copied."""
-    chosen = setting("DB")
+    """The database file: TEMPO_DB if set, else a branch's own database, else the default,
+    or the old default if only that one exists. The old file is used where it is, never
+    moved or copied."""
+    chosen = setting("DB") or branch_db()
     if chosen:
         return chosen
     path, old = os.path.expanduser(DEFAULT_DB), os.path.expanduser(OLD_DEFAULT_DB)
     if not os.path.exists(path) and os.path.exists(old):
         return old
     return path
+
+
+def branch_db(root: str = CODE_ROOT) -> str | None:
+    """A throwaway database inside the code's folder when that folder is a git worktree,
+    so code still being built never touches the real questions; None otherwise."""
+    if os.path.isfile(os.path.join(root, ".git")):
+        return os.path.join(root, ".tempo-dev", "questions.db")
+    return None
 
 
 SCHEMA = """
