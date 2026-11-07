@@ -328,6 +328,9 @@ def run_wait(args: argparse.Namespace) -> int:
     path = None if named else folder_path(os.getcwd())
     project = _folder_project(path) if path else named
     deadline = time.time() + args.timeout if args.timeout else None
+    # The session's shell. When it is gone, the wait is an orphan: news it took would
+    # reach nobody, and could be meant for a later session in the same project.
+    parent = os.getppid()
     # A marker tells the Stop hook that a wait is running for this project.
     marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
     _write_marker(marker, project)
@@ -337,6 +340,8 @@ def run_wait(args: argparse.Namespace) -> int:
             if current != project:
                 project = current
                 _write_marker(marker, project)
+            if os.getppid() != parent:
+                return 0
             text = take_inbox(project)
             if text:
                 print(text)

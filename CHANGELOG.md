@@ -97,6 +97,8 @@ All notable changes to Tempo are listed here. The format follows
   every project's answers and follow-ups, without marking them seen, and `tempo wait` no longer
   waits for every project: `--all-projects` is still accepted for one release, with a note, and
   waits for the folder's project only.
+- A `tempo wait` whose session has ended stops at its next check. Before, it kept running for up
+  to its timeout and could take an answer meant for a later session in the same project.
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still

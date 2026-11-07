@@ -564,6 +564,23 @@ class CliTest(DatabaseTest):
         self.assertIn("--all-projects is no longer used", err)
         self.assertEqual(len(self.store.undelivered("blog")), 1)
 
+    def test_wait_ends_when_its_session_is_gone(self):
+        # Once the session's shell is gone, the wait belongs to the system (pid 1), and news
+        # it took would reach nobody.
+        self.add()
+        parents = iter([4242, 4242, 1])
+
+        def meanwhile(seconds):
+            self.store.follow_up("demo", 1, "Hm?")
+
+        with (
+            mock.patch.object(cli.os, "getppid", lambda: next(parents)),
+            mock.patch.object(cli.time, "sleep", meanwhile),
+        ):
+            code, out, _ = run("wait", "--timeout", "5", "--interval", "0.1")
+        self.assertEqual((code, out), (0, ""))
+        self.assertEqual(len(self.store.undelivered("demo")), 1)
+
     def test_wait_follows_its_folder_when_the_project_is_renamed(self):
         del os.environ["TEMPO_PROJECT"]
         self.store.see_folder("shop", "/x/shop")
