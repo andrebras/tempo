@@ -14,8 +14,13 @@ $ARGUMENTS
 TEMPO_TYPED_TEXT
 ```
 
-If the output says nothing was recorded, tell the user why in one line and do nothing else.
+If the output says the question was not found ("Nothing was recorded: …"), tell the user why
+in one line and do nothing else.
 
-Present it briefly: the title, the options with their letters (and which one is recommended),
-and the latest entries of its thread. Don't act on it unless the user asks. Only the user
-answers, so never run `tempo answer` or `tempo reply`.
+Present it briefly. Start with one paragraph that names the question by its number, as the
+Tempo skill says: `**[Q57](link): Title**`, with the link from the output's last line (with
+the page off, just `**Q57: Title**`). Put the options with their letters right under that
+line, in the same paragraph, marking the recommended one; then the latest entries of its
+thread. Keeping the options next to the number shows they belong to a question already in
+Tempo. Don't act on it unless the user asks. Only the user answers, so never run
+`tempo answer` or `tempo reply`.

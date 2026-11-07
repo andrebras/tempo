@@ -71,10 +71,9 @@ def slash_list(store: Store, project: str, typed: str) -> str:
 
 
 def slash_show(store: Store, project: str, typed: str) -> str:
-    from tempo import cli
 
     number, _ = split_number(typed)
-    return cli.format_question(store.get(project, number))
+    return _shown(store.get(project, number))
 
 
 def slash_answer(store: Store, project: str, typed: str) -> str:
@@ -88,12 +87,11 @@ def slash_answer(store: Store, project: str, typed: str) -> str:
         project,
         question["title"],
         cli._describe_answer(question, question["answer"]),
-        cli.format_question(question),
+        _shown(question),
     )
 
 
 def slash_dive(store: Store, project: str, typed: str) -> str:
-    from tempo import cli
 
     number, rest = split_number(typed)
     question = store.get(project, number)
@@ -114,8 +112,15 @@ def slash_dive(store: Store, project: str, typed: str) -> str:
         project,
         question["title"],
         question["entries"][-1]["body"],
-        cli.format_question(question),
+        _shown(question),
     )
+
+
+def _shown(question: Question) -> str:
+    """The question in full, then where the user finds it, for Claude to link."""
+    from tempo import cli
+
+    return "%s\n\nLink: %s" % (cli.format_question(question), cli._pointer(question))
 
 
 COMMANDS = {"list": slash_list, "show": slash_show, "answer": slash_answer, "dive": slash_dive}

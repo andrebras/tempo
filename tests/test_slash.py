@@ -3,6 +3,7 @@ import subprocess
 import unittest
 
 from tempo import slash
+from tests import TEST_PORT
 from tests.helpers import DatabaseTest
 from tests.test_cli import run
 
@@ -78,6 +79,7 @@ class SlashCommandTest(DatabaseTest):
         code, out, _ = self.slash("show", "1b")
         self.assertEqual(code, 0)
         self.assertIn("(b) Right", out)
+        self.assertIn("\nLink: http://127.0.0.1:%d/#/demo/1" % TEST_PORT, out)
 
     def test_answer_records_it_already_delivered(self):
         code, out, _ = self.slash("answer", "Q1 b) nicer view\n")
@@ -147,7 +149,7 @@ class SkillFilesTest(unittest.TestCase):
             )
             words = " ".join(text.split())
             self.assertIn("never run `tempo answer` or `tempo reply`", words)
-            self.assertIn("If the output says nothing was recorded", words)
+            self.assertIn("othing was recorded", words)
 
     def test_the_heredoc_hands_the_text_over_untouched(self):
         # The same shell lines the skill runs, with the text Claude Code puts in place.
