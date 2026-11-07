@@ -47,7 +47,7 @@ class Element extends Node {
 globalThis.Node = Node;
 globalThis.document = { createElement: (tag) => new Element(tag) };
 
-const { rich, inline, openFor } = require("../tempo/page.js");
+const { rich, inline, openFor, joinNotice } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
 // inline() returns plain strings for its text parts; inside elements they are Text nodes.
@@ -132,4 +132,13 @@ test("openFor says how long a question has been open, in the largest whole unit"
     "2026-11-03T13:00:00Z": "open 3 days",
   };
   for (const [createdAt, text] of Object.entries(cases)) assert.equal(openFor(createdAt, now), text);
+});
+
+test("joinNotice says how many questions moved and their new numbers", () => {
+  assert.equal(joinNotice("a", "b", []), null);
+  assert.equal(joinNotice("tempo", "Tempo", [{ from: 2, to: 28 }]), "Moved 1 question from tempo to Tempo: now Q28.");
+  assert.equal(
+    joinNotice("tempo", "Tempo", [{ from: 1, to: 28 }, { from: 2, to: 29 }]),
+    "Moved 2 questions from tempo to Tempo: now Q28–Q29.",
+  );
 });
