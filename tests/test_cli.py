@@ -157,6 +157,16 @@ class CliTest(DatabaseTest):
             texts = [cli.take_inbox("demo"), *other]
         self.assertEqual(sum("answered (b) Right" in (text or "") for text in texts), 1)
 
+    def test_a_session_in_the_root_folder_takes_no_news(self):
+        # "/" has no folder name, so its project name is empty, which is no project.
+        del os.environ["TEMPO_PROJECT"]
+        self.add(project="shop")
+        self.store.answer("shop", 1, "a")
+        payload = json.dumps({"cwd": "/", "stop_hook_active": False})
+        for event in ("user-prompt-submit", "stop"):
+            self.assertEqual(run("hook", event, stdin=payload)[1], "", event)
+        self.assertEqual(len(self.store.undelivered("shop")), 1)
+
     def test_session_start_hook_stays_quiet_in_a_thread(self):
         with (
             mock.patch.dict("os.environ", {"TEMPO_IN_THREAD": "1"}),

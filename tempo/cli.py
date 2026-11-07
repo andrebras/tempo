@@ -534,6 +534,9 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
     project = "-"
     try:
         project = setting("PROJECT") or project_name(cwd)
+        if not project:
+            # A folder with no name, such as "/", belongs to no project.
+            return None, "-", "let through: no project"
         inbox, delivered = deliver_inbox(project)
         if inbox:
             return inbox, project, "delivered %d" % delivered

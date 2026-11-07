@@ -842,7 +842,8 @@ class Store:
             " WHERE e.author = 'user' AND e.delivered_at IS NULL"
         )
         params: Names = []
-        if project:
+        # Only None means every project: an empty name (a session in "/") is no project.
+        if project is not None:
             sql += " AND q.project = ?"
             params.append(project)
         sql += " ORDER BY e.id"

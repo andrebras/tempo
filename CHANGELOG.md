@@ -58,6 +58,10 @@ All notable changes to Tempo are listed here. The format follows
   marked question in the same goal, the joined project's mark is dropped.
 - An answer or follow-up reaches Claude once, even when two sessions in the same project,
   or a session and `tempo wait`, pick up the user's news at the same moment.
+- A session started in `/` no longer takes every project's answers and follow-ups. The folder
+  has no name, so its project name was empty, which was read as "all projects": its Stop hook
+  handed every project's news to that session, and the sessions they were meant for never saw
+  them. A folder with no name now belongs to no project, and its hooks deliver nothing.
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still

@@ -179,6 +179,13 @@ class ThreadTest(DatabaseTest):
         self.assertEqual(self.store.undelivered("demo"), [])
         self.assertEqual(len(self.store.undelivered()), 1)
 
+    def test_an_empty_project_name_is_no_project(self):
+        # A session in "/" has an empty project name; it must not take every project's news.
+        self.add()
+        self.store.follow_up("demo", 1, "Hm?")
+        self.assertEqual(self.store.take_undelivered(""), [])
+        self.assertEqual(len(self.store.undelivered("demo")), 1)
+
 
 class ListTest(DatabaseTest):
     def test_lists_whether_a_follow_up_is_waiting_on_claude(self):
