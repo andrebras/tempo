@@ -18,6 +18,9 @@ All notable changes to Tempo are listed here. The format follows
   session kept running old code without saying so. Code run from a git checkout stays quiet.
 - A test runs the previous release's `tempo add`, `list` and prompt hook against a database
   migrated by the current code, so a release that breaks older sessions fails CI.
+- A test runs the prompt and Stop hooks the way Claude Code does (`bin/tempo hook …` in its
+  own process, with Claude Code's JSON on stdin) and checks that an answer from the page
+  reaches Claude exactly once.
 
 ### Fixed
 
@@ -58,6 +61,15 @@ All notable changes to Tempo are listed here. The format follows
   marked question in the same goal, the joined project's mark is dropped.
 - An answer or follow-up reaches Claude once, even when two sessions in the same project,
   or a session and `tempo wait`, pick up the user's news at the same moment.
+- A session started in `/` no longer takes every project's answers and follow-ups. The folder
+  has no name, so its project name was empty, which was read as "all projects": its Stop hook
+  handed every project's news to that session, and the sessions they were meant for never saw
+  them. A folder with no name now belongs to no project, and its hooks deliver nothing.
+- An answer or follow-up is no longer lost when its text cannot be built. The news was marked
+  delivered first and described after, so an error while describing it (for example an older
+  answer naming an option its question no longer had) dropped it without a word. It is now
+  marked delivered only once its text is ready, and an option that is missing shows as its
+  letter alone.
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still

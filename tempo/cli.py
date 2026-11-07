@@ -534,6 +534,9 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
     project = "-"
     try:
         project = setting("PROJECT") or project_name(cwd)
+        if not project:
+            # A folder with no name, such as "/", belongs to no project.
+            return None, "-", "let through: no project"
         inbox, delivered = deliver_inbox(project)
         if inbox:
             return inbox, project, "delivered %d" % delivered
@@ -654,8 +657,9 @@ def take_inbox(project: str | None) -> str:
 
 def deliver_inbox(project: str | None) -> tuple[str, int]:
     """take_inbox, with how many answers and follow-ups it handed over."""
-    with Store(connect()) as store:
-        entries = store.take_undelivered(project)
+    # The text is built before the entries are marked delivered, so an error while
+    # building it leaves them for the next hook instead of losing them.
+    with Store(connect()) as store, store.delivering(project) as entries:
         return _describe_inbox(store, entries), len(entries)
 
 
@@ -698,8 +702,11 @@ def _describe_answer(question: Question, entry: Entry) -> str:
     parts: list[str] = []
     if entry["choice"]:
         version = question["versions"][entry["version"] - 1]
-        option = next(o for o in version["options"] if o["letter"] == entry["choice"])
-        parts.append("(%s) %s" % (entry["choice"], option["text"]))
+        # An option missing from its version (saved by an older bug) shows just its letter.
+        option = next((o for o in version["options"] if o["letter"] == entry["choice"]), None)
+        parts.append(
+            "(%s) %s" % (entry["choice"], option["text"]) if option else "(%s)" % entry["choice"]
+        )
     if entry["body"]:
         parts.append("Note: %s" % entry["body"] if parts else entry["body"])
     return " / ".join(parts)
