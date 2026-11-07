@@ -24,6 +24,8 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- The skill no longer mentions answers "given with `tempo`": there is no command to answer
+  a question, only the page and chat.
 - A project can't be named `.` or `..` any more, with `--project`, `TEMPO_PROJECT` or a
   rename. The page could not open such a project's questions, because the browser reads
   those names in a link as steps between folders.
