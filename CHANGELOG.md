@@ -6,6 +6,13 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `server.log` now has one line for each change made through the page (method, path and status
+  code) and for each hook run (event, project and what happened, such as "delivered 2" or
+  "blocked: no wait"), so you can see afterwards what Tempo did. It never holds request bodies or
+  answer text, and it moves to `server.log.1` once it passes about 1 MB.
+
 ### Fixed
 
 - Two answers sent to one question at the same moment (a double click, two tabs, or the page
