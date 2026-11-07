@@ -38,8 +38,27 @@ function route() {
   return match ? { project: decodeURIComponent(match[1]), number: Number(match[2]) } : null;
 }
 
-function priorityBadge(question) {
-  return el("span", { class: `badge ${question.priority}` }, question.priority);
+// How long a question has been open, in the largest whole unit: "open 3 days".
+function openFor(createdAt, now = Date.now()) {
+  const minutes = Math.max(1, Math.floor((now - new Date(createdAt).getTime()) / 60000));
+  for (const [size, unit] of [[24 * 60, "day"], [60, "hour"], [1, "minute"]]) {
+    if (minutes >= size) {
+      const amount = Math.floor(minutes / size);
+      return `open ${amount} ${unit}${amount === 1 ? "" : "s"}`;
+    }
+  }
+}
+
+// The plain facts of an open question: quick to answer (a recommended option, at most
+// three options, never reworded) and how long it has been open.
+function facts(question) {
+  if (question.status !== "open") return [];
+  return [question.quick && el("span", { class: "badge quick" }, "quick"),
+    el("span", { class: "age" }, openFor(question.created_at))];
+}
+
+function startHere(question) {
+  return question.start_here && el("span", { class: "badge start" }, "Start here");
 }
 
 // After "Ask for more", until Claude replies: "sent" while no session has picked the
@@ -68,9 +87,9 @@ async function loadList() {
   const current = route();
   if (current) chooseProject(current.project);
   if (!data.projects.includes(state.project)) {
-    // Start with a project that needs something now, else the first one.
-    const urgent = open.questions.find((q) => q.priority === "now");
-    chooseProject(urgent ? urgent.project : (data.projects[0] || ""));
+    // Start with a project that has open questions, else the first one.
+    const waiting = open.questions[0];
+    chooseProject(waiting ? waiting.project : (data.projects[0] || ""));
   }
   const counts = {};
   for (const q of open.questions) counts[q.project] = (counts[q.project] || 0) + 1;
@@ -84,7 +103,7 @@ async function loadList() {
   select.hidden = !data.projects.length;
   const words = $("#search").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (q) => words.every((word) =>
-    `${q.label} ${q.title} ${q.context}`.toLowerCase().includes(word));
+    `${q.label} ${q.title} ${q.context} ${q.goal || ""}`.toLowerCase().includes(word));
   const questions = data.questions.filter((q) => q.project === state.project && matches(q));
   const list = $("#list");
   list.replaceChildren();
@@ -97,13 +116,22 @@ async function loadList() {
       : "No questions yet."));
     return shown;
   }
+  // Open questions come grouped by goal from the server; a heading starts each group,
+  // once any question has a goal. The ones without a goal come last, under "Other".
+  const grouped = state.status === "open" && questions.some((q) => q.goal);
+  let group;
   for (const question of questions) {
+    if (grouped && (question.goal || null) !== group) {
+      group = question.goal || null;
+      list.append(el("h3", { class: "goal" }, group || "Other"));
+    }
     const active = current && current.project === question.project && current.number === question.number;
     list.append(el("a", { href: `#/${encodeURIComponent(question.project)}/${question.number}`,
-                          class: `prio-${question.priority}${active ? " active" : ""}`,
-                          title: question.priority },
-      el("span", { class: "label" }, question.label),
+                          class: [question.start_here && "start", active && "active"].filter(Boolean).join(" ") },
+      el("span", { class: "label" }, question.label, startHere(question)),
       el("span", { class: "title" }, question.title),
+      question.start_here && el("span", { class: "reason" }, question.start_here),
+      question.status === "open" && el("span", { class: "facts" }, facts(question)),
       waitBadge(question)));
   }
   return shown;
@@ -242,7 +270,7 @@ function renderSettings(data) {
     renderProjects(data),
     // Placeholder: what belongs here is still to be decided.
     el("section", { class: "card" },
-      el("h3", {}, "Question rules", el("span", { class: "badge later" }, "coming soon")),
+      el("h3", {}, "Question rules", el("span", { class: "badge muted" }, "coming soon")),
       el("p", {}, "Rules for how Claude asks and handles your questions will live here. Nothing to set yet."))));
 }
 
@@ -346,7 +374,7 @@ async function loadDetail(force) {
     return;
   }
   const key = JSON.stringify([question.project, question.number, question.version,
-                              question.status, question.entries.length]);
+                              question.status, question.entries.length, question.goal, question.start_here]);
   if (!force && key === state.current) return;
   // Keep what the user is typing when the same question refreshes underneath them.
   const id = `${question.project}/${question.number}`;
@@ -363,9 +391,12 @@ function renderQuestion(question, draft) {
   const reworded = question.version > 1 ? `, reworded (version ${question.version})` : "";
   const parts = [
     el("div", { class: "eyebrow" }, `${question.project} · ${question.label} · ${question.status}${reworded}`,
-       priorityBadge(question),
        waitBadge(question)),
     el("h2", {}, question.title),
+    el("div", { class: "facts" },
+      el("span", { class: "badge goal" }, question.goal ? `Goal: ${question.goal}` : "No goal"),
+      facts(question)),
+    question.start_here && el("p", { class: "start-here" }, startHere(question), question.start_here),
     el("div", { class: "context" }, rich(question.context)),
   ];
   const reopened = question.status === "open" && question.answer;
@@ -506,7 +537,7 @@ function renderThread(question) {
       entries));
 }
 
-// Wires up the page. Node loads this file only to test rich() and inline(), so it
+// Wires up the page. Node loads this file only to test rich(), inline() and openFor(), so it
 // exports them instead of starting.
 function start() {
   for (const button of document.querySelectorAll(".tabs button")) {
@@ -539,5 +570,5 @@ function start() {
   setInterval(() => refresh(false), 4000);
 }
 
-if (typeof module === "object") module.exports = { rich, inline };
+if (typeof module === "object") module.exports = { rich, inline, openFor };
 else start();
