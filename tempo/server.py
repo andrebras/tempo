@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import time
+import traceback
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -25,6 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PAGE = os.path.join(HERE, "page.html")
 SCRIPT = os.path.join(HERE, "page.js")
+# The largest request body the page sends is a note; a megabyte leaves plenty of room.
+MAX_BODY = 1_000_000
 
 
 def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
@@ -33,6 +36,8 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "tempo"
+        # A client that stops sending mid-request frees its thread after this many seconds.
+        timeout = 30
 
         def do_GET(self) -> None:
             if not self._trusted(write=False):
@@ -41,14 +46,24 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
             if _parts(urlparse(self.path).path) == ["health"]:
                 self._json(200, health())
                 return
-            with Store(connect()) as store:
-                self._get(store)
+            self._safely(self._get)
 
         def do_POST(self) -> None:
             if not self._trusted(write=True):
                 return
-            with Store(connect()) as store:
-                self._post(store)
+            self._safely(self._post)
+
+        def _safely(self, run: Callable[[Store], None]) -> None:
+            """Run a request with the database; an unexpected error, such as a locked
+            database, answers 500 with JSON instead of dropping the connection. The
+            traceback goes to stderr, which is the server log."""
+            try:
+                with Store(connect()) as store:
+                    run(store)
+            except Exception:
+                traceback.print_exc()
+                with contextlib.suppress(OSError):
+                    self._json(500, {"error": "Something went wrong in Tempo"})
 
         def _get(self, store: Store) -> None:
             url = urlparse(self.path)
@@ -87,15 +102,27 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
             parts = _parts(urlparse(self.path).path)
             try:
                 length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if length < 0:
+                self._json(400, {"error": "Invalid Content-Length"})
+                return
+            if length > MAX_BODY:
+                self._json(413, {"error": "The request is too large"})
+                return
+            try:
                 body = json.loads(self.rfile.read(length) or b"{}")
             except ValueError:
                 self._json(400, {"error": "Invalid JSON"})
+                return
+            if not isinstance(body, dict):
+                self._json(400, {"error": "The body must be a JSON object"})
                 return
             if len(parts) == 5 and parts[:2] == ["api", "questions"]:
                 self._question_action(store, parts[2], parts[3], parts[4], body)
             elif len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "rename":
                 self._save_setting(
-                    store, lambda: {"moved": store.rename_project(parts[2], body.get("name"))}
+                    store, lambda: {"moved": store.rename_project(parts[2], _text(body, "name"))}
                 )
             elif parts == ["api", "folders", "link"]:
                 self._save_setting(store, lambda: _link(store, body))
@@ -110,11 +137,13 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
             if action == "answer":
                 self._handle(
                     lambda: store.answer(
-                        project, _int(number), body.get("choice"), body.get("body", "")
+                        project, _int(number), _text(body, "choice"), _text(body, "body", "")
                     )
                 )
             elif action == "followup":
-                self._handle(lambda: store.follow_up(project, _int(number), body.get("body", "")))
+                self._handle(
+                    lambda: store.follow_up(project, _int(number), _text(body, "body", ""))
+                )
             elif action == "reopen":
                 self._handle(lambda: store.reopen(project, _int(number)))
             else:
@@ -235,14 +264,24 @@ def _on_disk(folder: dict[str, Any]) -> bool:
 
 def _link(store: Store, body: Any) -> dict[str, Any]:
     """File a folder under a project, from the rename banner."""
-    store.link_folder(str(body.get("path") or ""), body.get("project"))
+    store.link_folder(_text(body, "path") or "", _text(body, "project"))
     return {}
 
 
 def _keep(store: Store, body: Any) -> dict[str, Any]:
     """The banner's "keep it apart": the folder stays its own project."""
-    store.keep_folder(str(body.get("path") or ""))
+    store.keep_folder(_text(body, "path") or "")
     return {}
+
+
+def _text(body: dict[str, Any], key: str, default: str | None = None) -> Any:
+    """A text field of a request body, or default when it is missing or null."""
+    value = body.get(key)
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise QuestionError("%s must be text" % key)
+    return value
 
 
 def _parts(path: str) -> list[str]:

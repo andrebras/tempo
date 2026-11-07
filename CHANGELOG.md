@@ -21,6 +21,27 @@ All notable changes to Tempo are listed here. The format follows
   marked question in the same goal, the joined project's mark is dropped.
 - An answer or follow-up reaches Claude once, even when two sessions in the same project,
   or a session and `tempo wait`, pick up the user's news at the same moment.
+- A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
+  a session started in `/` was discarded, because the folder has no name. The hooks now always
+  exit cleanly and say nothing to the session when something goes wrong, and the page still
+  starts.
+- `TEMPO_DB` may be a relative path or start with `~`. A relative path such as `questions.db` made
+  every command fail, and a `~` left unexpanded (as in Claude Code's `env` settings) gave each
+  folder its own database in a folder literally named `~`.
+- The page's server answers every request. A body that is not a JSON object, a number where
+  text is expected, or an unexpected error such as a locked database used to close the
+  connection, so the page showed a network error. Bad input now gets a 400 with a clear message,
+  and an unexpected error a 500, with the details in the server log.
+- A request with a negative `Content-Length` no longer holds a server thread until the client
+  hangs up. It gets a 400, a body over 1 MB gets a 413, and a client that stops sending is
+  dropped after 30 seconds.
+
+### Security
+
+- The database and the server log are now readable by your account only (mode 0600), and a new
+  data folder is made with mode 0700. Before, they used the default permissions, so other
+  accounts on a shared machine could read every question and answer. An existing database is
+  tightened the next time Tempo opens it; an existing folder is left as it is.
 
 ## [0.5.4] - 2026-11-07
 

@@ -20,9 +20,11 @@ the pattern for the others.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
+import stat
 import string
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta, timezone
@@ -66,7 +68,8 @@ def db_path() -> str:
     moved or copied."""
     chosen = setting("DB") or branch_db()
     if chosen:
-        return chosen
+        # Settings such as Claude Code's env block pass "~" and relative paths as written.
+        return os.path.abspath(os.path.expanduser(chosen))
     path, old = os.path.expanduser(DEFAULT_DB), os.path.expanduser(OLD_DEFAULT_DB)
     if not os.path.exists(path) and os.path.exists(old):
         return old
@@ -160,15 +163,27 @@ def now() -> str:
 
 def connect(path: str | None = None) -> sqlite3.Connection:
     path = path or db_path()
-    if path != ":memory:":
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+    if path != ":memory:" and os.path.dirname(path):
+        # Only this account may read the questions. An existing folder is left alone: it
+        # may be one the user picked and shares on purpose.
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
     db = sqlite3.connect(path, timeout=10, isolation_level=None)
+    if path != ":memory:":
+        _make_private(path)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode = WAL")
     db.execute("PRAGMA foreign_keys = ON")
     db.executescript(SCHEMA)
     _migrate(db)
     return db
+
+
+def _make_private(path: str) -> None:
+    """Make the database file readable by this account only, before WAL mode makes its
+    -wal and -shm files, which SQLite creates with the same permissions."""
+    with contextlib.suppress(OSError):
+        if stat.S_IMODE(os.stat(path).st_mode) != 0o600:
+            os.chmod(path, 0o600)
 
 
 def _add_priority(db: sqlite3.Connection) -> None:

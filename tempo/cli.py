@@ -353,19 +353,32 @@ def run_hook(args: argparse.Namespace) -> int:
         payload = json.load(sys.stdin)
     except ValueError:
         payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
     cwd = payload.get("cwd") or os.getcwd()
     if args.event == "stop":
         reason = stop_reason(payload, cwd)
         if reason:
             print(json.dumps({"decision": "block", "reason": reason}))
         return 0
-    override = setting("PROJECT")
-    project = override or project_name(cwd, record=True)
-    if args.event == "session-start":
-        start_server(args.port)
-        text = session_note(project, args.port, None if override else folder_path(cwd))
-    else:
-        text = take_inbox(project)
+    # A hook must never block or break the session over a Tempo problem: exit code 2
+    # would discard the user's prompt. Errors go to stderr, which Claude Code does not
+    # pass to the session when the hook exits 0.
+    try:
+        if args.event == "session-start":
+            start_server(args.port)
+    except Exception as error:
+        print("tempo: the page did not start: %s" % error, file=sys.stderr)
+    try:
+        override = setting("PROJECT")
+        project = override or project_name(cwd, record=True)
+        if args.event == "session-start":
+            text = session_note(project, args.port, None if override else folder_path(cwd))
+        else:
+            text = take_inbox(project)
+    except Exception as error:
+        print("tempo: hook skipped: %s" % error, file=sys.stderr)
+        return 0
     if text:
         event = "SessionStart" if args.event == "session-start" else "UserPromptSubmit"
         print(
@@ -672,7 +685,9 @@ def start_server(port: int) -> bool:
         return False
     # The child gets its own copy of the log file handle, so ours can close. The
     # argument list is fixed and there is no shell, so nothing outside reaches it.
-    with open(os.path.join(os.path.dirname(_db_path()), "server.log"), "a") as log:
+    log_path = os.path.join(os.path.dirname(_db_path()), "server.log")
+    # Errors in the log may quote questions, so it is private like the database.
+    with open(log_path, "a", opener=lambda name, flags: os.open(name, flags, 0o600)) as log:
         subprocess.Popen(  # noqa: S603
             [sys.executable, "-m", "tempo", "serve", "--port", str(port)],
             cwd=ROOT,
@@ -829,7 +844,7 @@ def _port() -> int:
 
 def _db_path() -> str:
     path = db_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
     return path
 
 
