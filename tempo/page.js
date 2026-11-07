@@ -1,4 +1,6 @@
-const state = { status: "open", project: storedProject(), current: null, shown: null, back: null };
+const state = {
+  status: "open", project: storedProject(), seen: storedSeen(), current: null, shown: null, back: null,
+};
 
 // The page shows one project at a time and remembers the last one per browser.
 function storedProject() {
@@ -9,6 +11,29 @@ function chooseProject(name) {
   state.project = name;
   try { localStorage.setItem("project", name); } catch { /* private window: just don't remember */ }
 }
+
+// When the user last looked at each project: the project's activity time then, as the
+// server gave it. Kept per browser; null until the first visit.
+function storedSeen() {
+  try { return JSON.parse(localStorage.getItem("seen")) || null; } catch { return null; }
+}
+
+function markSeen(activity) {
+  // On a first visit nothing counts as new yet.
+  if (!state.seen) state.seen = { ...activity };
+  if (activity[state.project]) state.seen[state.project] = activity[state.project];
+  try { localStorage.setItem("seen", JSON.stringify(state.seen)); } catch { /* just don't remember */ }
+}
+
+// The header's chips: every project with something for the user, meaning open questions
+// or news since it was last viewed, plus the current project. 'fresh' puts a dot on it.
+function chipProjects(projects, counts, activity, seen, current) {
+  return projects.map((name) => ({
+    name, open: counts[name] || 0, current: name === current,
+    fresh: name !== current && Boolean(activity[name]) && !(seen?.[name] >= activity[name]),
+  })).filter((chip) => chip.current || chip.open || chip.fresh);
+}
+
 const $ = (selector) => document.querySelector(selector);
 
 function el(tag, attrs = {}, ...children) {
@@ -108,14 +133,8 @@ async function loadList() {
   }
   const counts = {};
   for (const q of open.questions) counts[q.project] = (counts[q.project] || 0) + 1;
-  // Rebuild the options only when they change, so the refresh doesn't close an open dropdown.
-  const select = $("#project");
-  const labels = data.projects.map((name) => `${name} · ${counts[name] || 0} open`);
-  if ([...select.options].map((option) => option.text).join("\n") !== labels.join("\n")) {
-    select.replaceChildren(...data.projects.map((name, i) => el("option", { value: name }, labels[i])));
-  }
-  if (select.value !== state.project) select.value = state.project;
-  select.hidden = !data.projects.length;
+  markSeen(data.activity || {});
+  renderProjectBar(data.projects, counts, data.activity || {});
   const words = $("#search").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (q) => words.every((word) =>
     `${q.label} ${q.title} ${q.context} ${q.goal || ""}`.toLowerCase().includes(word));
@@ -352,7 +371,7 @@ function renderSettings(data) {
 async function refresh(follow = false) {
   if (settingsOpen()) {
     if ($("#settings").hidden) await openSettings();
-    // The header's project dropdown stays visible, so keep it filled and up to date
+    // The header's project chips stay visible, so keep it filled and up to date
     // (for example after a rename here).
     await loadList();
     return;
@@ -423,14 +442,59 @@ function renderEmpty(shown) {
       }, el("span", { class: "name" }, name),
         el("span", { class: "count" }, `${shown.counts[name]} open`),
         el("span", { class: "chevron", "aria-hidden": "true" }, "›"))))),
-      more > 0 && el("button", { class: "link more", onclick: openProjectMenu },
-        `${more} more ${more === 1 ? "project" : "projects"} in the project menu ↑`)));
+      // The click must not reach the page, which closes the menu on outside clicks.
+      more > 0 && el("button", { class: "link more", onclick: (event) => { event.stopPropagation(); openProjectMenu(); } },
+        `${more} more ${more === 1 ? "project" : "projects"} in All projects ↑`)));
+}
+
+// Redrawn only when it changes, so the timed refresh keeps the menu and focus as they are.
+function renderProjectBar(projects, counts, activity) {
+  const bar = $("#projects");
+  const chips = chipProjects(projects, counts, activity, state.seen, state.project);
+  const key = JSON.stringify([chips, projects.map((name) => counts[name] || 0)]);
+  bar.hidden = !projects.length;
+  if (bar.dataset.key === key) return;
+  bar.dataset.key = key;
+  $("#chips").replaceChildren(...chips.map((chip) => el("button", {
+    class: "chip", "aria-pressed": String(chip.current), onclick: () => switchProject(chip.name),
+  }, chip.name, el("span", { class: "count" }, ` · ${chip.open}`),
+  chip.fresh && el("span", { class: "dot", title: "Something new" }, el("span", { class: "sr" }, ", something new")))));
+  $("#project-menu").replaceChildren(...projects.map((name) => el("li", { role: "none" }, el("button", {
+    role: "menuitem", tabindex: "-1", "aria-current": name === state.project ? "true" : false,
+    onclick: () => switchProject(name),
+  }, el("span", { class: "name" }, name), el("span", { class: "count" }, `${counts[name] || 0} open`)))));
+}
+
+function switchProject(name) {
+  closeProjectMenu(false);
+  chooseProject(name);
+  history.replaceState(null, "", location.pathname);
+  state.current = null;
+  refresh();
 }
 
 function openProjectMenu() {
-  const select = $("#project");
-  select.focus();
-  try { select.showPicker(); } catch { /* older browsers: focus is enough */ }
+  $("#project-menu").hidden = false;
+  $("#all-projects").setAttribute("aria-expanded", "true");
+  $("#project-menu button")?.focus();
+}
+
+function closeProjectMenu(refocus) {
+  if ($("#project-menu").hidden) return;
+  $("#project-menu").hidden = true;
+  $("#all-projects").setAttribute("aria-expanded", "false");
+  if (refocus) $("#all-projects").focus();
+}
+
+// Up and down (and Home, End) move through the menu's projects; Escape closes it.
+function projectMenuKeys(event) {
+  const items = [...document.querySelectorAll("#project-menu button")];
+  const at = items.indexOf(document.activeElement);
+  const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1 }[event.key];
+  if (event.key === "Escape") closeProjectMenu(true);
+  if (to === undefined || !items.length) return;
+  event.preventDefault();
+  items[(to + items.length) % items.length].focus();
 }
 
 async function loadDetail(force) {
@@ -630,12 +694,17 @@ function start() {
     if (event.target.name === "choice" && $("#send")) $("#send").disabled = false;
   });
   $("#search").addEventListener("input", () => refresh());
-  $("#project").addEventListener("change", (event) => {
-    chooseProject(event.target.value);
-    history.replaceState(null, "", location.pathname);
-    state.current = null;
-    refresh();
+  $("#all-projects").addEventListener("click", () => {
+    if ($("#project-menu").hidden) openProjectMenu();
+    else closeProjectMenu(true);
   });
+  $(".project-menu").addEventListener("keydown", projectMenuKeys);
+  // A click or a Tab anywhere else closes the menu.
+  for (const type of ["click", "focusin"]) {
+    document.addEventListener(type, (event) => {
+      if (!event.target.closest?.(".project-menu")) closeProjectMenu(false);
+    });
+  }
 
   refresh(true);
   checkServer();
@@ -643,6 +712,6 @@ function start() {
 }
 
 if (typeof module === "object") module.exports = {
-  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders,
+  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
 };
 else start();

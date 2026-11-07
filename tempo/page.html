@@ -77,6 +77,31 @@
                                     color: var(--muted); font-weight: 500; }
   .tabs button[aria-pressed="true"], .segmented button[aria-pressed="true"] {
     background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+  /* Project chips: one per project with something for you, then the All projects menu. */
+  #projects { position: relative; display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; min-width: 0; }
+  #chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .chip, #all-projects { position: relative; display: inline-flex; align-items: center; min-height: 38px;
+                         max-width: 100%; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px;
+                         background: var(--sunken); color: var(--muted); font-weight: 500; }
+  .chip { overflow-wrap: anywhere; text-align: left; }
+  .chip:hover, #all-projects:hover { color: var(--text); }
+  .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .chip .count { white-space: pre; opacity: .8; }
+  .chip .dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%;
+               background: var(--now); box-shadow: 0 0 0 2px var(--panel); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .project-menu { position: static; display: flex; }
+  #all-projects[aria-expanded="true"] { color: var(--text); background: var(--panel); }
+  #project-menu { position: absolute; z-index: 10; top: calc(100% + 6px); right: 0; margin: 0; padding: 6px;
+                  list-style: none; width: max-content; min-width: 220px; max-width: min(340px, calc(100vw - 32px));
+                  max-height: 60vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line);
+                  border-radius: 12px; box-shadow: var(--shadow); }
+  #project-menu button { display: flex; width: 100%; gap: 16px; justify-content: space-between; padding: 7px 10px;
+                         border: 0; border-radius: 8px; background: transparent; text-align: left; }
+  #project-menu button:hover, #project-menu button:focus-visible { background: var(--sunken); }
+  #project-menu button[aria-current="true"] { color: var(--accent); font-weight: 600; }
+  #project-menu .name { overflow-wrap: anywhere; }
+  #project-menu .count { flex: none; color: var(--muted); font-weight: 400; }
   #gear { display: grid; place-items: center; width: 42px; padding: 0; border-radius: 10px;
           border: 1px solid var(--line); background: var(--sunken); color: var(--muted); }
   #gear svg { width: 19px; height: 19px; }
@@ -87,13 +112,6 @@
   main > * { min-width: 0; }
   #side { border-right: 1px solid var(--line); display: flex; flex-direction: column; background: var(--sunken); }
   .side-top { display: grid; gap: 8px; padding: 16px 16px 8px; }
-  #project, .row select { appearance: none; width: 100%; padding: 9px 36px 9px 12px; border: 1px solid var(--line);
-             border-radius: 10px; font-weight: 600; cursor: pointer; background: var(--panel) no-repeat
-             right 12px center / 12px
-             url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23999' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m1 1.5 5 5 5-5'/%3E%3C/svg%3E"); }
-  /* The project filter sits in the header next to the status tabs and matches them. */
-  header #project { width: auto; max-width: 280px; padding: 0 34px 0 12px; font-weight: 500;
-                    background-color: var(--sunken); }
   #search { margin: 0; padding: 9px 12px 9px 34px; border: 1px solid var(--line);
             border-radius: 10px; background: var(--panel) no-repeat 11px 50% / 15px
             url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E"); }
@@ -258,7 +276,6 @@
   .row form { display: flex; gap: 8px; flex: 0 1 400px; margin-left: auto; }
   .row form > :not(button) { flex: 1 1 0; min-width: 0; }
   .row input { padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
-  .row select { padding-top: 8px; padding-bottom: 8px; font-weight: 400; }
   .row form button { padding: 8px 16px; border-radius: 10px; font-weight: 600; border: 1px solid var(--accent);
                      background: var(--accent); color: #fff; }
   .row form button:hover:not(:disabled) { background: var(--accent-strong); }
@@ -281,7 +298,7 @@
   @media (max-width: 760px) {
     header { padding-left: 16px; padding-right: 16px; }
     .tools { width: 100%; }
-    header #project { flex: 1 1 100%; max-width: none; height: 42px; }
+    #projects { flex: 1 1 100%; }
     main { grid-template-columns: minmax(0, 1fr); }
     #side { border-right: 0; border-bottom: 1px solid var(--line); }
     #list { max-height: 38vh; }
@@ -297,7 +314,13 @@
 <header>
   <div class="brand"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M5 22a11 11 0 0 1 22 0" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="22" r="2.8" fill="currentColor"/></svg><h1>Tempo <small>Questions waiting on you</small></h1></div>
   <div class="tools">
-    <select id="project" aria-label="Project"></select>
+    <div id="projects" hidden>
+      <div id="chips" role="group" aria-label="Projects"></div>
+      <div class="project-menu">
+        <button id="all-projects" aria-haspopup="true" aria-expanded="false" aria-controls="project-menu">All projects ▾</button>
+        <ul id="project-menu" role="menu" aria-label="All projects" hidden></ul>
+      </div>
+    </div>
     <div class="tabs" role="group" aria-label="Status">
       <button data-status="open" aria-pressed="true">Open</button>
       <button data-status="answered" aria-pressed="false">Answered</button>
