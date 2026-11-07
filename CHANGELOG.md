@@ -8,6 +8,7 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Changed
 
+- The skill says only the user answers questions; Claude never answers through the page.
 - "Waiting on Claude" now shows in two steps, in the question header and on its row in the
   list: "Sent to Claude" until a session picks the follow-up up, then "Claude is on it" with
   moving dots (still when Reduce motion is on).
