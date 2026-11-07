@@ -708,6 +708,65 @@ class RenameTest(DatabaseTest):
                 self.store.link_folder(path, project)
 
 
+class RepoIdentityTest(DatabaseTest):
+    """A missing repo is offered only to a copy of it: same first commit, else same remote."""
+
+    def setUp(self):
+        super().setUp()
+        self.asked = []
+        self.see("/lab/open-questions", "c1", "git@github.com:me/open-questions.git")
+        self.gone = {"/lab/open-questions"}
+
+    def see(self, path, first_commit=None, remote=None):
+        def identity():
+            self.asked.append(path)
+            return first_commit, remote
+
+        if self.store.see_folder(path.rsplit("/", 1)[1], path, identity):
+            return [c["path"] for c in self.store.spot_rename(path, lambda p: p in self.gone)]
+        return None
+
+    def test_a_renamed_repo_with_the_same_first_commit_is_offered(self):
+        self.assertEqual(self.see("/lab/tempo", "c1", None), ["/lab/open-questions"])
+
+    def test_a_repo_renamed_on_github_still_matches_by_first_commit(self):
+        remote = "git@github.com:me/tempo.git"
+        self.assertEqual(self.see("/lab/tempo", "c1", remote), ["/lab/open-questions"])
+
+    def test_without_a_matching_first_commit_the_remote_matches(self):
+        remote = "git@github.com:me/open-questions.git"
+        self.assertEqual(self.see("/lab/tempo", None, remote), ["/lab/open-questions"])
+        self.assertEqual(self.see("/lab/rewritten", "c9", remote), ["/lab/open-questions"])
+
+    def test_an_unrelated_repo_is_never_offered_a_deleted_one(self):
+        self.assertEqual(self.see("/lab/shop", "c2", "git@github.com:me/shop.git"), [])
+        self.assertEqual(self.see("/lab/blog", None, None), [])
+        self.assertEqual(self.store.renames(), [])
+
+    def test_a_first_commit_match_wins_over_a_remote_match(self):
+        self.see("/lab/fork", "c3", "git@github.com:me/open-questions.git")
+        self.gone.add("/lab/fork")
+        self.assertEqual(self.see("/lab/tempo", "c1", None), ["/lab/open-questions"])
+        remote = "git@github.com:me/open-questions.git"
+        self.assertEqual(self.see("/lab/other", "c4", remote), ["/lab/fork", "/lab/open-questions"])
+
+    def test_a_folder_remembered_without_identity_is_offered_as_before(self):
+        self.store.see_folder("notes", "/lab/notes")
+        self.gone.add("/lab/notes")
+        self.assertEqual(self.see("/lab/shop", "c2", None), ["/lab/notes"])
+
+    def test_identity_is_asked_only_for_a_new_folder_or_a_new_path(self):
+        self.see("/lab/open-questions")
+        self.assertEqual(self.asked, ["/lab/open-questions"])
+        self.store.see_folder("api")
+        self.see("/lab/api", "c5")
+        self.assertEqual(self.asked, ["/lab/open-questions", "/lab/api"])
+        row = self.store.db.execute(
+            "SELECT folder, first_commit FROM folders WHERE path = '/lab/api'"
+        ).fetchone()
+        self.assertEqual(tuple(row), ("api", "c5"))
+
+
 class RaceTest(DatabaseTest):
     """Another connection (a second tab, the page and the tempo command) writes between
     this store's checks and its own write."""

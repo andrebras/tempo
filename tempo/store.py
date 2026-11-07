@@ -56,6 +56,8 @@ Summaries = list[dict[str, Any]]
 Ids = list[int]
 # Questions moved by a join: {"from": old number, "to": new number}.
 Moves = list[dict[str, int]]
+# Gives a git folder's (first commit, remote address); either may be None.
+Identity = Callable[[], tuple[Optional[str], Optional[str]]]
 
 
 def setting(name: str) -> str | None:
@@ -144,7 +146,9 @@ CREATE TABLE IF NOT EXISTS folders (
   seen_at TEXT,
   path TEXT,
   renamed_from TEXT,
-  rename_answered_at TEXT
+  rename_answered_at TEXT,
+  first_commit TEXT,
+  remote TEXT
 );
 CREATE INDEX IF NOT EXISTS entries_undelivered ON entries (delivered_at) WHERE delivered_at IS NULL;
 """
@@ -294,7 +298,16 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
 # add only what is missing (use _add_column), and must work on any older database, since
 # it runs before the numbered steps. An index on a new column is made here too, after the
 # column, as SCHEMA runs before the column exists on an older database.
-ADDITIONS: list[Callable[[sqlite3.Connection], None]] = []
+def _add_repo_identity(db: sqlite3.Connection) -> None:
+    """A git folder keeps its repository's first commit and remote address, so a missing
+    folder is offered only to a new folder that is a copy of the same repository."""
+    _add_column(db, "folders", "first_commit", "TEXT")
+    _add_column(db, "folders", "remote", "TEXT")
+
+
+ADDITIONS: list[Callable[[sqlite3.Connection], None]] = [
+    _add_repo_identity,
+]
 
 
 def _add_column(db: sqlite3.Connection, table: str, column: str, kind: str) -> None:
@@ -649,28 +662,40 @@ class Store:
 
     # Projects and their folders, renamed in Settings
 
-    def see_folder(self, folder: str, path: str | None = None) -> bool:
+    def see_folder(
+        self, folder: str, path: str | None = None, identity: Identity | None = None
+    ) -> bool:
         """Remember a folder a session ran in; a new one is filed under its own name.
 
         A folder is matched by its path first, then by a row of the same name that has no
         path yet (from before paths were stored), which then gets this path. Returns True
         when the folder is new.
+
+        identity gives a git folder's first commit and remote address. It may be slow on a
+        long history, so it is asked only when the folder is new or gets its path, and
+        before the write lock is taken, so other sessions do not wait for git.
         """
         folder = _required(folder, "folder")
+        row = self._folder_row(folder, path)
+        fresh = path is not None and (row is None or row["path"] is None)
+        first_commit, remote = identity() if identity and fresh else (None, None)
         with self._transaction():
             row = self._folder_row(folder, path)
             if row is not None:
                 self.db.execute(
-                    "UPDATE folders SET path = ?, seen_at = ? WHERE rowid = ?",
-                    (path or row["path"], now(), row["rowid"]),
+                    "UPDATE folders SET path = ?, seen_at = ?,"
+                    " first_commit = COALESCE(?, first_commit), remote = COALESCE(?, remote)"
+                    " WHERE rowid = ?",
+                    (path or row["path"], now(), first_commit, remote, row["rowid"]),
                 )
                 return False
             # The name is the key, unless another folder of this name has it already.
             taken = self.db.execute("SELECT 1 FROM folders WHERE folder = ?", (folder,))
             key = path if path and taken.fetchone() else folder
             self.db.execute(
-                "INSERT INTO folders (folder, path, project, seen_at) VALUES (?, ?, ?, ?)",
-                (key, path, self._new_project(folder, path), now()),
+                "INSERT INTO folders (folder, path, project, seen_at, first_commit, remote)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (key, path, self._new_project(folder, path), now(), first_commit, remote),
             )
             return True
 
@@ -727,12 +752,29 @@ class Store:
         whose path is gone (no longer on disk). A gone folder stays on offer to each new
         folder until one is linked to it, so a banner the user kept apart, or one not
         answered yet, never hides it from the real renamed folder. Returns the
-        candidates; the folder keeps its own project until the user picks."""
-        candidates = [
+        candidates; the folder keeps its own project until the user picks.
+
+        A gone folder whose repository is known is offered only to a copy of it: one with
+        the same first commit or, when none has that, the same remote address. So a
+        deleted repository is not offered to every unrelated new one. A gone folder
+        remembered before Tempo stored these is offered to any new git folder, as before.
+        """
+        identities = {
+            row["path"]: (row["first_commit"], row["remote"])
+            for row in self.db.execute(
+                "SELECT path, first_commit, remote FROM folders WHERE path IS NOT NULL"
+            )
+        }
+        first_commit, remote = identities.get(path, (None, None))
+        missing = [
             folder
             for folder in self.folders()
             if folder["path"] and folder["path"] != path and gone(str(folder["path"]))
         ]
+        same = [f for f in missing if first_commit and identities[f["path"]][0] == first_commit]
+        if not same:
+            same = [f for f in missing if remote and identities[f["path"]][1] == remote]
+        candidates = [f for f in missing if f in same or not any(identities[f["path"]])]
         if candidates:
             self.db.execute(
                 "UPDATE folders SET renamed_from = ? WHERE path = ?",
