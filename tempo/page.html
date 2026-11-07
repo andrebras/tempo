@@ -6,10 +6,10 @@
 <title>Tempo</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M5 22a11 11 0 0 1 22 0' stroke='%234f46e5' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='22' r='3' fill='%234f46e5'/%3E%3C/svg%3E">
 <script>
-  // Theme, font and text size are kept per browser and applied before the page draws,
+  // Theme, font, text size and width are kept per browser and applied before the page draws,
   // so it doesn't flash in the wrong colours.
   try {
-    for (const key of ["theme", "font", "size"]) {
+    for (const key of ["theme", "font", "size", "width"]) {
       const value = localStorage.getItem(key);
       if (value) document.documentElement.dataset[key] = value;
     }
@@ -48,6 +48,11 @@
   html { font-size: 16px; }
   :root[data-size="small"] { font-size: 14px; }
   :root[data-size="large"] { font-size: 18px; }
+  /* Reading width of the question column, in characters of the chosen font: 80 is the WCAG
+     limit, 68 the book measure, 100 what screen studies found fastest for skimming. */
+  :root { --measure: 80ch; }
+  :root[data-width="narrow"] { --measure: 68ch; }
+  :root[data-width="wide"] { --measure: 100ch; }
   :root[data-font="serif"] { --font: ui-serif, "New York", Georgia, "Times New Roman", serif; }
   :root[data-font="mono"] { --font: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
   * { box-sizing: border-box; }
@@ -140,10 +145,9 @@
   .elsewhere .more { width: fit-content; margin: 12px auto 0; display: block; border: 0; background: none; box-shadow: none; padding: 4px 2px; }
 
   #detail { padding: 32px 40px 48px; }
-  /* About 68 characters per line in the context box (its 20px padding and 1px border on
-     each side added), the usual reading width; ch follows the chosen font and size, so
-     the whole column, options and buttons included, keeps one edge at that width. */
-  #detail article { max-width: calc(68ch + 42px); margin: 0 auto; }
+  /* The context box's 20px padding and 1px border on each side come on top of the text
+     width, so the whole column, options and buttons included, keeps one edge. */
+  #detail article { max-width: calc(var(--measure) + 42px); margin: 0 auto; }
   .eyebrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: .8125rem; }
   #detail h2 { margin: 10px 0 18px; font-size: 1.625rem; line-height: 1.3; letter-spacing: -.015em; }
   .meta { color: var(--muted); font-size: .8125rem; }

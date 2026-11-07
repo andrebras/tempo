@@ -125,7 +125,7 @@ function closeSettings() {
   refresh(true);
 }
 
-// Theme, font and text size belong to this browser, not the database: the head script
+// Theme, font, text size and width belong to this browser, not the database: the head script
 // applies them on load. The default is stored as no choice at all.
 const display = [
   { key: "theme", label: "Theme", hint: "System follows your computer's light or dark mode.", standard: "system",
@@ -134,6 +134,8 @@ const display = [
     choices: [["sans", "System sans"], ["serif", "Serif"], ["mono", "Monospace"]] },
   { key: "size", label: "Text size", standard: "medium",
     choices: [["small", "Small"], ["medium", "Medium"], ["large", "Large"]] },
+  { key: "width", label: "Width", hint: "How many characters fit on a line of a question.", standard: "medium",
+    choices: [["narrow", "Narrow · 68"], ["medium", "Medium · 80"], ["wide", "Wide · 100"]] },
 ];
 
 function setDisplay(key, value, isDefault) {
