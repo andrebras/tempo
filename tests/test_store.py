@@ -123,6 +123,18 @@ class ThreadTest(DatabaseTest):
 
 
 class ListTest(DatabaseTest):
+    def test_lists_whether_a_follow_up_is_waiting_on_claude(self):
+        for _ in range(3):
+            self.add()
+        self.store.follow_up("demo", 2, "Why?")
+        self.store.follow_up("demo", 3, "And?")
+        self.store.mark_delivered(
+            [e["id"] for e in self.store.undelivered("demo") if e["number"] == 3]
+        )
+        self.assertEqual([q["waiting"] for q in self.store.list("demo")], [None, "sent", "seen"])
+        self.store.add_context("demo", 3, "Because.")
+        self.assertIsNone(self.store.list("demo")[2]["waiting"])
+
     def test_lists_by_priority_then_number_within_a_project(self):
         self.add(title="Calm", priority="later")
         self.add(title="Normal")
