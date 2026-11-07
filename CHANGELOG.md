@@ -14,11 +14,17 @@ All notable changes to Tempo are listed here. The format follows
   `tempo wait` leaves a marker next to the database while it runs, so the hook can tell.
 - An answer whose note asks something ("Do we still need the skill?") is delivered with a
   line asking Claude to reply in the question with `tempo context`.
+- `GET /health` on the page's server answers with JSON saying which Tempo is running: its
+  version, git commit (when run from a checkout), folder, process id and start time.
 
 ### Changed
 
 - Follow-ups from the page now tell Claude to answer them in the question itself with
   `tempo reword`, as the skill says, so the answer shows in the box the user reads.
+- When a session starts, Tempo replaces a Tempo page that is still running from another
+  version or folder, or that no longer loads. Before, any program on port 2204 was left as
+  it was, so a page started from a renamed folder kept failing. Programs that are not Tempo
+  are never stopped.
 - The empty screen says "Nothing is waiting on you" (or "No answered questions"), without the
   project name, which the header already shows.
 - The empty screen's width follows the font (70 characters) instead of a fixed 460 pixels,

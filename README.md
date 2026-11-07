@@ -48,8 +48,9 @@ To try it for one session without installing it, clone the repo and run
 ## Usage
 
 There's nothing to run. When a Claude Code session starts, Tempo starts its page at
-<http://127.0.0.1:2204/>. When Claude needs a decision, it adds a question and links to it in
-chat. On the page you can:
+<http://127.0.0.1:2204/>, replacing a Tempo page left running there from another version or
+folder. When Claude needs a decision, it adds a question and links to it in chat. On the page
+you can:
 
 - **Answer**: pick an option, add a note if you like, and send it. The page moves on to the
   next open question.
