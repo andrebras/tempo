@@ -13,6 +13,10 @@ All notable changes to Tempo are listed here. The format follows
   exactly what the page saves, so Claude gets them the same way: through the hooks,
   `tempo wait` and `tempo inbox`. An unknown question or option letter is refused with an
   error. The skill tells Claude these commands are yours and never to run them.
+- `tempo status` prints a short badge for the tmux status bar: `? 3` when three questions in
+  all projects wait for you (`--project NAME` for one project), and nothing when none do. It
+  only reads the database, never creates or changes it and never starts the page, so it is
+  safe to run every few seconds. The README shows the tmux lines to add.
 - `bin/ci` reports test coverage: a per-file summary of how much of `tempo/` the tests run,
   including the `bin/tempo` processes some tests start. It is a report only and never fails the
   run. On GitHub the same table appears on the job's summary page.

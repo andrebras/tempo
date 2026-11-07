@@ -18,6 +18,7 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo wait --timeout 1800` | Wait until you answer or follow up, then print it |
 | `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`) |
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
+| `tempo status` | For you, not Claude: print `? 3` when 3 questions wait for you, nothing when none do, for the tmux status bar (`--project NAME` counts one project). It only reads the database: it never creates or changes it, and never starts the page |
 | `tempo serve [--background]` | Run the page |
 
 `oq`, the command's old name, still works as an alias.

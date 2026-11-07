@@ -9,6 +9,7 @@ import json
 import os
 import re
 import signal
+import sqlite3
 import string
 import subprocess
 import sys
@@ -188,7 +189,7 @@ def _delivery_commands(commands: argparse._SubParsersAction[argparse.ArgumentPar
 
 
 def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """The user's commands in the terminal: the same answer and follow-up as on the page."""
+    """The user's commands in the terminal: answer and follow up as on the page, and a badge."""
     answer = commands.add_parser(
         "answer", help="Answer a question with an option, as the page does"
     )
@@ -205,6 +206,12 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
     reply.add_argument("body", help="What is unclear or what you would like to know")
     reply.add_argument("--project")
     reply.set_defaults(run=run_reply)
+
+    status = commands.add_parser(
+        "status", help="Print a short badge for the tmux status bar, such as '? 3'"
+    )
+    status.add_argument("--project", help="Count one project; every project by default")
+    status.set_defaults(run=run_status)
 
 
 def _run_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -404,6 +411,39 @@ def run_answer(args: argparse.Namespace) -> None:
 def run_reply(args: argparse.Namespace) -> None:
     question = _store().follow_up(_project(args.project), args.number, args.body)
     print("Added your follow-up to %s." % question["label"])
+
+
+def run_status(args: argparse.Namespace) -> None:
+    """Print "? N" when N questions wait on the user, else nothing. tmux runs this every few
+    seconds, so it reads the file as it is: it never creates, migrates or writes the
+    database, and prints nothing (not even an error) when it can't read it."""
+    count = open_count(db_path(), args.project)
+    if count:
+        print("? %d" % count)
+
+
+def open_count(path: str, project: str | None = None) -> int:
+    """How many questions are open, in one project or all; 0 when the file can't be read."""
+    if not os.path.isfile(path):
+        return 0
+    from urllib.parse import quote
+
+    sql = "SELECT COUNT(*) FROM questions WHERE status = 'open'"
+    params: list[str] = []
+    if project:
+        sql += " AND project = ?"
+        params.append(project)
+    try:
+        # mode=rw never creates the file. Not mode=ro: a WAL database that no one has open
+        # has no -shm file, and a read-only connection can't make one, so it can't read.
+        db = sqlite3.connect("file:%s?mode=rw" % quote(path), uri=True, timeout=1)
+        try:
+            db.execute("PRAGMA query_only = ON")
+            return int(db.execute(sql, params).fetchone()[0])
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return 0
 
 
 def _folder_project(path: str) -> str:
