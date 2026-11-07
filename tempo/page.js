@@ -1,6 +1,6 @@
 const state = {
   status: "open", project: storedProject(), seen: storedSeen(), opened: storedOpened(),
-  current: null, shown: null, back: null,
+  current: null, shown: null, back: null, missing: null,
 };
 
 // The page shows one project at a time and remembers the last one per browser.
@@ -85,7 +85,8 @@ async function api(path, body) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   } : {});
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Something went wrong");
+  // The status tells a reply from the server apart from no reply at all.
+  if (!response.ok) throw Object.assign(new Error(data.error || "Something went wrong"), { status: response.status });
   return data;
 }
 
@@ -101,8 +102,30 @@ async function checkServer() {
   try {
     const now = await api("/health");
     if (!firstServer) firstServer = now;
-    else if (serverChanged(firstServer, now)) location.reload();
+    else if (serverChanged(firstServer, now)) {
+      keepDraft();
+      location.reload();
+    }
   } catch { /* restarting or down: try again on the next tick */ }
+}
+
+// What the user is typing for the question on screen, so a reload doesn't lose it. Kept
+// for this tab only; loadDetail takes it back when it draws the same question.
+function typedDraft() {
+  return { text: $("#note").value, choice: document.querySelector("input[name=choice]:checked")?.value };
+}
+
+function keepDraft() {
+  if (!state.shown || !$("#note")) return;
+  try { sessionStorage.setItem(`draft:${state.shown}`, JSON.stringify(typedDraft())); } catch { /* lost on reload */ }
+}
+
+function takeDraft(id) {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem(`draft:${id}`));
+    sessionStorage.removeItem(`draft:${id}`);
+    return draft;
+  } catch { return null; }
 }
 
 function route() {
@@ -172,8 +195,8 @@ async function loadList() {
   const matches = (q) => words.every((word) =>
     `${q.label} ${q.title} ${q.context} ${q.goal || ""}`.toLowerCase().includes(word));
   const questions = data.questions.filter((q) => q.project === state.project && matches(q));
-  const list = $("#list");
-  list.replaceChildren();
+  // Built aside, then swapped in only if it changed (see drawList).
+  const list = el("div");
   const shown = { questions, counts, projects: data.projects };
   if (!questions.length) {
     // The empty screen beside the list says the same, so wide screens hide this line;
@@ -181,6 +204,7 @@ async function loadList() {
     list.append(el("p", { class: words.length ? "empty" : "empty repeat" }, data.projects.length
       ? (words.length ? "No questions match your search." : `No ${state.status} questions in ${state.project}.`)
       : "No questions yet."));
+    drawList($("#list"), list);
     return shown;
   }
   // Open questions come grouped by goal from the server; a heading starts each group,
@@ -201,7 +225,17 @@ async function loadList() {
       question.start_here && el("span", { class: "reason" }, question.start_here),
       question.status === "open" && el("span", { class: "facts" }, facts(question))));
   }
+  drawList($("#list"), list);
   return shown;
+}
+
+// The timed refresh redraws the list only when it changed, so a click isn't swallowed,
+// and keeps the keyboard on the same question when it does.
+function drawList(list, next) {
+  if (next.innerHTML === list.innerHTML) return;
+  const focused = list.contains(document.activeElement) && document.activeElement.getAttribute("href");
+  list.replaceChildren(...next.childNodes);
+  if (focused) [...list.querySelectorAll("a")].find((link) => link.getAttribute("href") === focused)?.focus();
 }
 
 // A banner above every screen for each new folder that may be a known one renamed or
@@ -386,7 +420,21 @@ function renamed(from, to) {
   if (back && decodeURIComponent(back[1]) === from) state.back = `#/${encodeURIComponent(to)}/${back[2]}`;
 }
 
+// Names being typed are kept, by field, so a redraw from elsewhere (such as the rename
+// banner) doesn't wipe them. A saved rename's field has a new label, so it starts fresh.
 function renderSettings(data) {
+  const typed = new Map([...document.querySelectorAll("#settings input")]
+    .filter((input) => input.value !== input.defaultValue)
+    .map((input) => [input.getAttribute("aria-label"), input.value]));
+  drawSettings(data);
+  for (const input of document.querySelectorAll("#settings input")) {
+    if (!typed.has(input.getAttribute("aria-label"))) continue;
+    input.value = typed.get(input.getAttribute("aria-label"));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+function drawSettings(data) {
   $("#settings").replaceChildren(el("div", { class: "settings" },
     el("button", { class: "back", onclick: closeSettings }, "← Back to questions"),
     el("h2", {}, "Settings"),
@@ -412,14 +460,27 @@ async function refresh(follow = false) {
   }
   showSettings(false);
   let current = route();
+  if (follow) state.missing = null;
   if (current && follow) {
     try {
       const question = await api(`/api/questions/${encodeURIComponent(current.project)}/${current.number}`);
       if (question.status !== state.status) setStatus(question.status);
-    } catch { /* a missing question is reported by loadDetail */ }
+    } catch (problem) {
+      // The server says it doesn't exist; a server that is restarting says nothing.
+      if (problem.status) state.missing = { hash: location.hash, message: problem.message };
+    }
   }
   const shown = await loadList();
   current = route();
+  // A link to a missing question (say, one renumbered when two projects were joined) says
+  // so, and stays until the user moves on, instead of opening another question.
+  if (current && state.missing?.hash === location.hash) {
+    state.current = null;
+    state.shown = null;
+    $("#detail").replaceChildren(el("div", { class: "empty-state" }, el("h2", {}, "Question not found"),
+      el("p", {}, `${state.missing.message}. Pick a question from the list.`)));
+    return;
+  }
   const visible = (q) => current && q.project === current.project && q.number === current.number;
   if (current && !shown.questions.some(visible)) {
     history.replaceState(null, "", location.pathname);
@@ -435,7 +496,12 @@ async function refresh(follow = false) {
   if (!current) {
     state.current = null;
     state.shown = null;
-    $("#detail").replaceChildren(renderEmpty(shown));
+    // Redrawn only when it changes, so the timed refresh keeps focus on its buttons.
+    const key = JSON.stringify([state.status, state.project, shown.projects, shown.counts]);
+    if ($("#detail").firstChild?.dataset?.key === key) return;
+    const empty = renderEmpty(shown);
+    empty.dataset.key = key;
+    $("#detail").replaceChildren(empty);
     return;
   }
   await loadDetail(follow);
@@ -543,25 +609,37 @@ async function loadDetail(force) {
   const current = route();
   const detail = $("#detail");
   if (!current) return;
+  // A slow reply for a question the user has since left is dropped.
+  const hash = location.hash;
+  const moved = () => location.hash !== hash;
   let question;
   try {
     question = await api(`/api/questions/${encodeURIComponent(current.project)}/${current.number}`);
   } catch (error) {
-    detail.replaceChildren(el("p", { class: "error" }, error.message));
+    if (!moved()) detail.replaceChildren(el("p", { class: "error" }, error.message));
     return;
   }
+  if (moved()) return;
   const key = JSON.stringify([question.project, question.number, question.version,
                               question.status, question.entries.length, question.goal, question.start_here]);
   if (!force && key === state.current) return;
-  // Keep what the user is typing when the same question refreshes underneath them.
+  // Keep what the user is typing when the same question refreshes underneath them, or
+  // what they had typed before the page reloaded.
   const id = `${question.project}/${question.number}`;
   const draft = state.shown === id && $("#note")
-    ? { text: $("#note").value,
-        choice: document.querySelector("input[name=choice]:checked")?.value }
-    : { text: "", choice: null };
+    ? typedDraft()
+    : takeDraft(id) || { text: "", choice: null };
+  // A redraw of the same question keeps the note box focused, with the cursor where it was.
+  const old = $("#note");
+  const cursor = state.shown === id && old && document.activeElement === old
+    && [old.selectionStart, old.selectionEnd, old.selectionDirection];
   state.current = key;
   state.shown = id;
   detail.replaceChildren(renderQuestion(question, draft));
+  if (cursor && $("#note")) {
+    $("#note").focus();
+    $("#note").setSelectionRange(...cursor);
+  }
 }
 
 function renderQuestion(question, draft) {
@@ -587,26 +665,31 @@ function renderQuestion(question, draft) {
       chosen ? `(${chosen.letter}) ${chosen.text}` : "",
       question.answer.body ? (chosen ? " · " : "") + question.answer.body : ""));
   }
-  const error = el("p", { class: "error", hidden: true });
+  const error = el("p", { class: "error", id: "action-error", hidden: true });
   // Buttons stay disabled while a request runs, so a double click can't send twice.
   const post = (path, body) => {
-    const buttons = [...document.querySelectorAll("#detail .actions button")];
-    buttons.forEach((button) => { button.disabled = true; });
+    document.querySelectorAll("#detail .actions button").forEach((button) => { button.disabled = true; });
     return api(`/api/questions/${encodeURIComponent(question.project)}/${question.number}/${path}`, body)
       .catch((problem) => {
-        buttons.forEach((button) => { button.disabled = false; });
+        // The page may have been redrawn while the request ran, so the failure goes to
+        // what is on screen now, naming the question if it is another one.
+        document.querySelectorAll("#detail .actions button").forEach((button) => { button.disabled = false; });
         if ($("#send")) $("#send").disabled = !document.querySelector("input[name=choice]:checked");
-        error.textContent = problem.message;
-        error.hidden = false;
+        const line = $("#action-error") || error;
+        const elsewhere = state.shown !== `${question.project}/${question.number}`;
+        line.textContent = elsewhere ? `${question.label}: ${problem.message}` : problem.message;
+        line.hidden = false;
         throw problem;
       });
   };
   const refresh = () => { state.current = null; state.shown = null; return Promise.all([loadDetail(true), loadList()]); };
   if (question.status === "answered") {
     // Answered questions are read-only; reopening is a deliberate step, so an old tab
-    // can't add a second answer by accident.
+    // can't add a second answer by accident. The question is open again, so the page
+    // moves to the Open tab with it; otherwise the next refresh drops it.
+    const reopen = () => { setStatus("open"); return refresh(); };
     parts.push(el("div", { class: "actions" },
-      el("button", { onclick: () => post("reopen").then(refresh, () => {}) }, "Reopen to answer again")), error);
+      el("button", { onclick: () => post("reopen", {}).then(reopen, () => {}) }, "Reopen to answer again")), error);
   } else if (question.status === "open") {
     parts.push(el("div", { class: "options", role: "radiogroup" },
       question.options.map((option) => el("label", {},

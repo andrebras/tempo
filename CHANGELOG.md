@@ -35,6 +35,24 @@ All notable changes to Tempo are listed here. The format follows
 - A request with a negative `Content-Length` no longer holds a server thread until the client
   hangs up. It gets a 400, a body over 1 MB gets a 413, and a client that stops sending is
   dropped after 30 seconds.
+- "Reopen to answer again" works on the page again. It sent its request the wrong way, so the
+  server answered "Not found" and the question stayed answered.
+- After you reopen a question, the page switches to the Open tab and stays on it. Before, the
+  next refresh jumped to another question and the note you were typing was lost.
+- When the page reloads itself after a server restart (for example after an update), the note
+  you were typing and the option you picked are kept.
+- The timed refresh, every 4 seconds, no longer moves keyboard focus off the question list or
+  the buttons on the empty screen. The list is redrawn only when it changes.
+- A slow reply for a question you have already left no longer replaces the question you opened
+  next, or clears the note you started there.
+- A link to a question that doesn't exist (for example one renumbered when two projects were
+  joined) says "Question not found". Before, it opened another question without saying so.
+- When Claude changes the question you are typing a note on, the note box keeps focus and the
+  cursor stays where it was.
+- Clicking "Link" or "Keep" in the rename banner while Settings is open no longer clears a
+  project name you are typing.
+- A send that fails always shows its error, even when the question was redrawn while the
+  request ran.
 
 ### Security
 
