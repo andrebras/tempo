@@ -731,12 +731,21 @@ class Store:
         rows = self.db.execute(
             "SELECT * FROM questions WHERE project = ? ORDER BY number", (old,)
         ).fetchall()
+        # Only one question per project and goal is marked "start here": the target
+        # project's mark wins over a moved question's.
+        marked = {
+            row["goal"]
+            for row in self.db.execute(
+                "SELECT goal FROM questions WHERE project = ? AND start_here IS NOT NULL", (new,)
+            )
+        }
         moves = []
         for position, row in enumerate(rows):
             number = start + position
+            start_here = None if row["goal"] in marked else row["start_here"]
             self.db.execute(
-                "UPDATE questions SET project = ?, number = ? WHERE id = ?",
-                (new, number, row["id"]),
+                "UPDATE questions SET project = ?, number = ?, start_here = ? WHERE id = ?",
+                (new, number, start_here, row["id"]),
             )
             self._insert_entry(
                 row,

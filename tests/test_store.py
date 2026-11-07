@@ -450,6 +450,14 @@ class ProjectsTest(DatabaseTest):
         )
         self.assertEqual(self.store.get("Tempo", 3)["entries"], [])
 
+    def test_a_join_keeps_one_start_here_per_goal(self):
+        self.add(project="Tempo", goal="Release", start_here="unlocks the rest")
+        self.add(project="tempo", goal="Release", start_here="sets the pattern")
+        self.add(project="tempo", goal="Docs", start_here="unlocks the docs")
+        self.store.rename_project("tempo", "Tempo")
+        marked = {q["number"]: q["start_here"] for q in self.store.list("Tempo")}
+        self.assertEqual(marked, {1: "unlocks the rest", 2: None, 3: "unlocks the docs"})
+
     def test_rename_into_a_project_with_questions_keeps_numbers_when_it_has_none(self):
         self.add(project="onzehq")
         self.store.see_folder("onzehq-api")

@@ -17,6 +17,8 @@ All notable changes to Tempo are listed here. The format follows
   other, instead of the second failing with a database error.
 - A blank option letter with a written answer saves the written answer, instead of failing
   with "Option () does not exist".
+- Joining a project into another one keeps one "start here" mark per goal. When both had a
+  marked question in the same goal, the joined project's mark is dropped.
 
 ## [0.5.4] - 2026-11-07
 
