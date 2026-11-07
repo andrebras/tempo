@@ -140,6 +140,14 @@ class ThreadTest(DatabaseTest):
             self.store.answer("demo", 1, None, "  ")
         self.assertEqual(self.store.answer("demo", 1, None, "Neither")["status"], "answered")
 
+    def test_a_blank_option_letter_counts_as_no_option(self):
+        self.add()
+        with self.assertRaisesRegex(QuestionError, "Pick an option or write an answer"):
+            self.store.answer("demo", 1, "  ", "")
+        question = self.store.answer("demo", 1, "  ", "Neither")
+        self.assertEqual(question["answer"]["choice"], None)
+        self.assertEqual(question["answer"]["body"], "Neither")
+
     def test_rewording_an_answered_question_opens_it_again(self):
         self.add()
         self.store.answer("demo", 1, None, "Give me more options")

@@ -417,6 +417,7 @@ class Store:
         self, project: str, number: int, choice: str | None = None, body: str | None = ""
     ) -> Question:
         body = (body or "").strip()
+        choice = (choice or "").strip().lower()
         # The checks run inside the write's lock, so a second answer or a reword from
         # another tab or the tempo command cannot slip in between them and the write.
         with self._transaction():
@@ -428,7 +429,6 @@ class Store:
             current = self._current_version(question["id"])
             letters = [option["letter"] for option in json.loads(current["options"])]
             if choice:
-                choice = choice.strip().lower()
                 if choice not in letters:
                     raise QuestionError("Option (%s) does not exist" % choice)
             elif not body:

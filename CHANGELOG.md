@@ -15,6 +15,8 @@ All notable changes to Tempo are listed here. The format follows
   reword removed.
 - Two rewords of one question at the same moment both save, as versions one after the
   other, instead of the second failing with a database error.
+- A blank option letter with a written answer saves the written answer, instead of failing
+  with "Option () does not exist".
 
 ## [0.5.4] - 2026-11-07
 
