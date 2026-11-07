@@ -80,6 +80,13 @@ Answers and follow-ups from the page reach you two ways:
    which wakes you with what they wrote, or after 30 minutes with "Nothing new from the
    user." Start it again after either, while questions are still open, so no wait outlives
    the session by long. Run only one wait per session.
+3. **When a reply ends**: the Stop hook hands you anything new and sends you back once to
+   deal with it. If the project has open questions and no `tempo wait` is running for it,
+   it sends you back once to start one. A running wait counts for every session in the
+   same project.
+
+An answer whose note asks something comes with a line saying so: reply in the question with
+`tempo context` (a reword would reopen the answered question).
 
 Each item is delivered once. `tempo inbox` prints anything not yet delivered.
 
