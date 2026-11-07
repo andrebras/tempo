@@ -297,6 +297,36 @@ class CliTest(DatabaseTest):
         _, out, _ = run("wait", "--timeout", "1", "--interval", "0.2")
         self.assertIn("Nothing new", out)
 
+    def marker(self, pid, project="demo"):
+        path = os.path.join(self.tmp.name, "wait-%d.json" % pid)
+        with open(path, "w") as file:
+            json.dump({"pid": pid, "project": project}, file)
+        return path
+
+    def test_wait_leaves_a_marker_while_it_runs(self):
+        seen = []
+
+        def inbox(project):
+            seen.append(cli.wait_running("demo"))
+            return "Answered"
+
+        with mock.patch.object(cli, "take_inbox", side_effect=inbox):
+            run("wait", "--timeout", "5")
+        self.assertEqual(seen, [True])
+        self.assertFalse(cli.wait_running("demo"))
+        self.assertEqual([n for n in os.listdir(self.tmp.name) if n.startswith("wait-")], [])
+
+    def test_wait_running_matches_the_project_and_drops_dead_markers(self):
+        self.marker(os.getpid(), project="other")
+        self.assertFalse(cli.wait_running("demo"))
+        self.marker(os.getpid(), project=None)
+        self.assertTrue(cli.wait_running("demo"))
+        ended = subprocess.Popen(["true"])
+        ended.wait()
+        dead = self.marker(ended.pid)
+        self.assertTrue(cli.wait_running("demo"))
+        self.assertFalse(os.path.exists(dead))
+
 
 class ProjectNameTest(unittest.TestCase):
     def test_uses_the_main_checkout_folder_from_subfolders_and_worktrees(self):

@@ -4,6 +4,7 @@ hand the user's answers back to Claude."""
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -290,15 +291,56 @@ def run_inbox(args: argparse.Namespace) -> None:
 def run_wait(args: argparse.Namespace) -> int:
     project = None if args.all_projects else _project(args.project)
     deadline = time.time() + args.timeout if args.timeout else None
-    while True:
-        text = take_inbox(project)
-        if text:
-            print(text)
-            return 0
-        if deadline and time.time() >= deadline:
-            print("Nothing new from the user.")
-            return 0
-        time.sleep(args.interval)
+    # A marker tells the Stop hook that a wait is running for this project.
+    marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
+    with open(marker, "w", encoding="utf-8") as file:
+        json.dump({"pid": os.getpid(), "project": project}, file)
+    try:
+        while True:
+            text = take_inbox(project)
+            if text:
+                print(text)
+                return 0
+            if deadline and time.time() >= deadline:
+                print("Nothing new from the user.")
+                return 0
+            time.sleep(args.interval)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(marker)
+
+
+def wait_running(project: str) -> bool:
+    """Whether a `tempo wait` covering the project is running. Markers left by waits
+    that were killed are removed."""
+    folder = os.path.dirname(_db_path())
+    running = False
+    for name in os.listdir(folder):
+        if not (name.startswith("wait-") and name.endswith(".json")):
+            continue
+        path = os.path.join(folder, name)
+        try:
+            with open(path, encoding="utf-8") as file:
+                marker = json.load(file)
+            alive = _alive(int(marker["pid"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            alive = False
+        if alive:
+            running = running or marker.get("project") in (None, project)
+        else:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+    return running
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True  # The process exists but belongs to someone else.
+    except OSError:
+        return False
+    return True
 
 
 def run_hook(args: argparse.Namespace) -> int:
