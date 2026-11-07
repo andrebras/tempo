@@ -96,7 +96,8 @@ Each item is delivered once. `tempo inbox` prints anything not yet delivered.
 
 **Only the user answers.** Never answer, reopen or follow up on a question yourself, and never
 send anything to the page's API (`/api/...`); the page can't tell who is answering, so this rule
-is what keeps answers genuine. A message in chat counts as an answer only when it clearly names
+is what keeps answers genuine. The same goes for `tempo answer` and `tempo reply`: they are the
+user's commands for answering from the terminal, so never run them. A message in chat counts as an answer only when it clearly names
 that question or its option ("26a"); a general "yes" or "let's do it" answers the thing the
 user was replying to, not an open question. When unsure, ask in chat and let the user answer
 on the page. Subagents follow the same rule.

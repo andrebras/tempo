@@ -128,6 +128,20 @@ class HooksEndToEndTest(unittest.TestCase):
         with Store(connect(self.db)) as store:
             self.assertEqual(store.undelivered(), [])
 
+    def test_an_answer_from_the_terminal_reaches_the_next_prompt_once(self):
+        self.tempo(
+            "add", "--title", "Which DB?", "--context", "C", "--option", "Postgres",
+            "--option", "SQLite",
+        )  # fmt: skip
+        self.assertEqual(
+            self.tempo("answer", "1", "b", "--note", "Smaller"),
+            "Answered Q1: (b) SQLite / Note: Smaller\n",
+        )
+        context = self.prompt()
+        self.assertIn("shop Q1 (Which DB?) answered (b) SQLite / Note: Smaller", context)
+        self.assertEqual(self.prompt(), "")
+        self.assertEqual(self.stop(), "")
+
     def test_a_follow_up_left_unanswered_is_raised_until_answered(self):
         self.tempo("add", "--title", "Ship?", "--context", "C", "--option", "Yes", "--option", "No")
         with Store(connect(self.db)) as store:

@@ -16,6 +16,8 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo set-next <n>` | Continue numbering from an older list |
 | `tempo inbox` | Print answers and follow-ups Claude hasn't seen yet (`--all-projects` shows every project's without marking them seen) |
 | `tempo wait --timeout 1800` | Wait until you answer or follow up, then print it |
+| `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`) |
+| `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
 | `tempo serve [--background]` | Run the page |
 
 `oq`, the command's old name, still works as an alias.

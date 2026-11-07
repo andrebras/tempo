@@ -259,6 +259,57 @@ class CliTest(DatabaseTest):
         self.assertIn("changed the answer to Neither, go up", out)
         self.assertIn("Before: (a) Left", out)
 
+    def test_answer_records_the_answer_as_the_page_does(self):
+        self.add(title="Left or right?")
+        code, out, _ = run("answer", "Q1", "B", "--note", "Nicer view")
+        self.assertEqual((code, out), (0, "Answered Q1: (b) Right / Note: Nicer view\n"))
+        question = self.store.get("demo", 1)
+        self.assertEqual(question["status"], "answered")
+        self.assertEqual(
+            (question["answer"]["author"], question["answer"]["choice"]), ("user", "b")
+        )
+
+    def test_answer_rejects_an_unknown_option_or_question(self):
+        self.add()
+        code, _, err = run("answer", "1", "z")
+        self.assertEqual((code, err), (2, "tempo: Option (z) does not exist\n"))
+        code, _, err = run("answer", "9", "a")
+        self.assertEqual((code, err), (2, "tempo: Q9 does not exist in demo\n"))
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
+    def test_answer_and_reply_take_another_project(self):
+        self.add(project="shop")
+        self.assertEqual(run("reply", "1", "Why?", "--project", "shop")[0], 0)
+        self.assertEqual(run("answer", "1", "a", "--project", "shop")[0], 0)
+        self.assertEqual(self.store.get("shop", 1)["status"], "answered")
+
+    def test_an_answer_from_the_terminal_reaches_claude_like_one_from_the_page(self):
+        self.add(title="Left or right?")
+        run("answer", "1", "b", "--note", "Nicer view")
+        terminal = run("inbox")[1]
+        self.assertEqual(run("inbox")[1], "Nothing new from the user.\n")
+        self.store.reopen("demo", 1)
+        self.store.db.execute("DELETE FROM entries")
+        self.store.answer("demo", 1, "b", "Nicer view")
+        self.assertEqual(terminal, run("inbox")[1])
+        self.assertIn("demo Q1 (Left or right?) answered (b) Right / Note: Nicer view", terminal)
+
+    def test_reply_records_a_follow_up_that_reaches_claude(self):
+        self.add(title="Left or right?")
+        code, out, _ = run("reply", "1", "What is on the left?")
+        self.assertEqual((code, out), (0, "Added your follow-up to Q1.\n"))
+        _, out, _ = run("hook", "user-prompt-submit", stdin="{}")
+        context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("demo Q1 (Left or right?) asks for more: What is on the left?", context)
+        self.assertEqual(run("inbox")[1], "Nothing new from the user.\n")
+
+    def test_reply_needs_some_text(self):
+        self.add()
+        code, _, err = run("reply", "1", "  ")
+        self.assertEqual(code, 2)
+        self.assertIn("follow-up", err)
+        self.assertEqual(self.store.get("demo", 1)["entries"], [])
+
     def test_session_start_tells_claude_to_use_tempo_and_lists_open_questions(self):
         self.add()
         self.add(title="Ship it?", goal="Release 0.4", start_here="unlocks the rest")

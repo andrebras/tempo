@@ -8,6 +8,11 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Added
 
+- `tempo answer N b` (with `--note "…"` if you like) and `tempo reply N "…"` let you answer a
+  question or ask for more context from the terminal, without opening the page. They save
+  exactly what the page saves, so Claude gets them the same way: through the hooks,
+  `tempo wait` and `tempo inbox`. An unknown question or option letter is refused with an
+  error. The skill tells Claude these commands are yours and never to run them.
 - `bin/ci` reports test coverage: a per-file summary of how much of `tempo/` the tests run,
   including the `bin/tempo` processes some tests start. It is a report only and never fails the
   run. On GitHub the same table appears on the job's summary page.
@@ -48,8 +53,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
-- The skill no longer mentions answers "given with `tempo`": there is no command to answer
-  a question, only the page and chat.
+- The skill no longer mentions answers "given with `tempo`", which Claude could read as
+  answers it may give itself. Only the user answers, on the page, in chat, or with the new
+  `tempo answer` (see Added).
 - A project can't be named `.` or `..` any more, with `--project`, `TEMPO_PROJECT` or a
   rename. The page could not open such a project's questions, because the browser reads
   those names in a link as steps between folders.
