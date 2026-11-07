@@ -62,6 +62,11 @@ All notable changes to Tempo are listed here. The format follows
   has no name, so its project name was empty, which was read as "all projects": its Stop hook
   handed every project's news to that session, and the sessions they were meant for never saw
   them. A folder with no name now belongs to no project, and its hooks deliver nothing.
+- An answer or follow-up is no longer lost when its text cannot be built. The news was marked
+  delivered first and described after, so an error while describing it (for example an older
+  answer naming an option its question no longer had) dropped it without a word. It is now
+  marked delivered only once its text is ready, and an option that is missing shows as its
+  letter alone.
 - A Tempo error in a hook no longer blocks the prompt or the session. For example, every prompt in
   a session started in `/` was discarded, because the folder has no name. The hooks now always
   exit cleanly and say nothing to the session when something goes wrong, and the page still

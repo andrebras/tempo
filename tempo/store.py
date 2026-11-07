@@ -27,7 +27,7 @@ import sqlite3
 import stat
 import string
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from datetime import datetime, timedelta, timezone
 from types import TracebackType
 from typing import Any, Optional, cast
@@ -830,10 +830,18 @@ class Store:
         """Return the user's undelivered entries and mark them delivered in one
         transaction, so two readers at once (two sessions' hooks, or a hook and tempo
         wait) never both pass on the same entry."""
+        with self.delivering(project) as entries:
+            return entries
+
+    @contextlib.contextmanager
+    def delivering(self, project: str | None = None) -> Iterator[Entries]:
+        """take_undelivered for a caller that still has work to do with the entries, such
+        as building the text that hands them over: they are marked delivered only when
+        that work ends without an error, so a failure never loses them."""
         with self._transaction():
             entries = self._undelivered(project)
+            yield entries
             self.mark_delivered([entry["id"] for entry in entries])
-        return entries
 
     def _undelivered(self, project: str | None) -> Entries:
         sql = (

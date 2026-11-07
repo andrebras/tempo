@@ -157,6 +157,29 @@ class CliTest(DatabaseTest):
             texts = [cli.take_inbox("demo"), *other]
         self.assertEqual(sum("answered (b) Right" in (text or "") for text in texts), 1)
 
+    def test_an_answer_whose_text_cannot_be_built_is_not_lost(self):
+        self.add(title="Which DB?", options=["Postgres", "SQLite"])
+        self.store.answer("demo", 1, "a")
+        with mock.patch.object(cli, "_describe_inbox", side_effect=RuntimeError("broken")):
+            _, out, _ = run("hook", "user-prompt-submit", stdin="{}")
+        self.assertEqual(out, "")
+        self.assertEqual(len(self.store.undelivered("demo")), 1)
+        self.assertIn("answered (a) Postgres", run("inbox")[1])
+
+    def test_an_answer_naming_a_letter_its_version_lacks_is_still_delivered(self):
+        # An older bug could save an answer whose letter its question version does not have.
+        self.add()
+        self.store.answer("demo", 1, "a")
+        run("inbox")
+        self.store.db.execute("UPDATE entries SET choice = 'c' WHERE kind = 'answer'")
+        self.store.reopen("demo", 1)
+        self.store.answer("demo", 1, "b", "Changed my mind")
+        _, out, _ = run("hook", "user-prompt-submit", stdin="{}")
+        context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("changed the answer to (b) Right / Note: Changed my mind", context)
+        self.assertIn("Before: (c)", context)
+        self.assertEqual(self.store.undelivered("demo"), [])
+
     def test_a_session_in_the_root_folder_takes_no_news(self):
         # "/" has no folder name, so its project name is empty, which is no project.
         del os.environ["TEMPO_PROJECT"]
