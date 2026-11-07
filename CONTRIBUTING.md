@@ -1,8 +1,8 @@
 # Contributing to Tempo
 
-Issues and pull requests are welcome. Please run `bin/ci` before opening a pull request, and
-add a test for any change in behaviour. GitHub runs the same checks on every pull request, on
-Python 3.9 and 3.13.
+Issues and pull requests are welcome. New pull requests start from a short template. Please
+run `bin/ci` before opening one, and add a test for any change in behaviour. GitHub runs the
+same checks on every pull request, on Python 3.9 and 3.13.
 
 ## Running the checks
 
