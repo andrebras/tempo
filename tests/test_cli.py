@@ -313,14 +313,35 @@ class CliTest(DatabaseTest):
         self.assertIn("follow-up", err)
         self.assertEqual(self.store.get("demo", 1)["entries"], [])
 
-    def test_status_counts_the_open_questions_of_every_project(self):
+    def test_status_counts_this_project_or_every_project(self):
+        self.add()
         self.add()
         self.add()
         self.add(project="shop")
         self.store.answer("demo", 2, "a")
         self.assertEqual(run("status"), (0, "? 2\n", ""))
+        self.assertEqual(run("status", "--all"), (0, "? 3\n", ""))
         self.assertEqual(run("status", "--project", "shop"), (0, "? 1\n", ""))
         self.assertEqual(run("status", "--project", "none"), (0, "", ""))
+
+    def test_status_counts_the_project_the_folder_is_filed_under(self):
+        repo = os.path.realpath(self.tmp.name)
+        self.add(project="shop")
+        self.add(project="other")
+        self.store.see_folder(os.path.basename(repo), repo)
+        self.store.db.execute("UPDATE folders SET project = 'shop' WHERE path = ?", (repo,))
+        self.store.db.commit()
+        env = {key: value for key, value in os.environ.items() if key != "TEMPO_PROJECT"}
+        with (
+            mock.patch.dict("os.environ", env, clear=True),
+            mock.patch.object(cli, "folder_path", return_value=repo),
+        ):
+            self.assertEqual(run("status"), (0, "? 1\n", ""))
+        with (
+            mock.patch.dict("os.environ", env, clear=True),
+            mock.patch.object(cli, "folder_path", return_value=os.path.join(repo, "unknown")),
+        ):
+            self.assertEqual(run("status"), (0, "", ""))
 
     def test_status_prints_nothing_when_nothing_is_open(self):
         self.add()
