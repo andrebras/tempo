@@ -61,6 +61,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command")
 
+    _ask_commands(commands)
+    _read_commands(commands)
+    _change_commands(commands)
+    _delivery_commands(commands)
+    _run_commands(commands)
+    return parser
+
+
+def _ask_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Asking: add a question."""
     add = commands.add_parser("add", help="Add a question (prints its number)")
     add.add_argument("--project", default=None, help="Defaults to the current git repo's name")
     add.add_argument("--title", required=True, help="The question itself, one sentence")
@@ -87,6 +97,9 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--json", action="store_true")
     add.set_defaults(run=run_add)
 
+
+def _read_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Reading: show one question, or list them."""
     show = commands.add_parser("show", help="Show a question with its whole thread")
     show.add_argument("number", type=_code, help="A number such as 12, Q12, or 12b for an option")
     show.add_argument("--project")
@@ -100,6 +113,9 @@ def build_parser() -> argparse.ArgumentParser:
     list_.add_argument("--json", action="store_true")
     list_.set_defaults(run=run_list)
 
+
+def _change_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Changing a question or a project after it was asked."""
     context = commands.add_parser("context", help="Add context to a question's thread")
     context.add_argument("number", type=_number)
     context.add_argument("body")
@@ -146,6 +162,9 @@ def build_parser() -> argparse.ArgumentParser:
     next_.add_argument("--project")
     next_.set_defaults(run=run_set_next)
 
+
+def _delivery_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Handing the user's answers and follow-ups to Claude."""
     inbox = commands.add_parser("inbox", help="Print answers and follow-ups not yet seen")
     inbox.add_argument("--project")
     inbox.add_argument(
@@ -166,6 +185,9 @@ def build_parser() -> argparse.ArgumentParser:
     wait.add_argument("--interval", type=float, default=2.0)
     wait.set_defaults(run=run_wait)
 
+
+def _run_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Run by Claude Code and by Tempo itself: the hooks and the page."""
     hook = commands.add_parser("hook", help="Claude Code hook entry point (reads JSON on stdin)")
     hook.add_argument("event", choices=["session-start", "user-prompt-submit", "stop"])
     hook.add_argument("--port", type=int, default=_port())
@@ -179,8 +201,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start detached; keeps a current Tempo already on the port, replaces a stale one",
     )
     serve.set_defaults(run=run_serve)
-
-    return parser
 
 
 def _start_here_arguments(parser: argparse.ArgumentParser) -> None:
