@@ -87,8 +87,9 @@
   .chip:hover, #all-projects:hover { color: var(--text); }
   .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
   .chip .count { white-space: pre; opacity: .8; }
-  .chip .dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%;
-               background: var(--now); box-shadow: 0 0 0 2px var(--panel); }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--now); }
+  .chip .dot { position: absolute; top: -3px; right: -3px; box-shadow: 0 0 0 2px var(--panel); }
+  #list .label .dot { margin-left: 7px; vertical-align: 1px; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .project-menu { position: static; display: flex; }
   #all-projects[aria-expanded="true"] { color: var(--text); background: var(--panel); }

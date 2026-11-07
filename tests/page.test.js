@@ -49,6 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
+  noteOpened, questionFresh,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -200,4 +201,51 @@ test("a project never viewed is new once it has activity; the current one never 
   const chips = chipProjects(["other", "here", "quiet"], { here: 1 }, activity, {}, "here");
   assert.deepEqual(chips.map(({ name, fresh }) => [name, fresh]), [["other", true], ["here", false]]);
   assert.deepEqual(chipProjects(["other"], {}, activity, null, "").map((chip) => chip.fresh), [true]);
+});
+
+// Question dots: an open question in the list is dotted when Claude changed it since the
+// user last opened it.
+const question = (number, activity, extra = {}) =>
+  ({ project: "demo", number, status: "open", waiting: null, activity, ...extra });
+const day = (n) => `2026-01-0${n}T00:00:00Z`;
+
+test("a first visit counts every open question as opened, so none is dotted", () => {
+  const open = [question(1, day(1)), question(2, day(2))];
+  const opened = noteOpened({}, ["demo"], open, "demo", null);
+  assert.deepEqual(opened, { demo: { 1: day(1), 2: day(2) } });
+  assert.deepEqual(open.map((q) => questionFresh(q, opened)), [false, false]);
+  // A project never visited shows no dots either.
+  assert.equal(questionFresh(question(1, day(1), { project: "other" }), opened), false);
+});
+
+test("a question that arrives after the first visit is dotted until it is opened", () => {
+  let opened = noteOpened({}, ["demo"], [question(1, day(1))], "demo", null);
+  const open = [question(1, day(1)), question(2, day(2))];
+  opened = noteOpened(opened, ["demo"], open, "demo", null);
+  assert.deepEqual(open.map((q) => questionFresh(q, opened)), [false, true]);
+  opened = noteOpened(opened, ["demo"], open, "demo", { project: "demo", number: 2 });
+  assert.equal(questionFresh(open[1], opened), false);
+});
+
+test("a reword or Claude's context after the last open dots the question", () => {
+  // Either one moves the question's activity time on the server (see test_store.py).
+  const opened = noteOpened({}, ["demo"], [question(1, day(1)), question(2, day(1))], "demo", null);
+  const reworded = question(1, day(3));
+  const withContext = question(2, day(4));
+  const later = noteOpened(opened, ["demo"], [reworded, withContext], "demo", null);
+  assert.deepEqual([reworded, withContext].map((q) => questionFresh(q, later)), [true, true]);
+  assert.equal(questionFresh(question(2, day(1)), later), false);
+});
+
+test("opening the question since the change clears its dot, and a wait hides it", () => {
+  const changed = question(1, day(3));
+  const opened = noteOpened({ demo: { 1: day(1) } }, ["demo"], [changed], "demo", { project: "demo", number: 1 });
+  assert.equal(questionFresh(changed, opened), false);
+  assert.equal(questionFresh(question(1, day(3), { waiting: "sent" }), { demo: { 1: day(1) } }), false);
+  assert.equal(questionFresh(question(1, day(3), { status: "answered" }), { demo: { 1: day(1) } }), false);
+});
+
+test("the record drops questions no longer open and projects that are gone", () => {
+  const opened = { demo: { 1: day(1), 2: day(1) }, gone: { 1: day(1) } };
+  assert.deepEqual(noteOpened(opened, ["demo"], [question(1, day(1))], "demo", null), { demo: { 1: day(1) } });
 });
