@@ -114,6 +114,10 @@ CREATE TABLE IF NOT EXISTS folders (
   first_commit TEXT,
   remote TEXT
 );
+CREATE TABLE IF NOT EXISTS settings (
+  name TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS entries_undelivered ON entries (delivered_at) WHERE delivered_at IS NULL;
 """
 

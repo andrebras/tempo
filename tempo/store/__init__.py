@@ -19,7 +19,8 @@ the pattern for the others.
 
 The code is in parts: common (shared shapes, the error, the clock, the connection),
 schema (where the database is, its tables and migrations), questions, projects (with
-their folders) and delivery (handing the user's words to Claude). Store, below, puts the
+their folders), delivery (handing the user's words to Claude) and settings (the user's
+own settings, such as whether each session starts the page). Store, below, puts the
 parts' methods together. Everything is imported from here, as
 `from tempo.store import Store, connect`.
 """
@@ -59,9 +60,10 @@ from tempo.store.schema import (
     default_db,
     setting,
 )
+from tempo.store.settings import SettingsStore
 
 
-class Store(ProjectStore, DeliveryStore):
+class Store(ProjectStore, DeliveryStore, SettingsStore):
     """The questions database: open it with `with Store(connect()) as store:`."""
 
 
