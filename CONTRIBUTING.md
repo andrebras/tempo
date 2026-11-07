@@ -26,6 +26,7 @@ the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on fi
 | Types: every function in `tempo/` has type hints, checked against Python 3.9 | [mypy](https://mypy.readthedocs.io) |
 | Shell scripts | [ShellCheck](https://www.shellcheck.net) |
 | Tests | `unittest`, from the standard library |
+| Test coverage of `tempo/`, report only: a per-file summary at the end, never a failure | [coverage.py](https://coverage.readthedocs.io) |
 | Lint the page's script (`tempo/page.js`) and its tests | [Biome](https://biomejs.dev), recommended rules |
 | Tests for the page's text renderer | `node --test`, built into Node.js |
 
