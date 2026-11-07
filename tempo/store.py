@@ -414,6 +414,8 @@ class Store:
         ]
         result = _question_dict(question)
         result.update(versions[-1])
+        # The question's own creation time, not its latest version's, says how long it is open.
+        result["created_at"] = question["created_at"]
         result["quick"] = _quick(result["version"], result["options"], result["recommended"])
         result["versions"] = versions
         result["entries"] = entries

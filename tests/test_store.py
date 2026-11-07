@@ -212,6 +212,12 @@ class ListTest(DatabaseTest):
         self.add(recommended="a")
         self.assertFalse(self.store.reword("demo", 4, "Clearer", title="T")["quick"])
 
+    def test_a_reworded_question_keeps_when_it_was_first_asked(self):
+        self.add()
+        self.store.db.execute("UPDATE questions SET created_at = '2026-01-01T00:00:00Z'")
+        question = self.store.reword("demo", 1, "Clearer", title="T")
+        self.assertEqual(question["created_at"], "2026-01-01T00:00:00Z")
+
     def test_lists_answered_questions_newest_answer_first(self):
         for _ in range(3):
             self.add()
