@@ -18,6 +18,9 @@ jobs:
         python: ["3.9", "3.13"]
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The whole history, so tests/test_previous_release.py finds the last release.
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}

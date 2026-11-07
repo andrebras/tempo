@@ -102,7 +102,8 @@ running, it sends Claude back to start one, so your answers from the page reach 
 writing in chat. More in [Hooks](docs/reference.md#hooks).
 
 A Claude session keeps the plugin version it started with. After you update Tempo, restart
-open sessions (for example with `claude --continue`) so they use the new hooks.
+open sessions (for example with `claude --continue`) so they use the new hooks. A session
+whose hooks are older than the installed Tempo says so once, so you know to restart it.
 
 Commands, settings and environment variables are listed in [docs/reference.md](docs/reference.md).
 
