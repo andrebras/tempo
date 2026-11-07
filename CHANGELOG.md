@@ -51,6 +51,8 @@ All notable changes to Tempo are listed here. The format follows
   cursor stays where it was.
 - Clicking "Link" or "Keep" in the rename banner while Settings is open no longer clears a
   project name you are typing.
+- A send that fails always shows its error, even when the question was redrawn while the
+  request ran.
 
 ### Security
 

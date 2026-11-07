@@ -665,17 +665,20 @@ function renderQuestion(question, draft) {
       chosen ? `(${chosen.letter}) ${chosen.text}` : "",
       question.answer.body ? (chosen ? " · " : "") + question.answer.body : ""));
   }
-  const error = el("p", { class: "error", hidden: true });
+  const error = el("p", { class: "error", id: "action-error", hidden: true });
   // Buttons stay disabled while a request runs, so a double click can't send twice.
   const post = (path, body) => {
-    const buttons = [...document.querySelectorAll("#detail .actions button")];
-    buttons.forEach((button) => { button.disabled = true; });
+    document.querySelectorAll("#detail .actions button").forEach((button) => { button.disabled = true; });
     return api(`/api/questions/${encodeURIComponent(question.project)}/${question.number}/${path}`, body)
       .catch((problem) => {
-        buttons.forEach((button) => { button.disabled = false; });
+        // The page may have been redrawn while the request ran, so the failure goes to
+        // what is on screen now, naming the question if it is another one.
+        document.querySelectorAll("#detail .actions button").forEach((button) => { button.disabled = false; });
         if ($("#send")) $("#send").disabled = !document.querySelector("input[name=choice]:checked");
-        error.textContent = problem.message;
-        error.hidden = false;
+        const line = $("#action-error") || error;
+        const elsewhere = state.shown !== `${question.project}/${question.number}`;
+        line.textContent = elsewhere ? `${question.label}: ${problem.message}` : problem.message;
+        line.hidden = false;
         throw problem;
       });
   };
