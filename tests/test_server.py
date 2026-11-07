@@ -104,7 +104,11 @@ class ServerTest(DatabaseTest):
             json.loads(data)["projects"],
             [
                 {"name": "demo", "questions": 1, "folders": []},
-                {"name": "onzehq", "questions": 0, "folders": ["onzehq"]},
+                {
+                    "name": "onzehq",
+                    "questions": 0,
+                    "folders": [{"folder": "onzehq", "path": None, "shown": None}],
+                },
             ],
         )
         status, data = self.request("POST", "/api/projects/onzehq/rename", {"name": "demo"})
@@ -113,7 +117,13 @@ class ServerTest(DatabaseTest):
         self.assertEqual(status, 200)
         self.assertEqual(
             json.loads(data)["projects"],
-            [{"name": "ONZE HQ", "questions": 1, "folders": ["onzehq"]}],
+            [
+                {
+                    "name": "ONZE HQ",
+                    "questions": 1,
+                    "folders": [{"folder": "onzehq", "path": None, "shown": None}],
+                }
+            ],
         )
         self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
         self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")

@@ -740,15 +740,17 @@ def project_name(cwd: str, record: bool = False) -> str:
 
     With record, the folder is remembered, so its project shows in Settings.
     """
-    folder = folder_name(cwd)
+    path = folder_path(cwd)
+    folder = os.path.basename(path)
     with Store(connect()) as store:
         if record:
-            store.see_folder(folder)
-        return store.project_for(folder)
+            store.see_folder(folder, path)
+        return store.project_for(folder, path)
 
 
-def folder_name(cwd: str) -> str:
-    """The git repo's top folder name (the main checkout, not a worktree)."""
+def folder_path(cwd: str) -> str:
+    """The full path of the git repo's top folder (the main checkout, not a worktree), or
+    of cwd outside git. Symlinks are resolved, so one folder always has one path."""
     try:
         # git is looked up on PATH on purpose; the arguments are fixed.
         common = subprocess.run(
@@ -760,9 +762,9 @@ def folder_name(cwd: str) -> str:
         ).stdout.strip()
         # Git answers relative to cwd (".git") or with a full path; join handles both.
         common = os.path.normpath(os.path.join(os.path.abspath(cwd), common))
-        return os.path.basename(os.path.dirname(common))
+        return os.path.realpath(os.path.dirname(common))
     except (OSError, subprocess.CalledProcessError):
-        return os.path.basename(os.path.abspath(cwd))
+        return os.path.realpath(cwd)
 
 
 def _project(value: str | None, record: bool = False) -> str:

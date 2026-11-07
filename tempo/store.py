@@ -8,7 +8,10 @@ entry in its thread. Entries written by the user start undelivered; the hook and
 
 A project is just a name. The first time a session runs in a git folder, the folder is
 filed under a project of the same name; renaming the project in Settings takes its
-questions and folders along.
+questions and folders along. A folder is known by its full path; rows from before paths
+were stored have only a name, and the first session in a folder of that name fills it in.
+The folder column is the row's key: the folder's name, or its full path when another
+folder already has that name.
 
 A question can name its goal: the piece of work its answer moves forward. Within a goal,
 one question may be marked "start here", with the reason, when its answer unlocks or sets
@@ -24,7 +27,7 @@ import string
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta, timezone
 from types import TracebackType
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 DEFAULT_DB = "~/.claude/tempo/questions.db"
 # Where the database lived before the plugin was renamed to Tempo.
@@ -43,7 +46,7 @@ Questions = list[Question]
 Entries = list[Entry]
 Options = list[Option]
 Names = list[str]
-Folders = list[dict[str, str]]
+Folders = list[dict[str, Optional[str]]]
 Summaries = list[dict[str, Any]]
 Ids = list[int]
 # Questions moved by a join: {"from": old number, "to": new number}.
@@ -109,7 +112,8 @@ CREATE TABLE IF NOT EXISTS entries (
 CREATE TABLE IF NOT EXISTS folders (
   folder TEXT PRIMARY KEY,
   project TEXT,
-  seen_at TEXT
+  seen_at TEXT,
+  path TEXT
 );
 CREATE INDEX IF NOT EXISTS entries_undelivered ON entries (delivered_at) WHERE delivered_at IS NULL;
 """
@@ -121,6 +125,16 @@ ARCHIVE_AFTER = timedelta(days=7)
 # A question is quick to answer when it has a recommended option, at most this many
 # options, and its first wording still stands.
 QUICK_OPTIONS = 3
+
+
+def shown_path(path: str | None) -> str | None:
+    """A path as people read it, with the home folder shortened to ~."""
+    if path is None:
+        return None
+    home = os.path.expanduser("~")
+    if path == home or path.startswith(home + os.sep):
+        return "~" + path[len(home) :]
+    return path
 
 
 class QuestionError(ValueError):
@@ -168,6 +182,19 @@ def _add_goal(db: sqlite3.Connection) -> None:
             db.execute("ALTER TABLE questions ADD COLUMN %s TEXT" % column)
 
 
+def _add_folder_paths(db: sqlite3.Connection) -> None:
+    """Folders were known by name only; now each has its full path, so two folders with
+    the same name are told apart. Old rows get their path on next use.
+
+    Only a column and an index are added, so an older Tempo still running on this
+    database keeps working: it reads and writes folders by name as before.
+    """
+    columns = [row["name"] for row in db.execute("PRAGMA table_info(folders)")]
+    if "path" not in columns:
+        db.execute("ALTER TABLE folders ADD COLUMN path TEXT")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS folders_path ON folders (path)")
+
+
 # Steps that bring older databases up to SCHEMA, in order. The database's user_version
 # says how many have run; never reorder or remove one, only add new ones at the end.
 # Databases made before user_version was used are at 0 whatever their shape, so each
@@ -176,6 +203,7 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _add_priority,
     _fill_folder_projects,
     _add_goal,
+    _add_folder_paths,
 ]
 
 
@@ -471,25 +499,61 @@ class Store:
 
     # Projects and their folders, renamed in Settings
 
-    def see_folder(self, folder: str) -> None:
-        """Remember a folder a session ran in; a new one is filed under its own name."""
-        folder = _required(folder, "folder")
-        self.db.execute(
-            "INSERT INTO folders (folder, project, seen_at) VALUES (?, ?, ?)"
-            " ON CONFLICT (folder) DO UPDATE SET seen_at = excluded.seen_at",
-            (folder, folder, now()),
-        )
+    def see_folder(self, folder: str, path: str | None = None) -> bool:
+        """Remember a folder a session ran in; a new one is filed under its own name.
 
-    def project_for(self, folder: str) -> str:
+        A folder is matched by its path first, then by a row of the same name that has no
+        path yet (from before paths were stored), which then gets this path. Returns True
+        when the folder is new.
+        """
+        folder = _required(folder, "folder")
+        with self._transaction():
+            row = self._folder_row(folder, path)
+            if row is not None:
+                self.db.execute(
+                    "UPDATE folders SET path = ?, seen_at = ? WHERE rowid = ?",
+                    (path or row["path"], now(), row["rowid"]),
+                )
+                return False
+            # The name is the key, unless another folder of this name has it already.
+            taken = self.db.execute("SELECT 1 FROM folders WHERE folder = ?", (folder,))
+            key = path if path and taken.fetchone() else folder
+            self.db.execute(
+                "INSERT INTO folders (folder, path, project, seen_at) VALUES (?, ?, ?, ?)",
+                (key, path, folder, now()),
+            )
+            return True
+
+    def project_for(self, folder: str, path: str | None = None) -> str:
         """The project a folder is filed under; a folder never seen is its own project."""
-        row = self.db.execute("SELECT project FROM folders WHERE folder = ?", (folder,)).fetchone()
-        return row["project"] if row else folder
+        row = self._folder_row(folder, path)
+        return str(row["project"]) if row else folder
+
+    def _folder_row(self, folder: str, path: str | None) -> sqlite3.Row | None:
+        """The folder at this path, or else the row of this name that has no path yet."""
+        row: sqlite3.Row | None = None
+        if path is not None:
+            row = self.db.execute("SELECT rowid, * FROM folders WHERE path = ?", (path,)).fetchone()
+        if row is None:
+            row = self.db.execute(
+                "SELECT rowid, * FROM folders WHERE folder = ? AND path IS NULL", (folder,)
+            ).fetchone()
+        return row
 
     def folders(self) -> Folders:
-        return [
-            {"folder": row["folder"], "project": row["project"], "seen_at": row["seen_at"]}
-            for row in self.db.execute("SELECT * FROM folders ORDER BY folder")
+        """Every folder, by name and then path; a second folder of a name is keyed by its
+        path, so its name comes from the path."""
+        folders: Folders = [
+            {
+                "folder": os.path.basename(row["path"]) if row["path"] else row["folder"],
+                "path": row["path"],
+                "shown": shown_path(row["path"]),
+                "project": row["project"],
+                "seen_at": row["seen_at"],
+            }
+            for row in self.db.execute("SELECT * FROM folders")
         ]
+        return sorted(folders, key=lambda folder: (folder["folder"] or "", folder["path"] or ""))
 
     def project_summaries(self) -> Summaries:
         """Every project with its question count and folders: projects that have
@@ -502,9 +566,10 @@ class Store:
                 " LEFT JOIN questions q ON q.project = p.name GROUP BY p.name"
             )
         }
-        folders: dict[str, Names] = {}
+        folders: dict[str, Folders] = {}
         for folder in self.folders():
-            folders.setdefault(folder["project"], []).append(folder["folder"])
+            place = {key: folder[key] for key in ("folder", "path", "shown")}
+            folders.setdefault(str(folder["project"]), []).append(place)
         return [
             {"name": name, "questions": counts.get(name, 0), "folders": folders.get(name, [])}
             for name in sorted(set(counts) | set(folders), key=str.lower)

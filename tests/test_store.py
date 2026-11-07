@@ -4,7 +4,16 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tempo.store import MIGRATIONS, SCHEMA, QuestionError, Store, _migrate, connect, db_path
+from tempo.store import (
+    MIGRATIONS,
+    SCHEMA,
+    QuestionError,
+    Store,
+    _add_folder_paths,
+    _migrate,
+    connect,
+    db_path,
+)
 from tests.helpers import DatabaseTest
 
 
@@ -292,7 +301,13 @@ class ProjectsTest(DatabaseTest):
         self.assertEqual(self.store.project_for("never-seen"), "never-seen")
         self.assertEqual(
             self.store.project_summaries(),
-            [{"name": "onzehq", "questions": 0, "folders": ["onzehq"]}],
+            [
+                {
+                    "name": "onzehq",
+                    "questions": 0,
+                    "folders": [{"folder": "onzehq", "path": None, "shown": None}],
+                }
+            ],
         )
 
     def test_rename_moves_questions_numbering_and_folders(self):
@@ -322,7 +337,16 @@ class ProjectsTest(DatabaseTest):
         self.store.rename_project("onzehq-api", "onzehq")
         self.assertEqual(
             self.store.project_summaries(),
-            [{"name": "onzehq", "questions": 1, "folders": ["onzehq", "onzehq-api"]}],
+            [
+                {
+                    "name": "onzehq",
+                    "questions": 1,
+                    "folders": [
+                        {"folder": "onzehq", "path": None, "shown": None},
+                        {"folder": "onzehq-api", "path": None, "shown": None},
+                    ],
+                }
+            ],
         )
 
     def test_renaming_only_changes_the_case_keeps_everything(self):
@@ -333,7 +357,13 @@ class ProjectsTest(DatabaseTest):
         self.store.rename_project("dataforge", "DataForge")
         self.assertEqual(
             self.store.project_summaries(),
-            [{"name": "DataForge", "questions": 1, "folders": ["dataforge"]}],
+            [
+                {
+                    "name": "DataForge",
+                    "questions": 1,
+                    "folders": [{"folder": "dataforge", "path": None, "shown": None}],
+                }
+            ],
         )
 
     def test_rename_merges_into_a_project_without_questions(self):
@@ -392,6 +422,50 @@ class ProjectsTest(DatabaseTest):
         self.assertEqual(self.store.projects(), ["ONZE HQ", "onzehq"])
         self.assertEqual(len(self.store.list("onzehq")), 1)
 
+    def test_a_folder_is_known_by_its_path(self):
+        self.assertTrue(self.store.see_folder("api", "/work/api"))
+        self.assertFalse(self.store.see_folder("api", "/work/api"))
+        self.store.rename_project("api", "Work API")
+        # Another folder with the same name is a folder of its own.
+        self.assertTrue(self.store.see_folder("api", "/home/api"))
+        self.assertEqual(self.store.project_for("api", "/work/api"), "Work API")
+        self.assertEqual(self.store.project_for("api", "/home/api"), "api")
+        self.assertEqual(self.store.project_for("api", "/never/api"), "api")
+        self.assertEqual(
+            [(f["path"], f["project"]) for f in self.store.folders()],
+            [("/home/api", "api"), ("/work/api", "Work API")],
+        )
+
+    def test_a_folder_known_by_name_only_gets_its_path(self):
+        # Rows from before paths were stored: the first session in that name adopts one.
+        self.store.db.execute(
+            "INSERT INTO folders (folder, project) VALUES ('open-questions', 'Tempo')"
+        )
+        self.assertEqual(self.store.project_for("open-questions", "/lab/open-questions"), "Tempo")
+        self.assertFalse(self.store.see_folder("open-questions", "/lab/open-questions"))
+        folder = self.store.folders()[0]
+        self.assertEqual((folder["path"], folder["project"]), ("/lab/open-questions", "Tempo"))
+        self.assertIsNotNone(folder["seen_at"])
+        # Once adopted, a second folder of that name starts on its own.
+        self.assertTrue(self.store.see_folder("open-questions", "/elsewhere/open-questions"))
+        self.assertEqual(
+            self.store.project_for("open-questions", "/elsewhere/open-questions"), "open-questions"
+        )
+
+    def test_paths_in_the_home_folder_are_shown_with_a_tilde(self):
+        home = os.path.expanduser("~")
+        self.store.see_folder("tempo", os.path.join(home, "Lab", "tempo"))
+        self.assertEqual(self.store.folders()[0]["shown"], "~/Lab/tempo")
+        self.assertEqual(self.store.project_summaries()[0]["folders"][0]["shown"], "~/Lab/tempo")
+
+    def test_renaming_a_never_seen_project_twice_keeps_one_folder_row(self):
+        self.add(project="onzehq")
+        self.store.rename_project("onzehq", "ONZE HQ")
+        self.store.rename_project("ONZE HQ", "Onze")
+        self.assertEqual(
+            [(f["folder"], f["project"]) for f in self.store.folders()], [("onzehq", "Onze")]
+        )
+
     def test_old_folders_without_a_project_are_filed_under_their_name(self):
         self.store.db.execute("INSERT INTO folders (folder) VALUES ('dataforge')")
         self.store.db.execute("PRAGMA user_version = 0")
@@ -400,6 +474,47 @@ class ProjectsTest(DatabaseTest):
 
 
 class MigrateTest(DatabaseTest):
+    def test_folders_keyed_by_name_keep_their_projects(self):
+        path = os.path.join(self.tmp.name, "old.db")
+        old = sqlite3.connect(path)
+        old.executescript(SCHEMA.replace("seen_at TEXT,\n  path TEXT\n", "seen_at TEXT\n"))
+        old.execute(
+            "INSERT INTO folders (folder, project, seen_at) VALUES"
+            " ('open-questions', 'Tempo', 'x'), ('tempo', 'Tempo', NULL),"
+            " ('onzehq', 'ONZE HQ', NULL)"
+        )
+        old.execute("PRAGMA user_version = 3")
+        old.commit()
+        old.close()
+        with Store(connect(path)) as store:
+            self.assertEqual(
+                [(f["folder"], f["path"], f["project"], f["seen_at"]) for f in store.folders()],
+                [
+                    ("onzehq", None, "ONZE HQ", None),
+                    ("open-questions", None, "Tempo", "x"),
+                    ("tempo", None, "Tempo", None),
+                ],
+            )
+            self.assertEqual(store.project_for("tempo", "/lab/tempo"), "Tempo")
+        with Store(connect(path)) as store:
+            self.assertEqual(len(store.folders()), 3)
+            self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+
+    def test_an_older_tempo_can_still_write_folders_after_the_upgrade(self):
+        # A Tempo from before paths may still run on the same database: its statement
+        # must keep working, and a name it adds is adopted by the next session there.
+        self.store.see_folder("api", "/work/api")
+        self.store.db.execute(
+            "INSERT INTO folders (folder, project, seen_at) VALUES (?, ?, ?)"
+            " ON CONFLICT (folder) DO UPDATE SET seen_at = excluded.seen_at",
+            ("web", "web", "x"),
+        )
+        self.assertEqual(self.store.project_for("web", "/work/web"), "web")
+        self.assertFalse(self.store.see_folder("web", "/work/web"))
+        # Running the step again, as on a database that is already upgraded, changes nothing.
+        _add_folder_paths(self.store.db)
+        self.assertEqual(len(self.store.folders()), 2)
+
     def test_a_fresh_database_ends_at_the_latest_version(self):
         self.assertEqual(_user_version(self.store.db), len(MIGRATIONS))
 

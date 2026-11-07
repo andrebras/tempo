@@ -42,6 +42,12 @@ All notable changes to Tempo are listed here. The format follows
   project's questions move after the other's, in their order, with new numbers (for
   example tempo Q1–Q5 become Tempo Q28–Q32). Each gets a note in its thread saying its old
   number, and Settings says how many moved and where. Before, Tempo refused the join.
+- Tempo now stores each folder's full path (the top folder of the git repository's main
+  checkout, or the folder itself outside git), not only its name. Two folders with the same
+  name, such as two `api` folders, are now separate folders. Folders remembered before keep
+  their project: the next session in a folder of that name fills in its path. Settings shows
+  the path under each project's folders. An older Tempo still running on the same database
+  keeps working.
 - Tests can no longer open the real database: a test that does not pick its own fails.
 
 ## [0.4.0] - 2026-11-07
