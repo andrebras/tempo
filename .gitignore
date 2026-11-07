@@ -7,3 +7,4 @@ __pycache__/
 .tempo-dev/
 .coverage
 .coverage.*
+.claude/worktrees/
