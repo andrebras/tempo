@@ -474,6 +474,70 @@ class ProjectsTest(DatabaseTest):
         self.assertEqual(self.store.folders()[0]["project"], "dataforge")
 
 
+class RenameTest(DatabaseTest):
+    """A new folder while a known folder's path is gone: offer to link, never guess."""
+
+    def setUp(self):
+        super().setUp()
+        self.store.see_folder("open-questions", "/lab/open-questions")
+        self.store.rename_project("open-questions", "Tempo")
+        self.gone = {"/lab/open-questions"}
+
+    def see(self, path):
+        self.store.see_folder(path.rsplit("/", 1)[1], path)
+        return self.store.spot_rename(path, gone=lambda known: known in self.gone)
+
+    def test_one_missing_path_is_offered_but_not_linked(self):
+        candidates = self.see("/lab/tempo")
+        self.assertEqual([c["path"] for c in candidates], ["/lab/open-questions"])
+        # Until the user picks, the folder is its own project.
+        self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "tempo")
+        [rename] = self.store.renames()
+        self.assertEqual((rename["folder"], rename["path"]), ("tempo", "/lab/tempo"))
+        self.assertEqual(
+            [(c["path"], c["project"]) for c in rename["candidates"]],
+            [("/lab/open-questions", "Tempo")],
+        )
+
+    def test_linking_files_the_folder_and_settles_it(self):
+        self.see("/lab/tempo")
+        self.store.link_folder("/lab/tempo", "Tempo")
+        self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "Tempo")
+        self.assertEqual(self.store.renames(), [])
+
+    def test_keeping_it_apart_settles_it_and_keeps_its_project(self):
+        self.see("/lab/tempo")
+        self.store.keep_folder("/lab/tempo")
+        self.assertEqual(self.store.renames(), [])
+        self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "tempo")
+
+    def test_several_missing_paths_are_all_offered(self):
+        self.store.see_folder("shop", "/lab/shop")
+        self.gone.add("/lab/shop")
+        candidates = self.see("/lab/tempo")
+        self.assertEqual([c["path"] for c in candidates], ["/lab/open-questions", "/lab/shop"])
+        self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "tempo")
+        self.assertEqual(len(self.store.renames()[0]["candidates"]), 2)
+
+    def test_no_missing_path_means_a_new_project_as_before(self):
+        self.gone.clear()
+        self.assertEqual(self.see("/lab/tempo"), [])
+        self.assertEqual(self.store.renames(), [])
+        self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "tempo")
+
+    def test_a_missing_folder_is_offered_once_only(self):
+        self.see("/lab/tempo")
+        self.store.keep_folder("/lab/tempo")
+        self.assertEqual(self.see("/lab/other"), [])
+        self.assertEqual(self.store.renames(), [])
+
+    def test_link_needs_a_project_and_a_known_folder(self):
+        self.see("/lab/tempo")
+        for path, project in [("/lab/tempo", " "), ("/nowhere", "Tempo")]:
+            with self.subTest(path=path), self.assertRaises(QuestionError):
+                self.store.link_folder(path, project)
+
+
 class MigrateTest(DatabaseTest):
     def test_folders_keyed_by_name_keep_their_projects(self):
         path = os.path.join(self.tmp.name, "old.db")

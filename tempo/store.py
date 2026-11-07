@@ -124,7 +124,9 @@ CREATE TABLE IF NOT EXISTS folders (
   folder TEXT PRIMARY KEY,
   project TEXT,
   seen_at TEXT,
-  path TEXT
+  path TEXT,
+  renamed_from TEXT,
+  rename_answered_at TEXT
 );
 CREATE INDEX IF NOT EXISTS entries_undelivered ON entries (delivered_at) WHERE delivered_at IS NULL;
 """
@@ -206,6 +208,15 @@ def _add_folder_paths(db: sqlite3.Connection) -> None:
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS folders_path ON folders (path)")
 
 
+def _add_renames(db: sqlite3.Connection) -> None:
+    """A new folder may be a known one renamed or moved: it keeps the paths it may have
+    come from until the user links it or keeps it apart."""
+    columns = [row["name"] for row in db.execute("PRAGMA table_info(folders)")]
+    for column in ("renamed_from", "rename_answered_at"):
+        if column not in columns:
+            db.execute("ALTER TABLE folders ADD COLUMN %s TEXT" % column)
+
+
 # Steps that bring older databases up to SCHEMA, in order. The database's user_version
 # says how many have run; never reorder or remove one, only add new ones at the end.
 # Databases made before user_version was used are at 0 whatever their shape, so each
@@ -215,6 +226,7 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _fill_folder_projects,
     _add_goal,
     _add_folder_paths,
+    _add_renames,
 ]
 
 
@@ -565,6 +577,64 @@ class Store:
             for row in self.db.execute("SELECT * FROM folders")
         ]
         return sorted(folders, key=lambda folder: (folder["folder"] or "", folder["path"] or ""))
+
+    # Folders that may be a known one renamed or moved
+
+    def spot_rename(self, path: str, gone: Callable[[str], bool]) -> Folders:
+        """Note that the new folder at path may be a known folder renamed or moved: one
+        whose path is gone (no longer on disk). A gone folder is offered once only, so a
+        folder deleted long ago doesn't come up for every new folder. Returns the
+        candidates; the folder keeps its own project until the user picks."""
+        offered = set()
+        for row in self.db.execute(
+            "SELECT renamed_from FROM folders WHERE renamed_from IS NOT NULL"
+        ):
+            offered.update(json.loads(row["renamed_from"]))
+        candidates = [
+            folder
+            for folder in self.folders()
+            if folder["path"]
+            and folder["path"] != path
+            and folder["path"] not in offered
+            and gone(str(folder["path"]))
+        ]
+        if candidates:
+            self.db.execute(
+                "UPDATE folders SET renamed_from = ? WHERE path = ?",
+                (json.dumps([folder["path"] for folder in candidates]), path),
+            )
+        return candidates
+
+    def renames(self) -> Summaries:
+        """New folders that may be renamed or moved ones, waiting for the user to say."""
+        known = {folder["path"]: folder for folder in self.folders()}
+        rows = self.db.execute(
+            "SELECT path, renamed_from FROM folders"
+            " WHERE renamed_from IS NOT NULL AND rename_answered_at IS NULL ORDER BY path"
+        )
+        return [
+            dict(
+                known[row["path"]],
+                candidates=[known[old] for old in json.loads(row["renamed_from"]) if old in known],
+            )
+            for row in rows
+        ]
+
+    def link_folder(self, path: str, project: str | None) -> None:
+        """File the folder at path under a project, and settle any rename it waited on."""
+        project = (project or "").strip()
+        if not project:
+            raise QuestionError("Pick a project for the folder")
+        moved = self.db.execute(
+            "UPDATE folders SET project = ?, rename_answered_at = ? WHERE path = ?",
+            (project, now(), path),
+        ).rowcount
+        if not moved:
+            raise QuestionError("There is no folder at %s" % path)
+
+    def keep_folder(self, path: str) -> None:
+        """The folder at path is not a renamed one: it stays its own project."""
+        self.db.execute("UPDATE folders SET rename_answered_at = ? WHERE path = ?", (now(), path))
 
     def project_summaries(self) -> Summaries:
         """Every project with its question count and folders: projects that have
