@@ -5,11 +5,13 @@ import tempfile
 import unittest
 from unittest import mock
 
+from tempo import store as store_module
 from tempo.store import (
     MIGRATIONS,
     SCHEMA,
     QuestionError,
     Store,
+    _add_column,
     _add_folder_paths,
     _migrate,
     branch_db,
@@ -869,6 +871,52 @@ class MigrateTest(DatabaseTest):
         with Store(connect(os.environ["TEMPO_DB"])) as store:
             self.assertIsNone(store.folders()[0]["project"])
             self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+
+
+class AdditionTest(DatabaseTest):
+    """A compatible change is made on every open, and leaves user_version alone."""
+
+    def note(self, db):
+        _add_column(db, "folders", "note", "TEXT")
+        db.execute("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY)")
+        self.locked.append(db.in_transaction)
+
+    def setUp(self):
+        super().setUp()
+        self.locked = []
+        patcher = mock.patch.object(store_module, "ADDITIONS", [self.note])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def columns(self, db):
+        return [row["name"] for row in db.execute("PRAGMA table_info(folders)")]
+
+    def test_an_existing_database_gets_it_without_a_new_version(self):
+        self.store.see_folder("web", "/work/web")
+        self.assertNotIn("note", self.columns(self.store.db))
+        for _ in range(2):  # Opening again finds it there and adds nothing.
+            with Store(connect(os.environ["TEMPO_DB"])) as store:
+                self.assertIn("note", self.columns(store.db))
+                self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+                self.assertEqual(store.folders()[0]["path"], "/work/web")
+                store.db.execute("SELECT * FROM notes")
+        self.assertEqual(self.locked, [True, True])
+
+    def test_an_unversioned_database_gets_it_before_the_steps(self):
+        path = os.path.join(self.tmp.name, "old.db")
+        old = sqlite3.connect(path)
+        old.executescript(SCHEMA.replace("seen_at TEXT,\n  path TEXT,", "seen_at TEXT,"))
+        old.close()
+        with Store(connect(path)) as store:
+            self.assertIn("note", self.columns(store.db))
+            self.assertIn("path", self.columns(store.db))
+            self.assertEqual(_user_version(store.db), len(MIGRATIONS))
+
+    def test_a_newer_numbered_step_is_still_refused(self):
+        self.store.db.execute("PRAGMA user_version = %d" % (len(MIGRATIONS) + 1))
+        with self.assertRaisesRegex(QuestionError, "newer Tempo"):
+            connect(os.environ["TEMPO_DB"])
+        self.assertNotIn("note", self.columns(self.store.db))
 
 
 def _user_version(db):

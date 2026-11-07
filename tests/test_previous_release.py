@@ -14,8 +14,10 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
-from tempo.store import CODE_ROOT, Store, connect
+from tempo import store as store_module
+from tempo.store import CODE_ROOT, MIGRATIONS, Store, _add_column, connect
 
 
 def git(*args):
@@ -68,8 +70,8 @@ class PreviousReleaseTest(unittest.TestCase):
             store.add(project="demo", title="Open?", context="C", options=["Yes", "No"])
         self.addCleanup(os.remove, self.db)
 
-    def old_tempo(self, *args, stdin=""):
-        env = dict(os.environ, TEMPO_DB=self.db, TEMPO_PROJECT="demo", TEMPO_PORT="2299")
+    def old_tempo(self, *args, stdin="", project="demo"):
+        env = dict(os.environ, TEMPO_DB=self.db, TEMPO_PROJECT=project, TEMPO_PORT="2299")
         env.pop("PYTHONPATH", None)
         env.pop("TEMPO_IN_THREAD", None)
         # Run from the temporary folder: `python -m` puts the working folder first on the
@@ -98,6 +100,33 @@ class PreviousReleaseTest(unittest.TestCase):
         with Store(connect(self.db)) as store:
             self.assertEqual(store.get("demo", 3)["title"], "Up?")
             self.assertEqual(store.undelivered("demo"), [])
+
+    def test_old_code_runs_after_a_compatible_addition(self):
+        # A later Tempo adds a column and a table the old code knows nothing about.
+        def addition(db):
+            _add_column(db, "folders", "later", "TEXT")
+            _add_column(db, "questions", "later", "TEXT")
+            db.execute("CREATE TABLE IF NOT EXISTS later (id INTEGER PRIMARY KEY)")
+
+        with mock.patch.object(store_module, "ADDITIONS", [addition]):
+            connect(self.db).close()
+        added = self.old_tempo(
+            "add", "--title", "Up?", "--context", "C", "--option", "Up", "--option", "Down"
+        )
+        self.assertIn("Added Q3 in demo", added)
+        self.assertIn("Q3 [open, v1", self.old_tempo("list"))
+        out = self.old_tempo("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x"}))
+        self.assertIn("demo Q1 (Left?) answered (b) Right", out)
+        # With no project set, the old prompt hook records its folder as it always has.
+        folder = os.path.join(self.tmp.name, "web")
+        os.makedirs(folder, exist_ok=True)
+        self.old_tempo("hook", "user-prompt-submit", stdin=json.dumps({"cwd": folder}), project="")
+        with Store(connect(self.db)) as store:
+            version = store.db.execute("PRAGMA user_version").fetchone()[0]
+            self.assertEqual(version, len(MIGRATIONS))
+            columns = [row["name"] for row in store.db.execute("PRAGMA table_info(folders)")]
+            self.assertIn("later", columns)
+            self.assertIn("web", [folder["folder"] for folder in store.folders()])
 
     def test_it_is_the_old_code_that_runs(self):
         out = subprocess.run(

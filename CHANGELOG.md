@@ -27,6 +27,14 @@ All notable changes to Tempo are listed here. The format follows
   each with `tempo reword N --context` (`tempo context N` on an answered question). Before, a
   session could pass over a follow-up without a word.
 
+### Changed
+
+- Database changes that older code can ignore (a new table, index or column that may be
+  empty) are now made on every open and no longer raise the database's `user_version`.
+  Only a change older code would get wrong raises it, so sessions still running an older
+  Tempo keep working after most upgrades instead of being asked to restart.
+  `CONTRIBUTING.md` says which kind of change to use when.
+
 ### Fixed
 
 - The skill no longer mentions answers "given with `tempo`": there is no command to answer
