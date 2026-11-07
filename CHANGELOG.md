@@ -4,6 +4,16 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Settings lists each project's folders read-only: the menu to file a folder under another
+  project is gone. Folders that no longer exist on disk, and old ones whose path isn't known,
+  are hidden (they stay in the database).
+- When several known folders are missing, the rename banner shows a "Link to <project>"
+  button for each one, with its path, instead of sending you to Settings.
+
 ## [0.5.1] - 2026-11-07
 
 ### Added
