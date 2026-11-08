@@ -43,9 +43,9 @@ step "Lint (ruff)" .venv/bin/ruff check .
 step "Format (ruff format)" .venv/bin/ruff format --check .
 step "Security (bandit)" .venv/bin/bandit --quiet -c pyproject.toml -r tempo
 step "Types (mypy)" .venv/bin/mypy
-# The release scripts have no .py ending, so mypy checks each on its own (two at once would
-# both be "__main__"), with the settings in pyproject.toml.
-for script in bin/release bin/check-version; do
+# The Python scripts in bin/ have no .py ending, so mypy checks each on its own (two at once
+# would both be "__main__"), with the settings in pyproject.toml.
+for script in bin/release bin/check-version bin/media; do
   step "Types (mypy, $script)" .venv/bin/mypy "$script"
 done
 # Every shell script in bin/, found by its first line, so a new one is never skipped.
