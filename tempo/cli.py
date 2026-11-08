@@ -551,7 +551,7 @@ def _filed_under(db: sqlite3.Connection, path: str) -> str:
 
 def _folder_project(path: str) -> str:
     with Store(connect()) as store:
-        return store.project_for(os.path.basename(path), path)
+        return store.project_for(folder_name(path), path)
 
 
 def _write_marker(marker: str, project: str | None) -> None:

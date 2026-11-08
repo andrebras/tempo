@@ -1346,6 +1346,11 @@ class ProjectNameTest(GitTest):
                 self.assertEqual(cli.folder_path(folder), os.path.realpath(repo))
                 self.assertEqual(cli.project_name(folder), "shop")
 
+    def test_wait_names_a_bare_repo_project_as_the_hooks_do(self):
+        # A worktree of shop.git is the project "shop" for the hooks; the wait looked for
+        # "shop.git", which nobody writes to, until the folder was recorded.
+        self.assertEqual(cli._folder_project("/x/shop.git"), "shop")
+
     def test_worktrees_of_a_bare_repo_share_the_repo_project(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
