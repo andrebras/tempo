@@ -7,22 +7,27 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 
 | Command | What it does |
 | --- | --- |
-| `tempo add --title … --context … --option … --option …` | Add a question (`--recommended b`, `--goal "Release 0.4"`, `--start-here "unlocks Q5"`) |
-| `tempo list`, `tempo show <n>` | List questions, or show one with its thread (`<n>` may be a short code such as `12b`) |
+| `tempo add --title … --context … --option … --option …` | Add a question (`--recommended b`, `--goal "Release 0.4"`, `--start-here "unlocks Q5"`; `--number 40` uses that number, which must be the next free one or higher) |
+| `tempo list`, `tempo show <n>` | List the open questions, or show one with its thread (`<n>` may be a short code such as `12b`). `list --status answered` (or `archived`, `all`) lists others, and `list --all-projects` lists every project's |
 | `tempo context <n> "…"` | Add context to a question |
 | `tempo reword <n> --note "…"` | Save a new version of a question; reopens it if it was answered |
 | `tempo goal <n> "…"` | Set a question's goal without rewording it (`--start-here "…"`, `--no-start-here`; `""` removes the goal) |
 | `tempo archive` | Archive the project's answered questions now (they also move to Archived by themselves 7 days after their latest answer) |
 | `tempo set-next <n>` | Continue numbering from an older list |
 | `tempo inbox` | Print answers and follow-ups Claude hasn't seen yet (`--all-projects` shows every project's without marking them seen) |
-| `tempo wait --timeout 1800` | Wait until you answer or follow up, then print it |
+| `tempo wait --timeout 1800` | Wait until you answer or follow up, then print it. Without `--timeout` (or with `0`) it waits forever; `--interval 2` is how many seconds pass between looks at the database |
 | `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`). The option may also be named by its whole text, in any case and without trailing punctuation, such as `tempo answer 61 yes`; a valid letter wins. It answers the current wording; once the question was reworded, the confirmation names it: `Answered Q61 (version 2): (a) Yes` |
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
-| `tempo status` | For you, not Claude: print `? 3` when 3 questions of the current folder's project wait for you, nothing when none do, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
+| `tempo status` | For you, not Claude: print `? 3` when the current folder's project has 3 open questions, nothing when it has none, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
 | `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
 | `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) |
-| `tempo serve [--background]` | Run the page; works whether or not sessions start it |
+| `tempo serve [--background]` | Run the page; works whether or not sessions start it (`--port` picks another port) |
+| `tempo hook <event>` | Run by Claude Code's hooks (`session-start`, `user-prompt-submit`, `stop`); not for direct use (see [Hooks](#hooks)) |
 | `tempo slash <name>` | Run by the slash commands below, with the typed text on stdin; not for direct use |
+
+`add`, `show` and `list` take `--json` to print JSON instead of text, for scripts. `serve` and
+`hook` take `--port` to use another port than the default (see
+[The page server](#the-page-server)).
 
 `oq`, the command's old name, still works as an alias.
 
@@ -40,7 +45,7 @@ text Claude gets.
 | `/tempo:list` | This project's open questions |
 | `/tempo:show 57` | One question with its options and thread (`57b` works too) |
 | `/tempo:answer 57a [note]` | Answer with option (a), with an optional note. The code may be `57a`, `57 a`, `Q57a` or `Q57 a)`, and the option may be named by the start of its text, such as `61 yes, but later` (a valid letter wins). Claude then acts on it |
-| `/tempo:dive 57 [follow-up]` | Ask for more, like the page's follow-up; without text it records "Tell me more.", and `57b` asks about option (b). Claude then answers it in the question with `tempo reword` |
+| `/tempo:dive 57 [follow-up]` | Ask for more, like the page's follow-up; without text it records "Tell me more.", and `57b` (no space) asks about option (b). Claude then answers it in the question with `tempo reword` |
 
 An answer or follow-up made this way is saved already marked delivered, in the same write:
 Claude has it from the command's output, so the hooks and `tempo wait` don't hand it over a
@@ -48,6 +53,10 @@ second time. The page shows it as seen. When the question or option doesn't exis
 saved: the output says "Nothing was recorded:" with Tempo's error, and Claude passes it on.
 The project is the one of the session's project folder (`TEMPO_PROJECT` still wins). With
 `disableSkillShellExecution` on in your Claude Code settings, the commands can't run.
+
+The typed text ends at a line that is exactly `TEMPO_TYPED_TEXT`, the word that closes the
+heredoc (the way the command passes your text). Lines after it would run as shell commands,
+so don't type that word alone on a line. Only your own typing can do this.
 
 ## Hooks
 
@@ -105,7 +114,8 @@ it never takes the real page's place. Every new session checks what is running o
   from. So when sessions run different versions of Tempo, the newest one wins.
 - A Tempo server that reports an older version: Tempo stops it and starts its own.
 - A server that no longer answers: Tempo stops it and starts its own, but only if the
-  process on the port is a Tempo server (`python -m tempo serve`).
+  process on the port is a Tempo server (`tempo serve`, run either as `python -m tempo serve`
+  or as `…/tempo/__main__.py serve`).
 - Anything else that answers, such as a Tempo too old to have `/health` or another
   program: it is left alone.
 
@@ -255,6 +265,9 @@ them.
 | Database | `~/.claude/tempo/questions.db` | `TEMPO_DB` |
 | Port | `2204`, or a port of its own for code on a branch database | `TEMPO_PORT` |
 | Project | The project the current git repository's folder is filed under, named after the folder until renamed (worktrees count as the same folder) | `TEMPO_PROJECT`, or `--project` on a command; both win over Settings |
+| Hooks stay quiet | Off | `TEMPO_IN_THREAD=1` (see below) |
+| Colours in `tempo tui` | On | `NO_COLOR`, set to anything, turns them off |
+| Google Chrome, for the page tests and `bin/media` | Found in the usual places | `CHROME`, the browser's path |
 
 The page log is written next to the database. The database sits outside the plugin folder, so
 it survives plugin updates and reinstalls. The variables' old names (`OQ_DB`, `OQ_PORT`,
