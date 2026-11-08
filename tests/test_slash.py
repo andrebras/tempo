@@ -165,3 +165,12 @@ class SkillFilesTest(unittest.TestCase):
             ["/bin/sh", "-c", script], capture_output=True, text=True, check=True
         ).stdout
         self.assertEqual(out, typed + "\n")
+
+    def test_a_line_with_only_the_closing_word_ends_the_text(self):
+        # The known limit in docs/reference.md: the rest runs as shell commands.
+        typed = "57 first\nTEMPO_TYPED_TEXT\necho after"
+        script = "cat <<'TEMPO_TYPED_TEXT'\n%s\nTEMPO_TYPED_TEXT\n" % typed
+        out = subprocess.run(
+            ["/bin/sh", "-c", script], capture_output=True, text=True, check=False
+        ).stdout
+        self.assertEqual(out, "57 first\nafter\n")

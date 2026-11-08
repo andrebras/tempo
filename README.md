@@ -16,8 +16,12 @@ itself.
 - 🎬 [See it in action](#see-it-in-action)
 - 📦 [Install](#install)
 - 🎛️ [Usage](#usage)
+- ⌨️ [From the terminal](#from-the-terminal): the `tempo` commands, the full-screen
+  `tempo tui`, tmux and the status line
+- 💬 [In the Claude Code session](#in-the-claude-code-session): slash commands
 - ⚙️ [How it works](#how-it-works)
 - 🔒 [Security](#security)
+- 🤝 [Contributing](#contributing)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
@@ -42,6 +46,7 @@ claude plugin install tempo@tempo
 ```
 
 You need Python 3.9 or newer (macOS ships with one) and Git. Tempo has no other dependencies.
+Start a new Claude Code session afterwards: sessions that were already open don't load it.
 
 To try it for one session without installing it, clone the repo and run
 `claude --plugin-dir ./tempo`.
@@ -61,6 +66,8 @@ decision, it adds a question and links to it in chat. On the page you can:
 - **Ask for more context**: say what's unclear. Claude adds an explanation or rewords the
   question, and the question's thread shows what changed.
 - **Reopen** an answered question to change your answer.
+- **Find a question**: the search box filters the list, and the **Open**, **Answered** and
+  **Archived** tabs switch between open questions, answered ones and older ones.
 - **Switch projects** with the chips in the header: one per project with something for you,
   showing its open count. A dot on a chip means something new arrived there since you last
   looked. **All projects ▾** lists every project.
@@ -84,6 +91,19 @@ links. `tempo serve --background` still starts the page when you want it, and
 You can also answer without opening the page. These commands are for you, not for Claude, and
 work like the page: Claude gets what you send through the same hooks and `tempo wait`.
 
+`tempo` is on Claude Code's `PATH` only inside a session. To use it in your own shell, add an
+alias, for example in `~/.zshrc`:
+
+```bash
+alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo
+```
+
+That path is Tempo's marketplace copy, which `claude plugin marketplace update tempo` keeps
+up to date. Sessions run the installed copy under `~/.claude/plugins/cache/tempo/`, in a
+folder named after its version, so the marketplace path is the one that doesn't change. If
+you cloned Tempo yourself, use your clone's `bin/tempo` instead. The same goes for every
+path in the examples below.
+
 ```bash
 tempo list                                # the project's open questions
 tempo show 12                             # one question, with its options and thread
@@ -94,14 +114,12 @@ tempo reply 12 "What would (c) cost?"     # ask for more context, like the page'
 ```
 
 They act on the project of the folder you run them in; add `--project NAME` for another one
-(`tempo list --all-projects` shows every project's questions). `tempo` is on Claude Code's
-`PATH` only inside a session. In your own shell, run it from the plugin's folder, for example
-with an alias: `alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo`.
+(`tempo list --all-projects` shows every project's questions).
 
 ### The full-screen view: `tempo tui`
 
-`tempo tui` shows what the page shows, in the terminal, with panels side by side as in
-lazygit, and you use it only with the keyboard. It needs nothing installed: it is drawn with
+`tempo tui` shows the open questions, as the page does, in the terminal, with panels side
+by side as in lazygit, and you use it only with the keyboard. It needs nothing installed: it is drawn with
 curses, which comes with Python. Projects (top left) lists every project with open questions,
 plus the current folder's, with how many are open; a dot marks the ones with questions waiting
 for you. Questions (bottom left) lists the selected project's open questions, grouped by goal
@@ -154,20 +172,33 @@ gets them the same way. The bottom line then says what was saved, or why it was 
 example, when the question was answered on the page meanwhile). The screen follows changes by
 itself within a second or two: a question Claude adds or rewords, or an answer from the page.
 On a screen narrower than 60 characters it shows one panel at a time, and `h` and `l` go to
-the others. Set `NO_COLOR` to turn colors off. It never starts the page.
+the others. Set `NO_COLOR` to turn colors off. It never starts the page. For answered and
+archived questions, search and Settings, use the page.
 
-To open it in a tmux popup with `prefix` then `T` (`display-popup` needs tmux 3.2 or later;
-`-d` starts it in the current pane's folder, so it opens on that folder's project), add this to
-`~/.tmux.conf` and reload it with `tmux source-file ~/.tmux.conf`:
+### `tempo tui` in a tmux popup
+
+tmux can open `tempo tui` in a popup window over your panes, and close it when you quit.
+Add this to `~/.tmux.conf` to open it with `prefix` then `T` (`display-popup` needs tmux 3.2
+or later):
 
 ```tmux
 bind T display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.claude/plugins/marketplaces/tempo/bin/tempo tui"
 ```
 
+`-E` closes the popup when `tempo tui` ends, `-w` and `-h` set its size, and `-d` starts it in
+the current pane's folder, so it opens on that folder's project. To open it with `Alt-t`
+alone, without the prefix, add this line too (`-n` means no prefix):
+
+```tmux
+bind -n M-t display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.claude/plugins/marketplaces/tempo/bin/tempo tui"
+```
+
+Then reload the file with `tmux source-file ~/.tmux.conf`.
+
 ### A badge in the tmux status bar
 
-`tempo status` prints `? 3` when three questions of the current folder's project are waiting
-for you, and nothing when none are, just like the page shows one project at a time. In a
+`tempo status` prints `? 3` when the current folder's project has three open questions, and
+nothing when it has none, just like the page shows one project at a time. In a
 pane in `~/Lab/shop` it counts shop's questions, not another project's. `--project NAME`
 counts one project by name and `--all` counts every project. It only reads the database, so it
 is quick and safe to run every few seconds, and it never starts the page. To show it in tmux,
@@ -182,7 +213,49 @@ set -g status-right '#(cd "#{pane_current_path}" && ~/.claude/plugins/marketplac
 tmux fills in `#{pane_current_path}`, the folder of the pane you are in, so the badge follows
 you from project to project.
 
+To see a badge on every pane instead, each for its own folder, show it in the pane borders:
+
+```tmux
+set -g pane-border-status top
+set -g pane-border-format ' #(cd "#{pane_current_path}" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status) #{pane_current_command} '
+```
+
 Then reload it with `tmux source-file ~/.tmux.conf`.
+
+### A badge in the Claude Code status line
+
+Claude Code can show a status line under the prompt: it runs a command you choose and shows
+what it prints. Claude Code passes the command details about the session as JSON on its
+standard input, including the session's folder in `workspace.current_dir`. Run
+`tempo status` in that folder to add the badge for the session's project.
+
+If you already have a status line script, add these two lines to it and print `$tempo` at
+the end of its output (they use [jq](https://jqlang.org) to read the JSON):
+
+```sh
+dir=$(printf '%s' "$input" | jq -r '.workspace.current_dir')
+tempo=$(cd "$dir" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status 2>/dev/null)
+```
+
+Here `$input` holds the JSON the script read with `input=$(cat)`. A whole script that shows
+only the folder's name and the badge looks like this, saved as `~/.claude/statusline.sh`
+and made runnable with `chmod +x ~/.claude/statusline.sh`:
+
+```sh
+#!/bin/sh
+input=$(cat)
+dir=$(printf '%s' "$input" | jq -r '.workspace.current_dir')
+tempo=$(cd "$dir" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status 2>/dev/null)
+printf '%s %s\n' "$(basename "$dir")" "$tempo"
+```
+
+Then point Claude Code at it in `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": { "type": "command", "command": "~/.claude/statusline.sh" }
+}
+```
 
 ## In the Claude Code session
 
@@ -208,7 +281,7 @@ or option records nothing and shows Tempo's error instead.
 ## How it works
 
 ```
- Claude ──tempo add / context / reword──▶  SQLite  ◀──answer / follow-up── Page (127.0.0.1:2204)
+ Claude ──tempo add / context / reword──▶  SQLite  ◀──answer / follow-up── page / tui / tempo answer
    ▲                                          │
    ├──── hook on your next message ───────────┤
    ├──── tempo wait (running in background) ──┤
@@ -220,14 +293,17 @@ uses three hooks: small commands that Claude Code runs at fixed moments of a ses
 start of every session, one tells Claude that every decision goes through Tempo and lists the
 project's open questions.
 
-Your answers reach Claude in one of three ways:
+Answers from the page, `tempo tui`, `tempo answer` or `tempo reply` reach Claude in one of
+three ways:
 
 - a hook adds them before Claude reads your next message;
 - a `tempo wait` that Claude keeps running in the background wakes it as soon as you answer;
 - when Claude finishes a reply, a hook hands over any answers it hasn't seen yet, so Claude
   carries on instead of stopping.
 
-Each answer is delivered once, and only to sessions of its own project.
+Each answer is delivered once, and only to sessions of its own project. The slash commands
+are a fourth way: they save the answer already delivered, and Claude reads it straight from
+the command's output.
 
 The hook that runs when a reply ends also keeps the loop going. If the reply asks you something
 (lettered options, a yes-or-no question or a request for permission) without a Tempo question,

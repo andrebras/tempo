@@ -1,6 +1,6 @@
 ---
 name: tempo
-description: Records every question Claude needs the user to decide on in the Tempo database, with full context and lettered options, and picks up the user's answers and follow-ups from its local page. Use whenever you are about to ask the user to choose or decide something that blocks or shapes the work, when the user asks about an open question or a Q number (like "Q12" or "12b"), or when hook output says the user answered or asked for more on the Tempo page. That includes yes/no confirmations and requests for permission.
+description: Records every question Claude needs the user to decide on in the Tempo database, with full context and lettered options, and picks up the user's answers and follow-ups from its local page. Use whenever you are about to ask the user to choose or decide something that blocks or shapes the work, when the user asks about an open question or a Q number (like "Q12" or "12b"), or when hook output says there is something new from the user in Tempo. That includes yes/no confirmations and requests for permission.
 ---
 
 # Tempo
@@ -78,14 +78,15 @@ lives only in chat is easy to miss and never reaches the page.
 
 That includes yes/no confirmations and requests for permission ("May I delete the old
 branch?"): add them with the options Yes and No. Merging, publishing and installing are the
-one exception to an answer on the page: it never approves them. Record the question in Tempo
+one exception: an answer in Tempo never approves them. Record the question in Tempo
 like any other, and also ask for a one-line OK in chat before you act.
 
 To continue numbering from an older list, run `tempo set-next <number>` once before the first add.
 
 ## Getting answers back
 
-Answers and follow-ups from the page reach you two ways:
+Answers and follow-ups reach you three ways, wherever the user gave them (the page, the
+terminal or `tempo tui`):
 
 1. **On the user's next message**: the UserPromptSubmit hook adds them to your context.
 2. **While you keep working**: after asking, start `tempo wait --timeout 1800` with the Bash

@@ -11,9 +11,20 @@ All notable changes to Tempo are listed here. The format follows
 - Answers and follow-ups reach Claude as "New from the user in Tempo", wherever they were
   given. Before, the heading said "on the Tempo page" even for answers from the terminal
   screen, `tempo answer` or `/tempo:answer`.
+- The session note and the skill now say "an answer in Tempo never approves merging,
+  publishing or installing", instead of "an answer on the Tempo page", since answers from the
+  terminal, `tempo tui` and slash commands don't approve them either.
+- The README explains more for newcomers: a fuller contents list, the `tempo` alias before
+  the commands that use it, which copy of `bin/tempo` the paths point to, a badge in the
+  Claude Code status line, `Alt-t` for the `tempo tui` popup in tmux, and a badge on every
+  tmux pane. docs/reference.md lists the missing options (`list --status`, `--json`,
+  `add --number`, `wait --interval`, `--port`), `tempo hook`, and the `TEMPO_IN_THREAD`,
+  `NO_COLOR` and `CHROME` variables. CONTRIBUTING.md lists every part of the code.
 
 ### Fixed
 
+- CONTRIBUTING.md's example of running the page on a scratch database now also sets
+  `TEMPO_PORT`. Without it, the scratch page took the real page's port, 2204.
 - On the page, a long path or web address in a title, goal or option now wraps. Before, it
   made the page scroll sideways, and a phone showed the whole page about four times smaller.
 - The page's text colours now meet the WCAG (Web Content Accessibility Guidelines) contrast
@@ -56,8 +67,9 @@ All notable changes to Tempo are listed here. The format follows
   Claude reads anything, already marked delivered, so it reaches Claude once. Claude then acts
   on the answer, or answers the follow-up in the question.
 - `tempo answer` and `/tempo:answer` take an option by its text as well as its letter, in any
-  case and without trailing punctuation: `tempo answer 61 yes` on a Yes/No question. A valid
-  letter still wins.
+  case and without trailing punctuation: `tempo answer 61 yes` on a Yes/No question.
+  `/tempo:answer` matches the start of the option's text, and the rest becomes the note. A
+  valid letter still wins.
 
 ## [0.7.0] - 2026-11-07
 

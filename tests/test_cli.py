@@ -1059,6 +1059,9 @@ class CliTest(DatabaseTest):
         self.assertIn("the number as a link to the question, then the title", note)
         self.assertIn("`- [Q3](http://127.0.0.1:2204/#/shop/3) Pick a colour`", note)
         self.assertIn("Never print a bare link.", note)
+        # Answers from the terminal, the tui and slash commands don't approve merging either.
+        self.assertIn("An answer in Tempo never approves merging", note)
+        self.assertNotIn("on the Tempo page", note)
 
     def test_with_the_page_off_serve_still_starts_it(self):
         self.store.set_start_page(False)
