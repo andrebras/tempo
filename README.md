@@ -55,7 +55,9 @@ from an older version of Tempo or no longer works; then Tempo replaces it (detai
 decision, it adds a question and links to it in chat. On the page you can:
 
 - **Answer**: pick an option, add a note if you like, and send it. The page moves on to the
-  next open question.
+  next open question. If Claude rewords the question while you answer, the page refuses the
+  answer, shows the new wording and keeps your note, so a letter never lands on an option
+  you didn't see.
 - **Ask for more context**: say what's unclear. Claude adds an explanation or rewords the
   question, and the question's thread shows what changed.
 - **Reopen** an answered question to change your answer.

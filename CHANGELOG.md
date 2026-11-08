@@ -25,6 +25,17 @@ All notable changes to Tempo are listed here. The format follows
   back to the start of the page.
 - Screen readers now hear a name for the note box ("Your note") and for the group of
   options (the question's title), and the question open in the list is marked as current.
+- An answer is tied to the wording you saw. If Claude rewords a question between the page
+  or the terminal screen drawing it and your Send (or `y`), Tempo refuses the answer with
+  "Q1 changed since you looked at it (now version 2); check it again", because the same
+  letter may now name another option. Before, the letter was saved against the new
+  options, which could be the opposite decision.
+- `tempo answer` and `/tempo:answer` still answer the current wording, and now name it once
+  the question was reworded: "Answered Q1 (version 2): (b) Left".
+- When Claude rewords the question you are answering on the page, the page says so: your
+  pick is cleared and your note is kept. When the question is answered or archived
+  elsewhere while you type a note, the page stays on it with a short notice and a
+  **Move on** button. Before, it jumped to the next question and the note was lost.
 
 ## [0.7.1] - 2026-11-08
 
