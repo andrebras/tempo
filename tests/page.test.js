@@ -49,7 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
-  noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, state,
+  noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -275,6 +275,17 @@ test("a pick made on an older wording is dropped; the note stays", () => {
     { text: "hi", choice: null, version: 2 });
   assert.deepEqual(keptDraft({ text: "hi", choice: "b", version: 2 }, openQuestion()),
     { text: "hi", choice: "b", version: 2 });
+});
+
+test("a reword while the user is answering says what was kept and what was cleared", () => {
+  assert.equal(rewordNotice({ text: "", choice: null, version: 1 }, openQuestion()), null);
+  assert.equal(rewordNotice({ text: "hi", choice: "b", version: 2 }, openQuestion()), null);
+  assert.equal(rewordNotice({ text: "hi", choice: "b", version: 1 }, openQuestion()),
+    "Claude reworded this question while you were answering it (now version 2)."
+    + " Your pick was cleared: read the options again. Your note is kept.");
+  assert.equal(rewordNotice({ text: " ", choice: "a", version: 1 }, openQuestion()),
+    "Claude reworded this question while you were answering it (now version 2)."
+    + " Your pick was cleared: read the options again.");
 });
 
 test("while an answer is being sent, a redraw keeps the buttons disabled", () => {

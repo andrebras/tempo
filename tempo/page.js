@@ -534,6 +534,7 @@ async function refresh(follow = false) {
   }
   const visible = (q) => current && q.project === current.project && q.number === current.number;
   if (current && !shown.questions.some(visible)) {
+    if (await keptOnScreen(current)) return;
     history.replaceState(null, "", location.pathname);
     current = null;
   }
@@ -556,6 +557,40 @@ async function refresh(follow = false) {
     return;
   }
   await loadDetail(follow);
+}
+
+// The question on screen left the list while the user was answering it: answered or
+// archived elsewhere (the terminal screen, the tempo command, another tab), or hidden by
+// the search. The page stays on it, so the note being typed isn't lost, and says why it
+// left. Without a draft, or once the user moves on, the page opens the next question.
+async function keptOnScreen(current) {
+  const id = `${current.project}/${current.number}`;
+  if (!state.current || state.shown !== id || !$("#note")) return false;
+  const typed = typedDraft();
+  if (!typed.text.trim() && !typed.choice) return false;
+  if ($("#detail .changed.left")) return true;
+  let status = "gone";
+  try {
+    status = (await api(`/api/questions/${encodeURIComponent(current.project)}/${current.number}`)).status;
+  } catch (problem) {
+    // A server that is restarting says nothing: try again on the next tick.
+    if (!problem.status) return true;
+  }
+  // Still open: only the search hides it, so it stays without a word. A second refresh
+  // may have said it already while this one waited.
+  if (status === "open" || $("#detail .changed.left")) return true;
+  const what = { answered: "was answered elsewhere", archived: "was archived elsewhere" }[status]
+    || "is no longer here";
+  const moveOn = () => {
+    state.current = null;
+    state.shown = null;
+    history.replaceState(null, "", location.pathname);
+    refresh();
+  };
+  $("#detail article")?.prepend(el("div", { class: "changed left", role: "status" },
+    el("p", {}, `Q${current.number} ${what}, so it is no longer open. Your note is still here to copy.`),
+    el("button", { class: "link", onclick: moveOn }, "Move on")));
+  return true;
 }
 
 // The Tempo mark is a fermata: the sign that holds a note until the conductor releases it.
@@ -677,9 +712,8 @@ async function loadDetail(force) {
   // Keep what the user is typing when the same question refreshes underneath them, or
   // what they had typed before the page reloaded.
   const id = `${question.project}/${question.number}`;
-  const draft = keptDraft(state.shown === id && $("#note")
-    ? typedDraft()
-    : takeDraft(id) || { text: "", choice: null }, question);
+  const typed = state.shown === id && $("#note") ? typedDraft() : null;
+  const draft = keptDraft(typed || takeDraft(id) || { text: "", choice: null }, question);
   // A redraw of the same question keeps the note box focused, with the cursor where it was.
   const old = $("#note");
   const cursor = state.shown === id && old && document.activeElement === old
@@ -687,16 +721,27 @@ async function loadDetail(force) {
   state.current = key;
   state.shown = id;
   state.shownVersion = question.version;
-  detail.replaceChildren(renderQuestion(question, draft));
+  detail.replaceChildren(renderQuestion(question, draft, typed && rewordNotice(typed, question)));
   if (cursor && $("#note")) {
     $("#note").focus();
     $("#note").setSelectionRange(...cursor);
   }
 }
 
-function renderQuestion(question, draft) {
+// What to tell the user when Claude rewords the question they are answering, or null when
+// they hadn't started. Their pick is dropped (keptDraft), so the notice says so.
+function rewordNotice(typed, question) {
+  if (!typed.version || typed.version === question.version) return null;
+  if (!typed.text.trim() && !typed.choice) return null;
+  return [`Claude reworded this question while you were answering it (now version ${question.version}).`,
+    typed.choice && "Your pick was cleared: read the options again.",
+    typed.text.trim() && "Your note is kept."].filter(Boolean).join(" ");
+}
+
+function renderQuestion(question, draft, notice = null) {
   const reworded = question.version > 1 ? `, reworded (version ${question.version})` : "";
   const parts = [
+    notice && el("div", { class: "changed", role: "status" }, el("p", {}, notice)),
     el("div", { class: "eyebrow" }, `${question.project} · ${question.label} · ${question.status}${reworded}`,
        waitBadge(question)),
     el("h2", {}, question.title),
@@ -739,12 +784,12 @@ function renderQuestion(question, draft) {
         throw problem;
       });
   };
-  const refresh = () => { state.current = null; state.shown = null; return Promise.all([loadDetail(true), loadList()]); };
+  const redraw = () => { state.current = null; state.shown = null; return Promise.all([loadDetail(true), loadList()]); };
   if (question.status === "answered") {
     // Answered questions are read-only; reopening is a deliberate step, so an old tab
     // can't add a second answer by accident. The question is open again, so the page
     // moves to the Open tab with it; otherwise the next refresh drops it.
-    const reopen = () => { setStatus("open"); return refresh(); };
+    const reopen = () => { setStatus("open"); return redraw(); };
     parts.push(el("div", { class: "actions" },
       el("button", { disabled: busy, onclick: () => post("reopen", {}).then(reopen, () => {}) },
         "Reopen to answer again")), error);
@@ -762,10 +807,13 @@ function renderQuestion(question, draft) {
     parts.push(note, el("div", { class: "actions" },
       el("button", { class: "primary", id: "send", disabled: busy || !draft.choice, onclick: () => {
         const picked = document.querySelector("input[name=choice]:checked");
-        post("answer", { choice: picked ? picked.value : null, body: note.value })
-          .then(() => goToNextOpen(question), () => {});
+        // The version drawn, so the server refuses the answer if Claude has reworded the
+        // question since: the same letter may name another option now. A refused answer
+        // shows at once what changed, keeping the note.
+        post("answer", { choice: picked ? picked.value : null, body: note.value, version: question.version })
+          .then(() => goToNextOpen(question), () => refresh());
       } }, reopened ? "Send new answer" : "Send answer"),
-      el("button", { disabled: busy, onclick: () => post("followup", { body: note.value }).then(refresh, () => {}) },
+      el("button", { disabled: busy, onclick: () => post("followup", { body: note.value }).then(redraw, () => {}) },
         "Ask for more context")),
       el("p", { class: "hint" }, "Pick an option to answer. To send only a note, use Ask for more context: the question stays open."),
       error);
@@ -896,6 +944,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
-  noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, state,
+  noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 };
 else start();
