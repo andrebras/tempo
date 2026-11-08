@@ -27,7 +27,7 @@ the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on fi
 | Lint: errors, bugs, import order, simpler forms, security rules | [Ruff](https://docs.astral.sh/ruff/) |
 | Formatting | `ruff format` |
 | Security scan | [Bandit](https://bandit.readthedocs.io) |
-| Types: every function in `tempo/`, `bin/release` and `bin/check-version` has type hints, checked against Python 3.9 | [mypy](https://mypy.readthedocs.io) |
+| Types: every function in `tempo/`, `bin/release`, `bin/check-version` and `bin/media` has type hints, checked against Python 3.9 | [mypy](https://mypy.readthedocs.io) |
 | Shell scripts: every `bin/` script that starts with `#!/bin/sh` | [ShellCheck](https://www.shellcheck.net) |
 | Tests | `unittest`, from the standard library |
 | Test coverage of `tempo/`, report only: a per-file summary at the end, never a failure | [coverage.py](https://coverage.readthedocs.io) |
@@ -76,10 +76,20 @@ found on its own. GitHub's Ubuntu runners have Chrome, so they always run there.
 
 ## Screenshots and demo GIF
 
-`bin/media` makes the README's pictures again, `docs/screenshot-light.png`,
-`docs/screenshot-dark.png` and `docs/demo.gif`, from made-up questions in a throwaway
-database, so run it after a change to the page. It needs Google Chrome and
-[ffmpeg](https://ffmpeg.org) (`brew install ffmpeg`), and never touches your own questions.
+`bin/media` makes the README's pictures again from made-up questions in throwaway
+databases, so run it after a change to the page or to `tempo tui`:
+
+- `docs/screenshot-light.png` and `docs/screenshot-dark.png`: the question screen;
+- `docs/settings-light.png` and `docs/settings-dark.png`: Settings;
+- `docs/demo.gif`: answering on the page and asking for more;
+- `docs/tui.gif`: answering in `tempo tui`.
+
+It needs Google Chrome, [ffmpeg](https://ffmpeg.org) (`brew install ffmpeg`), which makes
+the GIFs, and [ttyd](https://github.com/tsl0922/ttyd) (`brew install ttyd`), which shows
+`tempo tui` as a web page so Chrome can record it in the terminal's real colours. It never
+touches your own questions or the real page's port: ttyd and `tempo tui` use ports from
+22100 to 22999. `bin/media --keep DIR` also keeps the databases, the frames and the logs in
+`DIR`.
 
 ## Layout
 

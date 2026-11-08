@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Make the README's pictures: docs/screenshot-light.png, docs/screenshot-dark.png and
-docs/demo.gif.
+"""Make the README's pictures: docs/screenshot-light.png and docs/screenshot-dark.png (the
+question screen), docs/settings-light.png and docs/settings-dark.png (Settings),
+docs/demo.gif (answering on the page) and docs/tui.gif (answering in `tempo tui`).
 
 It fills a throwaway database with made-up questions for three invented projects, runs the
 page from this checkout on a free port, and drives headless Google Chrome through the Chrome
 DevTools Protocol (CDP, the commands Chrome takes over a pipe), so the pictures come out the
-same way every time. Your own questions are never touched.
+same way every time. For tui.gif, ttyd runs `tempo tui` on a second throwaway database and
+shows it as a web page, which the same Chrome records with the terminal's real colours. Your
+own questions are never touched, and nothing uses the real page's port.
 
-Needs Python 3.9 or newer, Google Chrome, and ffmpeg (`brew install ffmpeg`), which turns
-the recorded frames into the GIF. Set CHROME to the browser's path if it isn't installed in
-/Applications.
+Needs Python 3.9 or newer, Google Chrome, ffmpeg (`brew install ffmpeg`), which turns the
+recorded frames into the GIFs, and ttyd (`brew install ttyd`). Set CHROME to the browser's
+path if it isn't installed in /Applications.
 
-    bin/media              # all three files
-    bin/media --keep DIR   # also keep the database, the frames and the server log in DIR
+    bin/media              # all six files
+    bin/media --keep DIR   # also keep the databases, the frames and the logs in DIR
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
@@ -42,12 +46,18 @@ RESERVED_PORTS = {2204, 2205}
 WIDTH, HEIGHT = 1280, 800
 GIF_WIDTH = 1040
 GIF_LIMIT = 1_000_000
+# tempo tui in ttyd: a window that fits 101 by 30 characters at this font size, in the dark
+# colours of Ghostty's default theme. Its GIF may be larger: a terminal changes in bursts.
+TUI_WIDTH, TUI_HEIGHT = 1040, 620
+TUI_LIMIT = 2_000_000
+TUI_THEME = {"background": "#282c34", "foreground": "#ffffff", "cursor": "#ffffff"}
+TUI_NOTE = "Tax matters most to the accountant"
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
 # The demo questions. "age" is how many hours ago each was asked, so the list shows a mix.
 ORDERS = "Orders export"
 CHECKOUT = "Checkout v2"
-QUESTIONS = [
+QUESTIONS: list[dict[str, Any]] = [
     {
         "project": "acme-shop",
         "goal": ORDERS,
@@ -147,7 +157,7 @@ PAYMENTS_CONTEXT = (
     "Two thirds of the owners who asked want wallets; bank transfers came up mostly in the"
     " Netherlands and Germany."
 )
-NEW_GARDEN = {
+NEW_GARDEN: dict[str, Any] = {
     "title": "Should frost warnings be on by default?",
     "context": "A warning needs the user's location, which the app doesn't ask for yet.",
     "options": ["On, asking for the location", "Off, offered after the first planting"],
@@ -187,6 +197,8 @@ def main() -> int:
     chrome = find_chrome()
     if not shutil.which("ffmpeg"):
         return fail("ffmpeg is missing: install it with 'brew install ffmpeg'")
+    if not shutil.which("ttyd"):
+        return fail("ttyd is missing: install it with 'brew install ttyd'")
     if not chrome:
         return fail("Google Chrome is missing: install it, or set CHROME to its path")
     if args.keep:
@@ -198,7 +210,9 @@ def main() -> int:
     else:
         with tempfile.TemporaryDirectory(prefix="tempo-media-") as folder:
             make(Path(folder), chrome)
-    for name in ("screenshot-light.png", "screenshot-dark.png", "demo.gif"):
+    names = ["screenshot-light.png", "screenshot-dark.png", "demo.gif"]
+    names += ["settings-light.png", "settings-dark.png", "tui.gif"]
+    for name in names:
         print("Wrote docs/%s (%d KB)" % (name, (DOCS / name).stat().st_size // 1000))
     return 0
 
@@ -226,6 +240,15 @@ def free_port() -> int:
             return port
 
 
+def free_tempo_port() -> int:
+    """A free port among those Tempo keeps for code under test, 22100 to 22999."""
+    for port in range(22100, 23000):
+        with socket.socket() as probe:
+            if probe.connect_ex(("127.0.0.1", port)) != 0:
+                return port
+    raise SystemExit("bin/media: no free port between 22100 and 22999")
+
+
 def make(work: Path, chrome: str) -> None:
     port = free_port()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("TEMPO_", "OQ_"))}
@@ -248,6 +271,8 @@ def make(work: Path, chrome: str) -> None:
                 demo.browser = browser
                 demo.screenshots()
                 demo.gif()
+                demo.settings()
+                Tui(work / "tui", browser).record()
         finally:
             server.terminate()
             server.wait()
@@ -260,6 +285,7 @@ class Demo:
         self.url = "http://127.0.0.1:%d/" % port
         self.browser: Browser
         self.frames: list[tuple[Path, int]] = []
+        self.frames_folder = work / "frames"
 
     # The database
 
@@ -420,7 +446,7 @@ class Demo:
 
     def frame(self, hold: int) -> None:
         """Record what is on screen now, shown for 'hold' milliseconds."""
-        path = self.work / "frames" / ("%03d.png" % len(self.frames))
+        path = self.frames_folder / ("%03d.png" % len(self.frames))
         path.parent.mkdir(exist_ok=True)
         self.picture(path)
         self.frames.append((path, hold))
@@ -492,31 +518,163 @@ class Demo:
             self.run("$('#detail').scrollTop = %d" % (bottom * t * t * (3 - 2 * t)))
             self.frame(50)
         self.frame(2200)
-        self.encode()
+        encode(self.frames, self.work / "frames.txt", DOCS / "demo.gif", GIF_WIDTH, GIF_LIMIT)
 
-    def encode(self) -> None:
-        listing = self.work / "frames.txt"
-        lines = []
-        for path, hold in self.frames:
-            lines += ["file '%s'" % path, "duration %.3f" % (hold / 1000)]
-        # The concat format needs the last file twice for its duration to count.
-        lines.append("file '%s'" % self.frames[-1][0])
-        listing.write_text("\n".join(lines) + "\n")
-        out = DOCS / "demo.gif"
-        ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
-        # Fewer colours make a smaller file; the first that fits is kept.
-        for colors in (128, 96, 64, 48):
-            gif = (
-                "scale=%d:-1:flags=lanczos,split[a][b];"
-                "[a]palettegen=max_colors=%d:stats_mode=full[p];"
-                "[b][p]paletteuse=dither=none:diff_mode=rectangle" % (GIF_WIDTH, colors)
+    def settings(self) -> None:
+        """Settings in both themes: appearance, the Sessions switch and the projects."""
+        self.run("document.getElementById('demo-pointer')?.remove()")
+        self.browser.send("Page.navigate", url=self.url + "#/settings")
+        self.wait("document.querySelector('#settings .segmented button')")
+        for scheme in ("light", "dark"):
+            self.theme(scheme)
+            time.sleep(0.3)
+            self.picture(DOCS / ("settings-%s.png" % scheme))
+        self.theme("light")
+
+
+def encode(
+    frames: list[tuple[Path, int]], listing: Path, out: Path, width: int, limit: int
+) -> None:
+    """Turn the frames, each shown for its time in milliseconds, into a GIF of that width."""
+    lines = []
+    for path, hold in frames:
+        lines += ["file '%s'" % path, "duration %.3f" % (hold / 1000)]
+    # The concat format needs the last file twice for its duration to count.
+    lines.append("file '%s'" % frames[-1][0])
+    listing.write_text("\n".join(lines) + "\n")
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    # Fewer colours make a smaller file; the first that fits is kept.
+    for colors in (128, 96, 64, 48):
+        gif = (
+            "scale=%d:-1:flags=lanczos,split[a][b];"
+            "[a]palettegen=max_colors=%d:stats_mode=full[p];"
+            "[b][p]paletteuse=dither=none:diff_mode=rectangle" % (width, colors)
+        )
+        command = [ffmpeg, "-v", "error", "-y", "-f", "concat", "-safe", "0"]
+        command += ["-i", str(listing), "-vf", gif, "-fps_mode", "vfr", "-loop", "0", str(out)]
+        subprocess.run(command, check=True)  # noqa: S603
+        if out.stat().st_size <= limit:
+            return
+    raise SystemExit("bin/media: %s is still over %d bytes" % (out.name, limit))
+
+
+class Tui(Demo):
+    """tempo tui on its own throwaway database, shown by ttyd and recorded in Chrome: move
+    through the questions, read one, answer it with a note, and open the help."""
+
+    def __init__(self, work: Path, browser: Browser) -> None:
+        work.mkdir()
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("TEMPO_", "OQ_"))}
+        # The tui never starts the page; the port is set only so nothing could use 2204.
+        env.update(TEMPO_DB=str(work / "questions.db"), TEMPO_PORT=str(free_tempo_port()))
+        super().__init__(work, env, free_tempo_port())
+        self.browser = browser
+        self.ttyd_port = int(self.url.rsplit(":", 1)[1].strip("/"))
+
+    def record(self) -> None:
+        self.fill()
+        self.backdate()
+        ttyd = shutil.which("ttyd") or "ttyd"
+        command = [ttyd, "--port", str(self.ttyd_port), "--interface", "127.0.0.1"]
+        # Writable (keys reach the tui), one viewer, and only from its own page.
+        command += ["--writable", "--once", "--check-origin"]
+        for option in (
+            "fontSize=17",
+            "fontFamily=Menlo, monospace",
+            "theme=%s" % json.dumps(TUI_THEME),
+            "disableLeaveAlert=true",
+        ):
+            command += ["--client-option", option]
+        command += [str(ROOT / "bin" / "tempo"), "tui", "--project", "acme-shop"]
+        with open(self.work / "ttyd.log", "w") as log:
+            server = subprocess.Popen(  # noqa: S603
+                command, env=self.env, cwd=self.work, stdout=log, stderr=subprocess.STDOUT
             )
-            command = [ffmpeg, "-v", "error", "-y", "-f", "concat", "-safe", "0"]
-            command += ["-i", str(listing), "-vf", gif, "-fps_mode", "vfr", "-loop", "0", str(out)]
-            subprocess.run(command, check=True)  # noqa: S603
-            if out.stat().st_size <= GIF_LIMIT:
-                return
-        raise SystemExit("bin/media: the GIF is still over %d bytes" % GIF_LIMIT)
+            try:
+                self.wait_for_ttyd()
+                self.browser.send(
+                    "Emulation.setDeviceMetricsOverride",
+                    width=TUI_WIDTH,
+                    height=TUI_HEIGHT,
+                    deviceScaleFactor=1,
+                    mobile=False,
+                )
+                self.browser.send("Page.navigate", url=self.url)
+                self.wait("window.term && term.buffer.active.getLine(1)?.translateToString()")
+                self.run("term.focus()")
+                self.story()
+            finally:
+                server.terminate()
+                server.wait()
+                self.browser.send(
+                    "Emulation.setDeviceMetricsOverride",
+                    width=WIDTH,
+                    height=HEIGHT,
+                    deviceScaleFactor=1,
+                    mobile=False,
+                )
+
+    def wait_for_ttyd(self) -> None:
+        for _ in range(100):
+            try:
+                with urllib.request.urlopen(self.url, timeout=1):  # noqa: S310
+                    return
+            except OSError:
+                time.sleep(0.1)
+        raise SystemExit("bin/media: ttyd did not start; run with --keep DIR to see its log")
+
+    def screen(self) -> str:
+        """The terminal's text, for waiting until the tui has drawn something."""
+        text = self.run(
+            "(() => { const b = term.buffer.active; let s = '';"
+            " for (let i = 0; i < term.rows; i++) s += b.getLine(i).translateToString() + '\\n';"
+            " return s; })()"
+        )
+        return str(text)
+
+    def until(self, words: str, timeout: float = 5) -> None:
+        end = time.monotonic() + timeout
+        while words not in self.screen():
+            if time.monotonic() > end:
+                raise SystemExit("bin/media: tempo tui never showed %r" % words)
+            time.sleep(0.05)
+        time.sleep(0.15)
+
+    def key(self, key: str, shows: str, hold: int) -> None:
+        """Press a key, wait until the screen shows the words, and record it."""
+        press: dict[str, Any]
+        if key == "enter":
+            press = {"key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "text": "\r"}
+        else:
+            press = {"key": key, "text": key, "unmodifiedText": key}
+        self.browser.send("Input.dispatchKeyEvent", type="keyDown", **press)
+        self.browser.send("Input.dispatchKeyEvent", type="keyUp", key=press["key"])
+        self.until(shows)
+        self.frame(hold)
+
+    def story(self) -> None:
+        self.frames_folder = self.work / "frames"
+        self.until("Questions")
+        self.frame(1400)
+        # Move down the questions, then into the detail of one.
+        self.key("j", "Which columns should the orders export include?", 700)
+        self.key("j", "Which payment providers", 700)
+        self.key("k", "Which columns should the orders export include?", 900)
+        self.key("l", "Every field, one column each", 1200)
+        # Answer it with (b), adding a note before sending.
+        self.key("b", "Answer Q2 with (b)", 1300)
+        self.key("e", "Note", 500)
+        for at in range(0, len(TUI_NOTE), 3):
+            part = TUI_NOTE[at : at + 3]
+            self.browser.send("Input.insertText", text=part)
+            self.until(TUI_NOTE[: at + len(part)])
+            self.frame(70)
+        self.frame(500)
+        self.key("enter", "Answered Q2", 1800)
+        # The keys, then back.
+        self.key("?", "Press any key to close", 2400)
+        self.key(" ", "Questions", 1200)
+        encode(self.frames, self.work / "frames.txt", DOCS / "tui.gif", TUI_WIDTH, TUI_LIMIT)
 
 
 def high(fd: int) -> int:
