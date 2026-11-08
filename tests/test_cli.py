@@ -774,7 +774,7 @@ class CliTest(DatabaseTest):
         self.assertEqual(
             self.hook_log(),
             [
-                "hook session-start demo note sent, page started",
+                "hook session-start demo note sent, page start requested",
                 "hook user-prompt-submit demo nothing new",
                 "hook user-prompt-submit demo delivered 1",
                 "hook stop demo blocked: unrecorded question",
@@ -1052,6 +1052,22 @@ class CliTest(DatabaseTest):
         self.assertIn("the number, then the title, as in `- Q3 Pick a colour`", note)
         self.assertIn("hook session-start demo note sent, page off", self.hook_log())
 
+    def test_a_page_that_fails_to_start_does_not_stop_the_session_note(self):
+        self.add()
+        with mock.patch.object(cli, "start_server", side_effect=OSError("no room")):
+            code, out, err = run("hook", "session-start", stdin="{}")
+        self.assertEqual(code, 0)
+        self.assertIn("Q1", json.loads(out)["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("the page did not start: no room", err)
+        self.assertIn("hook session-start demo note sent, page not started", self.hook_log())
+
+    def test_an_unreadable_page_setting_counts_as_on(self):
+        with mock.patch.object(cli, "Store", side_effect=OSError("locked")):
+            err = io.StringIO()
+            with redirect_stderr(err):
+                self.assertTrue(cli.page_on())
+        self.assertIn("page setting not read: locked", err.getvalue())
+
     def test_the_session_note_asks_for_linked_question_numbers(self):
         with mock.patch.object(cli, "start_server"):
             _, out, _ = run("hook", "session-start", stdin="{}")
@@ -1112,11 +1128,13 @@ class CliTest(DatabaseTest):
 class GitTest(DatabaseTest):
     """Runs real git commands in temporary folders. Git's own variables, set when the
     tests run from a git hook or `git rebase --exec`, would point those commands at the
-    repo running the tests instead, so they are cleared."""
+    repo running the tests instead, so they are cleared. The developer's own git settings
+    (hooks through core.hooksPath, a template folder for git init) are left out too."""
 
     def setUp(self):
         super().setUp()
         clean = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        clean.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
         patcher = mock.patch.dict(os.environ, clean, clear=True)
         patcher.start()
         self.addCleanup(patcher.stop)

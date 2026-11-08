@@ -697,7 +697,9 @@ def run_hook(args: argparse.Namespace) -> int:
         if args.event == "session-start" and not page_on():
             page = ", page off"
         elif args.event == "session-start":
-            page = ", page started" if start_server(args.port) else ", page left running"
+            # Only requested: when two sessions start at once, both start a server, and the
+            # one that finds the port taken stops at once.
+            page = ", page start requested" if start_server(args.port) else ", page left running"
     except Exception as error:
         page = ", page not started"
         print("tempo: the page did not start: %s" % error, file=sys.stderr)
