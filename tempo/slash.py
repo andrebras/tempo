@@ -2,9 +2,11 @@
 /tempo:answer and /tempo:dive.
 
 Each one is a skill (skills/<name>/SKILL.md) that runs `tempo slash <name>` before
-Claude reads it, with the text typed after the command on stdin, so the user's words
-never pass through a shell. What this prints becomes the skill's text, so Claude sees
-what was recorded. Answers and follow-ups are written already delivered: the output
+Claude reads it, with the text typed after the command on stdin through a quoted
+heredoc, so the shell doesn't read the user's words. Claude Code puts the words in place
+as typed, so a line that is exactly the heredoc's end marker would end them early; the
+marker is one nobody types by chance. What this prints becomes the skill's text, so
+Claude sees what was recorded. Answers and follow-ups are written already delivered: the output
 hands them to Claude, and the hooks must not hand them over again. On an error (an
 unknown question or option) nothing is written, and the output says so and why, for
 Claude to pass on.

@@ -9,9 +9,9 @@ allowed-tools: Bash("${CLAUDE_PLUGIN_ROOT}"/bin/tempo slash show *)
 The user typed /tempo:show to see this Tempo question:
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}"/bin/tempo slash show --cwd "${CLAUDE_PROJECT_DIR}" <<'TEMPO_TYPED_TEXT'
+"${CLAUDE_PLUGIN_ROOT}"/bin/tempo slash show --cwd "${CLAUDE_PROJECT_DIR}" <<'TEMPO_END_OF_TYPED_TEXT_9C4F2A7E'
 $ARGUMENTS
-TEMPO_TYPED_TEXT
+TEMPO_END_OF_TYPED_TEXT_9C4F2A7E
 ```
 
 If the output says the question was not found ("Nothing was recorded: …"), tell the user why

@@ -83,6 +83,9 @@ All notable changes to Tempo are listed here. The format follows
   closing the database, status's connection copied the write-ahead log (the file of recent
   changes next to it) into the database as it closed. Status now reads the database
   read-only.
+- The slash commands end the typed text with a marker nobody types by chance,
+  `TEMPO_END_OF_TYPED_TEXT_9C4F2A7E`. Before, a line of typed or pasted text that was exactly
+  `TEMPO_TYPED_TEXT` ended the text early, and the lines after it ran as shell commands.
 
 ## [0.7.1] - 2026-11-08
 

@@ -37,8 +37,11 @@ Four slash commands let you read and answer questions inside a Claude Code sessi
 skill in `skills/<name>/SKILL.md` with `disable-model-invocation: true`, so only you can run
 it: Claude Code refuses when Claude tries. Before Claude reads the command, Claude Code runs
 `bin/tempo slash <name>` from the plugin's folder, passing what you typed after the command on
-stdin through a quoted heredoc, so the shell never reads your text. The output becomes the
-text Claude gets.
+stdin through a quoted heredoc: the shell doesn't read your text, unless one of its lines is
+exactly the heredoc's end marker, `TEMPO_END_OF_TYPED_TEXT_9C4F2A7E`. Claude Code puts your
+text into the command as it is, and offers no way to pass it outside the shell, so a line
+like that ends the text early and the lines after it run as shell commands. The marker is
+one nobody types or pastes by chance. The output becomes the text Claude gets.
 
 | Command | What it does |
 | --- | --- |
@@ -53,10 +56,6 @@ second time. The page shows it as seen. When the question or option doesn't exis
 saved: the output says "Nothing was recorded:" with Tempo's error, and Claude passes it on.
 The project is the one of the session's project folder (`TEMPO_PROJECT` still wins). With
 `disableSkillShellExecution` on in your Claude Code settings, the commands can't run.
-
-The typed text ends at a line that is exactly `TEMPO_TYPED_TEXT`, the word that closes the
-heredoc (the way the command passes your text). Lines after it would run as shell commands,
-so don't type that word alone on a line. Only your own typing can do this.
 
 ## Hooks
 
