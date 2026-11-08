@@ -163,6 +163,17 @@ class ServerTest(DatabaseTest):
         self.assertEqual(status, 500)
         self.assertEqual(json.loads(data), {"error": "Something went wrong in Tempo"})
 
+    def test_a_number_too_big_for_sqlite_is_not_a_question_number(self):
+        huge = "99999999999999999999"
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            status, reply = self.post_raw(
+                "/api/questions/demo/%s/followup" % huge, b'{"body": "?"}'
+            )
+            self.assertEqual(self.request("GET", "/api/questions/demo/%s" % huge)[0], 400)
+        self.assertEqual((status, reply), (400, {"error": "%s is not a question number" % huge}))
+        # No traceback in the server log: it is the request that is wrong, not Tempo.
+        self.assertEqual(log.getvalue(), "")
+
     def test_health_needs_this_server_as_its_host(self):
         self.assertEqual(self.request("GET", "/health", host="evil.example")[0], 403)
 

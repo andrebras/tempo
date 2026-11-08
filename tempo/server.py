@@ -409,6 +409,10 @@ def _parts(path: str) -> list[str]:
 
 def _int(value: str) -> int:
     try:
-        return int(value)
+        number = int(value)
     except ValueError:
-        raise QuestionError("%s is not a question number" % value) from None
+        number = None
+    # SQLite holds whole numbers of 64 bits; a bigger one could not even be looked up.
+    if number is None or not -(2**63) <= number < 2**63:
+        raise QuestionError("%s is not a question number" % value)
+    return number
