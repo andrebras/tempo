@@ -208,10 +208,11 @@ def _bottom(board: Board, canvas: Canvas, y: int, width: int) -> tuple[int, int]
         ask += " (Enter sends, Esc cancels): " if width >= 70 else ": "
         ask = clip(ask, max(0, width - 20))
         room = max(1, width - cell_width(ask) - 1)
-        typed = board.typed
+        # A pasted newline shows as an arrow, on the one line there is. Only the end shows
+        # when the text is longer than the line.
+        typed = board.typed.replace("\n", "↵")
         while cell_width(typed) > room:
-            # Only the end shows when the text is longer than the line.
-            typed = typed[1:]
+            typed = typed[max(1, len(typed) - room) :]
         canvas.put(y, 0, ask, "prompt")
         canvas.put(y, cell_width(ask), typed)
         return y, cell_width(ask) + cell_width(typed)

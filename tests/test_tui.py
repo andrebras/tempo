@@ -1,3 +1,4 @@
+import contextlib
 import io
 import os
 import re
@@ -25,6 +26,22 @@ def inbox():
     return out.getvalue()
 
 
+@contextlib.contextmanager
+def deadline(seconds):
+    """Fail, instead of hanging the whole test run, when the block takes too long."""
+
+    def expire(*_):
+        raise AssertionError("took more than %d seconds" % seconds)
+
+    previous = signal.signal(signal.SIGALRM, expire)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 class TextTest(unittest.TestCase):
     def test_paragraphs_lists_and_marks_read_as_on_the_page(self):
         text = "Pick **one** of `a` or `b`.\n\n- First\n- Second\n1. Numbered"
@@ -47,6 +64,32 @@ class TextTest(unittest.TestCase):
     def test_a_word_longer_than_a_line_is_cut(self):
         lines = [plain(line) for line in wrap([("x" * 25, "")], 10)]
         self.assertEqual(lines, ["x" * 10, "x" * 10, "x" * 5])
+
+    def test_an_indent_wider_than_the_line_still_wraps(self):
+        # Each of these looped forever, filling memory with empty lines, before the indent
+        # was cut to the width.
+        with deadline(2):
+            lines = wrap([("(a) ", "letter"), ("Hello world", "")], 3, rest="    ")
+            narrow = rich("- item text", 1)
+            numbered = rich("12345678901234567890123456789012345. item text", 30)
+            negative = rich("abc", -2)
+        self.assertTrue(all(cell_width(plain(line)) <= 3 for line in lines))
+        self.assertEqual("".join(plain(line).strip() for line in lines), "(a)Helloworld")
+        self.assertTrue(all(cell_width(plain(line)) <= 1 for line in narrow))
+        self.assertTrue(all(cell_width(plain(line)) <= 30 for line in numbered))
+        self.assertEqual([plain(line) for line in negative], ["a", "b", "c"])
+
+    def test_emoji_sequences_take_the_columns_a_terminal_gives_them(self):
+        family = "\U0001f468\u200d\U0001f469\u200d\U0001f467"
+        self.assertEqual(cell_width(family), 2)
+        self.assertEqual(cell_width("\U0001f44d\U0001f3fd"), 2)
+        self.assertEqual(cell_width("a\u200bb"), 2)
+        self.assertEqual(cell_width("\u2764\ufe0f"), 1)
+        # Clipping and wrapping keep a joined emoji whole.
+        self.assertEqual(clip("ab" + family + "cde", 6), "ab" + family + "c…")
+        self.assertEqual(
+            [plain(line) for line in wrap([(family + " " + family, "")], 3)], [family, family]
+        )
 
     def test_wide_characters_take_two_columns(self):
         self.assertEqual(cell_width("数据库"), 6)
@@ -207,6 +250,20 @@ class BoardTest(DatabaseTest):
         # Picked again, on the wording now shown, the answer goes through.
         self.keys(board, "b", "y")
         self.assertEqual(self.store.get("demo", 1)["answer"]["choice"], "b")
+
+    def test_a_paste_is_typed_into_a_note_and_ignored_elsewhere(self):
+        self.add()
+        self.add()
+        board = self.board()
+        board.paste("b")
+        self.assertEqual(board.mode, "normal")
+        self.assertEqual(board.message[1], "error")
+        self.keys(board, "a", "e")
+        board.paste("Go with a.\nbut why?")
+        self.assertEqual((board.mode, board.typed), ("note", "Go with a.\nbut why?"))
+        board.press("enter")
+        self.assertEqual(self.store.get("demo", 1)["answer"]["body"], "Go with a.\nbut why?")
+        self.assertEqual(self.store.get("demo", 2)["status"], "open")
 
     def test_an_empty_follow_up_is_refused_with_the_stores_words(self):
         self.add()
@@ -401,6 +458,36 @@ class ScreenTest(DatabaseTest):
         # The terminal is switched back from the full-screen view on the way out.
         self.assertIn(b"\x1b[?1049l", self.screen)
 
+    def test_pasted_text_and_alt_keys_never_act_as_keys(self):
+        self.add(title="Left or right?")
+        self.add(title="Up or down?")
+        self.start()
+        self.see("Left or right?")
+        # The screen asks the terminal to mark pastes, and turns that off on the way out.
+        self.assertIn(b"\x1b[?2004h", self.screen)
+        os.write(self.master, b"a")
+        self.see("Answer Q1 with (a) Left?")
+        os.write(self.master, b"e")
+        self.see("Note for (a)")
+        os.write(self.master, b"\x1b[200~Go with a.\nbut why?\x1b[201~")
+        self.see("Go with a.\u21b5but why?")
+        # Option+Left, to move back a word, keeps the note.
+        os.write(self.master, b"\x1bb")
+        os.write(self.master, b"!")
+        self.see("but why?!")
+        os.write(self.master, b"\r")
+        self.see("Answered Q1")
+        # A terminal that doesn't mark pastes sends the newline as Enter: what comes right
+        # after the follow-up is sent is dropped, rather than answering Q2 with (b).
+        os.write(self.master, b"rWhy?\nbut yes")
+        self.see("Added your follow-up to Q2")
+        os.write(self.master, b"q")
+        self.assertEqual(self.finish(), 0)
+        self.assertIn(b"\x1b[?2004l", self.screen)
+        self.assertEqual(self.store.get("demo", 1)["answer"]["body"], "Go with a.\nbut why?!")
+        question = self.store.get("demo", 2)
+        self.assertEqual((question["status"], question["entries"][-1]["body"]), ("open", "Why?"))
+
     def test_the_screen_follows_the_database_and_a_resize(self):
         self.start()
         self.see("No open questions")
@@ -544,6 +631,36 @@ class KeyNameTest(unittest.TestCase):
         self.assertEqual(key_name(curses.KEY_NPAGE), "pgdn")
         self.assertIsNone(key_name("\x01"))
         self.assertIsNone(key_name(curses.KEY_F1))
+
+
+class ReadInputTest(unittest.TestCase):
+    """Keys as the screen reads them: Esc, Alt and a key, escape sequences, and pastes."""
+
+    def read(self, first, *after):
+        from tempo.tui.screen import read_input
+
+        waiting = list(after)
+        return read_input(first, lambda wait: waiting.pop(0) if waiting else None)
+
+    def test_esc_alone_is_esc_and_other_keys_keep_their_names(self):
+        self.assertEqual(self.read("\x1b"), ("key", "esc"))
+        self.assertEqual(self.read("j"), ("key", "j"))
+        self.assertEqual(self.read("\n"), ("key", "enter"))
+        self.assertIsNone(self.read("\x01"))
+
+    def test_alt_and_a_key_is_ignored_as_one_key(self):
+        # Option+Left and Option+Right on a Mac send Esc b and Esc f.
+        self.assertIsNone(self.read("\x1b", "b"))
+        self.assertIsNone(self.read("\x1b", "q"))
+        # An escape sequence curses doesn't know, such as Ctrl+Right, is ignored whole.
+        self.assertIsNone(self.read("\x1b", *"[1;5C"))
+        self.assertIsNone(self.read("\x1b", *"OP"))
+
+    def test_a_paste_is_text_newlines_and_all(self):
+        paste = ["[", "2", "0", "0", "~", *"Go with a.\r\nbut why?", *"\x1b[201~"]
+        self.assertEqual(self.read("\x1b", *paste), ("paste", "Go with a.\nbut why?"))
+        # A paste whose end mark never comes ends with what arrived.
+        self.assertEqual(self.read("\x1b", *"[200~half"), ("paste", "half"))
 
 
 class CommandTest(DatabaseTest):
