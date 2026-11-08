@@ -14,12 +14,13 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import tempfile
 import threading
 import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from unittest import mock, skipUnless
+from unittest import TestCase, mock, skipUnless
 
 from tempo.server import make_handler
 from tests.helpers import DatabaseTest
@@ -241,3 +242,86 @@ class PageTest(DatabaseTest):
         self.wait("!window.beforeRestart && %s && $('#note')" % LOADED)
         self.assertEqual(self.run_js("$('#note').value"), "Right, if it's dry.")
         self.assertEqual(self.run_js("$('input[name=choice]:checked')?.value"), "b")
+
+    def test_long_words_wrap_instead_of_widening_the_page(self):
+        long = "/very/long/" + "x" * 216
+        self.add(title="Use " + long + "?", options=["Keep " + long, "Drop"], goal="Goal " + long)
+        self.open("#/demo/3")
+        self.wait("$('#list h3.goal')")
+        for pane in ("#detail", "#list"):
+            element = "$(%s)" % json.dumps(pane)
+            extra = self.run_js("%s.scrollWidth - %s.clientWidth" % (element, element))
+            self.assertLessEqual(extra, 0, "%s scrolls sideways" % pane)
+
+    def test_the_question_screen_names_its_controls(self):
+        self.open("#/demo/1")
+        self.assertEqual(self.run_js("$('#note').getAttribute('aria-label')"), "Your note")
+        options = self.run_js("$('[role=radiogroup]').getAttribute('aria-label')")
+        self.assertEqual(options, "Which way?")
+        current = "[...document.querySelectorAll('#list a[aria-current=page]')].map((a) => a.hash)"
+        self.assertEqual(self.run_js(current), ["#/demo/1"])
+
+    def test_a_broken_address_does_not_stop_the_refresh(self):
+        # A bad %-escape used to make every refresh throw, so the page stopped updating.
+        self.open("#/%E0/1")
+        self.add(title="How far?")
+        self.tick()
+        self.wait("$('#list a[href=\"#/demo/3\"]')")
+
+    def test_saving_in_settings_keeps_the_keyboard_on_the_button(self):
+        self.open("#/settings", ready="$('#settings .segmented button')")
+        off = "[aria-label='Start the page with each session'] button:last-child"
+        self.click(off)
+        self.wait("$(%s).getAttribute('aria-pressed') === 'true'" % json.dumps("#settings " + off))
+        self.assertFalse(self.store.start_page())
+        self.assertEqual(self.run_js("document.activeElement.textContent"), "Off")
+        self.assertTrue(self.run_js("$('#settings').contains(document.activeElement)"))
+
+
+class ContrastTest(TestCase):
+    """Text colours on the page meet WCAG's 4.5:1 minimum for normal text, in both themes.
+
+    WCAG is the Web Content Accessibility Guidelines; the ratio compares the relative
+    luminance of the text and its background.
+    """
+
+    # (text, background) colour tokens that the page puts together.
+    PAIRS = (
+        ("text", "bg"),
+        ("muted", "bg"),
+        ("muted", "panel"),
+        ("muted", "sunken"),
+        ("later", "later-soft"),
+        ("accent", "panel"),
+        ("accent", "sunken"),
+        ("accent", "accent-soft"),
+        ("on-accent", "accent"),
+        ("on-accent", "accent-strong"),
+        ("done", "done-soft"),
+        ("now", "panel"),
+    )
+
+    @staticmethod
+    def luminance(colour):
+        channels = [int(colour[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+        r, g, b = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    def themes(self):
+        html = (ROOT / "tempo" / "page.html").read_text()
+        light = re.search(r":root \{\s*color-scheme: light;(.*?)\}", html, re.S).group(1)
+        dark = re.findall(r"color-scheme: dark;(.*?)\}", html, re.S)
+        self.assertEqual(len(dark), 2, "the system and forced dark blocks")
+        self.assertEqual(dark[0].split(), dark[1].split(), "the two dark blocks must match")
+        for name, block in (("light", light), ("dark", dark[0])):
+            yield name, dict(re.findall(r"--([\w-]+): (#[0-9a-f]{6});", block))
+
+    def test_text_colours_meet_the_minimum(self):
+        for theme, tokens in self.themes():
+            for text, background in self.PAIRS:
+                lighter, darker = sorted(
+                    (self.luminance(tokens[text]), self.luminance(tokens[background])), reverse=True
+                )
+                ratio = (lighter + 0.05) / (darker + 0.05)
+                with self.subTest(theme=theme, text=text, background=background):
+                    self.assertGreaterEqual(round(ratio, 2), 4.5)

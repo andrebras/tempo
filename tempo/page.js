@@ -138,9 +138,14 @@ function takeDraft(id) {
   } catch { return null; }
 }
 
+// A broken address (a bad %-escape such as #/%E0/1) counts as no question, so it can't
+// make every refresh fail.
 function route() {
   const match = location.hash.match(/^#\/(.+)\/(\d+)$/);
-  return match ? { project: decodeURIComponent(match[1]), number: Number(match[2]) } : null;
+  if (!match) return null;
+  try {
+    return { project: decodeURIComponent(match[1]), number: Number(match[2]) };
+  } catch { return null; }
 }
 
 // How long a question has been open, in the largest whole unit: "open 3 days".
@@ -228,7 +233,8 @@ async function loadList() {
     }
     const active = current && current.project === question.project && current.number === question.number;
     list.append(el("a", { href: `#/${encodeURIComponent(question.project)}/${question.number}`,
-                          class: [question.start_here && "start", active && "active"].filter(Boolean).join(" ") },
+                          class: [question.start_here && "start", active && "active"].filter(Boolean).join(" "),
+                          "aria-current": active && "page" },
       el("span", { class: "label" }, question.label, newDot(questionFresh(question, state.opened)),
         startHere(question), waitBadge(question, true)),
       el("span", { class: "title" }, question.title),
@@ -457,12 +463,25 @@ function renderSettings(data) {
   const typed = new Map([...document.querySelectorAll("#settings input")]
     .filter((input) => input.value !== input.defaultValue)
     .map((input) => [input.getAttribute("aria-label"), input.value]));
+  const active = document.activeElement;
+  const focused = $("#settings").contains(active) && controlKey(active);
   drawSettings(data);
   for (const input of document.querySelectorAll("#settings input")) {
     if (!typed.has(input.getAttribute("aria-label"))) continue;
     input.value = typed.get(input.getAttribute("aria-label"));
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
+  // The redraw replaces every control, so the keyboard goes back to the one it was on.
+  if (focused) [...document.querySelectorAll("#settings button, #settings input")]
+    .find((node) => controlKey(node) === focused)?.focus();
+}
+
+// Names a Settings control so its copy can be found after a redraw: a field by its label,
+// a button by its text and the label of its group or of its form's field.
+function controlKey(node) {
+  const group = node.closest("[role=group]")?.getAttribute("aria-label")
+    || node.closest("form")?.querySelector("input")?.getAttribute("aria-label") || "";
+  return [node.tagName, node.getAttribute("aria-label") || node.textContent, group].join("\n");
 }
 
 function drawSettings(data) {
@@ -730,14 +749,14 @@ function renderQuestion(question, draft) {
       el("button", { disabled: busy, onclick: () => post("reopen", {}).then(reopen, () => {}) },
         "Reopen to answer again")), error);
   } else if (question.status === "open") {
-    parts.push(el("div", { class: "options", role: "radiogroup" },
+    parts.push(el("div", { class: "options", role: "radiogroup", "aria-label": question.title },
       question.options.map((option) => el("label", {},
         el("input", { type: "radio", name: "choice", value: option.letter,
                       checked: option.letter === draft.choice }),
         el("span", { class: "letter" }, option.letter),
         el("span", { class: "text" }, option.text,
            option.letter === question.recommended && el("span", { class: "badge rec" }, "recommended"))))));
-    const note = el("textarea", { id: "note",
+    const note = el("textarea", { id: "note", "aria-label": "Your note",
       placeholder: "A note with your answer, or what you need to know more about" });
     note.value = draft.text;
     parts.push(note, el("div", { class: "actions" },

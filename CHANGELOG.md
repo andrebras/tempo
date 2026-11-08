@@ -12,6 +12,20 @@ All notable changes to Tempo are listed here. The format follows
   given. Before, the heading said "on the Tempo page" even for answers from the terminal
   screen, `tempo answer` or `/tempo:answer`.
 
+### Fixed
+
+- On the page, a long path or web address in a title, goal or option now wraps. Before, it
+  made the page scroll sideways, and a phone showed the whole page about four times smaller.
+- The page's text colours now meet the WCAG (Web Content Accessibility Guidelines) contrast
+  minimum of 4.5:1 in both themes. In the dark theme, text on the accent colour (the Send
+  answer button, a picked option's letter, the "start here" badge) is dark instead of white.
+  In the light theme, grey text, the "quick" badge and green text are a shade darker.
+- A broken page address, such as `#/%E0/1`, no longer stops the page from updating.
+- Saving in Settings keeps the keyboard on the button or field you used. Before, it went
+  back to the start of the page.
+- Screen readers now hear a name for the note box ("Your note") and for the group of
+  options (the question's title), and the question open in the list is marked as current.
+
 ## [0.7.1] - 2026-11-08
 
 ### Added
