@@ -788,7 +788,7 @@ def session_note(project: str, port: int, path: str | None = None, limit: int | 
         "- End every update with the open questions of this project, one line each: %s"
         % (
             "the number as a link to the question, then the title, as in"
-            " `- [Q3](http://127.0.0.1:2204/#/shop/3) Pick a colour`. Never print a bare link."
+            " `- [Q3](http://127.0.0.1:%d/#/shop/3) Pick a colour`. Never print a bare link." % port
             if on
             else "the number, then the title, as in `- Q3 Pick a colour`."
         ),
@@ -1041,7 +1041,7 @@ TEMPO_RUN = re.compile(
     r"(?:^|&&|\|\||;|\n)\s*(?:\w+=\S*\s+)*(?:\S*/)?(?:tempo|oq) (?:add|reword|context)\b"
 )
 PARAGRAPH = re.compile(r"\n[ \t]*\n")
-LINKED_NUMBER = "its number linked to it, as in [Q5](http://127.0.0.1:2204/#/…)"
+LINKED_NUMBER = "its number linked to it, as in [Q5](http://127.0.0.1:%d/#/…)"
 
 
 def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None:
@@ -1082,7 +1082,7 @@ def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None
             " Tempo, give %s in the body of the reply. Merging, publishing and"
             " installing still also need a one-line OK in chat."
             % (
-                (LINKED_NUMBER, "its number as a link")
+                (LINKED_NUMBER % _port(), "its number as a link")
                 if page
                 else ("its number", "its number (such as Q5)")
             )

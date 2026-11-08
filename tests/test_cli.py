@@ -550,6 +550,8 @@ class CliTest(DatabaseTest):
             ("assistant", [{"type": "text", "text": "Pick one:\n- (a) Left\n- (b) Right"}]),
         )
         self.assertEqual(json.loads(out)["decision"], "block")
+        # The example link names the page's own port (TEMPO_PORT here), not 2204.
+        self.assertIn("[Q5](http://127.0.0.1:%d/#/…)" % TEST_PORT, json.loads(out)["reason"])
 
     def test_stop_sends_back_questions_the_closing_list_does_not_record(self):
         closing = "\n\nOpen questions in demo:\n- Q1: Which way? http://127.0.0.1:2204/#/demo/1"
@@ -1098,7 +1100,8 @@ class CliTest(DatabaseTest):
             _, out, _ = run("hook", "session-start", stdin="{}")
         note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
         self.assertIn("the number as a link to the question, then the title", note)
-        self.assertIn("`- [Q3](http://127.0.0.1:2204/#/shop/3) Pick a colour`", note)
+        # The page's own port, not the default one: TEMPO_PORT here.
+        self.assertIn("`- [Q3](http://127.0.0.1:%d/#/shop/3) Pick a colour`" % TEST_PORT, note)
         self.assertIn("Never print a bare link.", note)
         # Answers from the terminal, the tui and slash commands don't approve merging either.
         self.assertIn("An answer in Tempo never approves merging", note)
