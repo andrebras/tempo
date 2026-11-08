@@ -188,22 +188,9 @@ def _spans(canvas: Canvas, y: int, x: int, line: Line, width: int) -> None:
 def _bottom(board: Board, canvas: Canvas, y: int, width: int) -> tuple[int, int] | None:
     """The last line: the prompt being answered, else what just happened, else the keys."""
     label = "Q%d" % board.target[1] if board.target else ""
-    if board.mode == "confirm":
-        keys = [("y", "send"), ("e", "add a note"), ("n", "cancel")]
-        if width < 70:
-            keys = [("y", "yes"), ("e", "note"), ("n", "no")]
-        room = max(0, width - cell_width(_plain(keys)) - 3)
-        ask = "Answer %s with (%s) %s?" % (label, board.letter, board.option)
-        if cell_width(ask) > room:
-            # Too long for the line: the letter alone, rather than half the option.
-            ask = "Answer %s with (%s)?" % (label, board.letter)
-        ask = clip(ask, room)
-        canvas.put(y, 0, ask, "prompt")
-        _spans(canvas, y, cell_width(ask) + 2, _keys(keys), width - cell_width(ask) - 3)
-        return None
     if board.mode in ("note", "reply"):
         note = board.mode == "note"
-        ask = "Note for (%s)" % board.letter if note else "Follow-up on %s" % label
+        ask = "Note for (%s), optional" % board.letter if note else "Follow-up on %s" % label
         # The keys are said only where they leave room to type.
         ask += " (Enter sends, Esc cancels): " if width >= 70 else ": "
         ask = clip(ask, max(0, width - 20))

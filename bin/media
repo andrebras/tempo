@@ -659,8 +659,7 @@ class Tui(Demo):
         self.frame(1400)
         self.key("l", 'In a "More" menu', 900)
         # Answer Q1 with (b) and a note; the screen moves on to Q2.
-        self.key("b", "Answer Q1 with (b)", 1000)
-        self.key("e", "Note", 500)
+        self.key("b", "Note for (b)", 1000)
         self.write(ANSWER_NOTE)
         self.key("enter", "Answered Q1", 1800)
         # Ask for more on Q2.

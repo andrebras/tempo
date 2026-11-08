@@ -166,14 +166,13 @@ class BoardTest(DatabaseTest):
         self.assertTrue(board.changed())
         self.assertEqual(board.question["title"], "New")
 
-    def test_answering_with_a_letter_after_confirming_reaches_claude_like_the_page(self):
+    def test_answering_with_a_letter_then_enter_reaches_claude_like_the_page(self):
         self.add(title="Left or right?")
         board = self.board()
         board.press("b")
-        self.assertEqual(board.mode, "confirm")
+        self.assertEqual(board.mode, "note")
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
-        self.assertEqual(board.option, "Right")
-        board.press("y")
+        board.press("enter")
         self.assertEqual(board.message, ("Answered Q1: (b) Right", "ok"))
         self.assertIsNone(board.question)
         from_screen = inbox()
@@ -187,14 +186,14 @@ class BoardTest(DatabaseTest):
     def test_an_answer_can_carry_a_note(self):
         self.add()
         board = self.board()
-        self.keys(board, "a", "e", *"Nice", "x", "backspace", "enter")
+        self.keys(board, "a", *"Nice", "x", "backspace", "enter")
         self.assertEqual(board.message, ("Answered Q1: (a) Left / Note: Nice", "ok"))
         self.assertEqual(self.store.get("demo", 1)["answer"]["body"], "Nice")
 
-    def test_no_or_escape_leaves_the_question_open(self):
+    def test_escape_leaves_the_question_open(self):
         self.add()
         board = self.board()
-        self.keys(board, "a", "n", "b", "esc", "a", "e", "esc")
+        self.keys(board, "b", "esc", "a", *"No", "esc")
         self.assertEqual(board.mode, "normal")
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
 
@@ -210,9 +209,9 @@ class BoardTest(DatabaseTest):
         self.add()
         board = self.board()
         board.press("a")
-        # Answered on the page while the confirm was showing.
+        # Answered on the page while the note prompt was showing.
         self.store.answer("demo", 1, "b")
-        board.press("y")
+        board.press("enter")
         self.assertEqual(
             board.message,
             ("This question is already answered; reopen it to answer again", "error"),
@@ -220,7 +219,7 @@ class BoardTest(DatabaseTest):
         board.press("r")
         self.assertEqual(board.message, ("No question selected.", "error"))
 
-    def test_a_reload_while_confirming_keeps_the_answer_on_its_question(self):
+    def test_a_reload_while_writing_a_note_keeps_the_answer_on_its_question(self):
         self.add()
         self.add()
         board = self.board()
@@ -230,25 +229,25 @@ class BoardTest(DatabaseTest):
         self.store.answer("demo", 1, "b")
         self.assertTrue(board.changed())
         self.assertEqual(board.number, 2)
-        board.press("y")
+        board.press("enter")
         self.assertEqual(board.message[1], "error")
         self.assertEqual(self.store.get("demo", 2)["status"], "open")
 
-    def test_a_reword_while_confirming_refuses_the_answer(self):
+    def test_a_reword_while_writing_a_note_refuses_the_answer(self):
         self.add(options=["Keep the old API", "Delete everything"])
         board = self.board()
         board.press("a")
         # Claude swaps the options while the prompt still shows (a) Keep the old API.
         self.store.reword("demo", 1, "Swapped", options=["Delete everything", "Keep the old API"])
         self.assertTrue(board.changed())
-        board.press("y")
+        board.press("enter")
         self.assertEqual(
             board.message,
             ("Q1 changed since you looked at it (now version 2); check it again", "error"),
         )
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
         # Picked again, on the wording now shown, the answer goes through.
-        self.keys(board, "b", "y")
+        self.keys(board, "b", "enter")
         self.assertEqual(self.store.get("demo", 1)["answer"]["choice"], "b")
 
     def test_a_paste_is_typed_into_a_note_and_ignored_elsewhere(self):
@@ -258,7 +257,7 @@ class BoardTest(DatabaseTest):
         board.paste("b")
         self.assertEqual(board.mode, "normal")
         self.assertEqual(board.message[1], "error")
-        self.keys(board, "a", "e")
+        self.keys(board, "a")
         board.paste("Go with a.\nbut why?")
         self.assertEqual((board.mode, board.typed), ("note", "Go with a.\nbut why?"))
         board.press("enter")
@@ -279,7 +278,7 @@ class BoardTest(DatabaseTest):
         board.press("h")
         self.assertEqual((board.mode, board.focus), ("normal", "projects"))
         board.press("H")
-        self.assertEqual((board.mode, board.letter), ("confirm", "h"))
+        self.assertEqual((board.mode, board.letter), ("note", "h"))
 
     def test_panel_keys(self):
         self.add()
@@ -449,8 +448,8 @@ class ScreenTest(DatabaseTest):
         self.see("Left or right?")
         self.see("Projects")
         os.write(self.master, b"b")
-        self.see("Answer Q1 with (b) Right?")
-        os.write(self.master, b"y")
+        self.see("Note for (b)")
+        os.write(self.master, b"\r")
         self.see("Answered Q1")
         os.write(self.master, b"q")
         self.assertEqual(self.finish(), 0)
@@ -466,8 +465,6 @@ class ScreenTest(DatabaseTest):
         # The screen asks the terminal to mark pastes, and turns that off on the way out.
         self.assertIn(b"\x1b[?2004h", self.screen)
         os.write(self.master, b"a")
-        self.see("Answer Q1 with (a) Left?")
-        os.write(self.master, b"e")
         self.see("Note for (a)")
         os.write(self.master, b"\x1b[200~Go with a.\nbut why?\x1b[201~")
         self.see("Go with a.\u21b5but why?")
@@ -571,16 +568,16 @@ class ViewTest(DatabaseTest):
         self.assertIn("Nothing open here.", text)
         self.assertIn("No open questions in demo.", text)
 
-    def test_the_bottom_line_asks_to_confirm_then_takes_a_note(self):
+    def test_the_bottom_line_takes_an_optional_note(self):
         self.add(title="Left or right?")
         self.board.reload()
         self.board.press("b")
         lines, _ = self.screen()
-        self.assertEqual(lines[-1], "Answer Q1 with (b) Right?  y send  e add a note  n cancel")
-        for key in ("e", "O", "k"):
+        self.assertEqual(lines[-1], "Note for (b), optional (Enter sends, Esc cancels):")
+        for key in ("O", "k"):
             self.board.press(key)
         lines, cursor = self.screen()
-        self.assertEqual(lines[-1], "Note for (b) (Enter sends, Esc cancels): Ok")
+        self.assertEqual(lines[-1], "Note for (b), optional (Enter sends, Esc cancels): Ok")
         self.assertEqual(cursor, (23, len(lines[-1])))
         self.board.press("enter")
         lines, _ = self.screen()

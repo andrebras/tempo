@@ -51,7 +51,7 @@ class Row(NamedTuple):
 class Board:
     """The screen's state: the projects, the selected project's open questions, the
     selected question in full, which panel has the focus, and what the keys are doing
-    (moving, confirming an answer, typing a note or a follow-up, or showing help)."""
+    (moving, typing a note or a follow-up, or showing help)."""
 
     def __init__(self, store: Store, home: str) -> None:
         self.store = store
@@ -63,12 +63,11 @@ class Board:
         self.number: int | None = None
         self.question: Question | None = None
         self.focus = "questions"
-        # "normal", "help", "confirm" (an answer waiting for y/n), "note" or "reply".
+        # "normal", "help", "note" (an answer waiting for Enter) or "reply".
         self.mode = "normal"
         self.letter = ""
-        # The option's text, for the confirm prompt, and the version of the question it
-        # was picked on, so an answer to a wording Claude has since changed is refused.
-        self.option = ""
+        # The version of the question the option was picked on, so an answer to a wording
+        # Claude has since changed is refused.
         self.version: int | None = None
         # The question an answer or follow-up being written is for, fixed when it starts,
         # so a reload meanwhile (which may select another question) can't redirect it.
@@ -142,9 +141,6 @@ class Board:
         if self.mode == "help":
             self.mode = "normal"
             return True
-        if self.mode == "confirm":
-            self._confirm(key)
-            return True
         if self.mode in ("note", "reply"):
             self._type(key)
             return True
@@ -215,17 +211,8 @@ class Board:
             # The store's own words for it.
             self.message = ("Option (%s) does not exist" % letter, "error")
             return
-        self.mode, self.letter, self.target = "confirm", letter, self._here()
-        self.option = texts[letter]
+        self.mode, self.typed, self.letter, self.target = "note", "", letter, self._here()
         self.version = self.question["version"]
-
-    def _confirm(self, key: str) -> None:
-        if key in ("y", "Y", "enter"):
-            self.answer(self.letter, "")
-        elif key in ("e", "E"):
-            self.mode, self.typed = "note", ""
-        elif key in ("n", "N", "esc"):
-            self.mode = "normal"
 
     def _type(self, key: str) -> None:
         if key == "esc":
