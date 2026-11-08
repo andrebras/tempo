@@ -12,6 +12,12 @@ All notable changes to Tempo are listed here. The format follows
   show the same steps: answer with a note, ask for more context, and see Claude reword the
   question. They replace the question-screen screenshot, which `bin/media` no longer makes.
 
+### Fixed
+
+- The README's install notes (the `--plugin-dir` form, what needs Git, Python on a Mac) and
+  its details on the "new" dot, joined projects, the plugin cache path, small screens and
+  pasting now match what Tempo does.
+
 ## [0.8.0] - 2026-11-08
 
 ### Added

@@ -47,11 +47,13 @@ claude plugin marketplace add andrebras/tempo
 claude plugin install tempo@tempo
 ```
 
-You need Python 3.9 or newer (macOS ships with one) and Git. Tempo has no other dependencies.
+You need Python 3.9 or newer; on a Mac, Apple's Command Line Tools include one
+(`xcode-select --install`). Installing from the marketplace also needs Git. Tempo has no other
+dependencies.
 Start a new Claude Code session afterwards: sessions that were already open don't load it.
 
 To try it for one session without installing it, clone the repo and run
-`claude --plugin-dir ./tempo`.
+`claude --plugin-dir .` inside the clone.
 
 ## Usage
 
@@ -73,8 +75,8 @@ decision, it adds a question and links to it in chat. On the page you can:
 - **Switch projects** with the chips in the header: one per project with something for you,
   showing its open count. A dot on a chip means something new arrived there since you last
   looked. **All projects ▾** lists every project.
-- **Spot what changed**: a dot after a question's number in the list means Claude reworded
-  it or added context since you last opened it.
+- **Spot what changed**: a dot after a question's number in the list means the question is new,
+  or Claude reworded it or added context, since you last opened it.
 - **Adjust Settings** with the gear button: theme, font, text size and line width, whether
   each session starts the page, and project names. Settings also lists the folders each
   project covers. When a folder looks renamed or moved, a banner asks whether to link it to
@@ -87,7 +89,7 @@ decision, it adds a question and links to it in chat. On the page you can:
 </picture>
 
 Every question has a number per project that is never reused, so answering "12b" in chat
-works too.
+works too. Joining two projects renumbers the questions that move.
 
 If you would rather answer from the terminal, run `tempo config page off` (or use the switch
 under Sessions in Settings): sessions then stop
@@ -108,8 +110,7 @@ alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo
 ```
 
 That path is Tempo's marketplace copy, which `claude plugin marketplace update tempo` keeps
-up to date. Sessions run the installed copy under `~/.claude/plugins/cache/tempo/`, in a
-folder named after its version, so the marketplace path is the one that doesn't change. If
+up to date. Sessions run the installed copy in `~/.claude/plugins/cache/tempo/tempo/<version>/`, so the marketplace path is the one that doesn't change. If
 you cloned Tempo yourself, use your clone's `bin/tempo` instead. The same goes for every
 path in the examples below.
 
@@ -155,13 +156,14 @@ Answers and follow-ups are saved exactly as the page and `tempo answer` save the
 gets them the same way. The bottom line then says what was saved, or why it was refused (for
 example, when the question was answered on the page meanwhile). The screen follows changes by
 itself within a second or two: a question Claude adds or rewords, or an answer from the page.
-On a screen narrower than 60 characters it shows one panel at a time, and `h` and `l` go to
+On a screen narrower than 60 characters or shorter than 10 lines it shows one panel at a time, and `h` and `l` go to
 the others. Set `NO_COLOR` to turn colors off. It never starts the page. For answered and
 archived questions, search and Settings, use the page.
 
 Text you paste goes into the note or follow-up you are writing, line breaks included (shown
-as `↵`); a paste never acts as keys, so a newline in it doesn't send and a letter doesn't
-pick an option. Pasting anywhere else is ignored. Alt (Option on a Mac) with a key, such as
+as `↵`). In a terminal with bracketed paste, which marks pasted text and which most have, a
+paste never acts as keys, so a newline in it doesn't send and a letter doesn't pick an option.
+Pasting anywhere else only shows a hint on the bottom line. Alt (Option on a Mac) with a key, such as
 Option+Left, is ignored too, rather than read as `Esc` and then a letter.
 
 ### `tempo tui` in a tmux popup
