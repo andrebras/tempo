@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Make the README's pictures: docs/screenshot-light.png and docs/screenshot-dark.png (the
-question screen), docs/settings-light.png and docs/settings-dark.png (Settings),
-docs/demo.gif (answering on the page) and docs/tui.gif (answering in `tempo tui`).
+"""Make the README's pictures: docs/settings-light.png and docs/settings-dark.png (Settings),
+and docs/demo.gif (the page) and docs/tui.gif (`tempo tui`), which show the same story in
+dark colours: answer a question with a note, ask for more on the next, and Claude rewords it.
 
 It fills a throwaway database with made-up questions for three invented projects, runs the
 page from this checkout on a free port, and drives headless Google Chrome through the Chrome
@@ -14,7 +14,7 @@ Needs Python 3.9 or newer, Google Chrome, ffmpeg (`brew install ffmpeg`), which 
 recorded frames into the GIFs, and ttyd (`brew install ttyd`). Set CHROME to the browser's
 path if it isn't installed in /Applications.
 
-    bin/media              # all six files
+    bin/media              # all four files
     bin/media --keep DIR   # also keep the databases, the frames and the logs in DIR
 """
 
@@ -51,7 +51,6 @@ GIF_LIMIT = 1_000_000
 TUI_WIDTH, TUI_HEIGHT = 1040, 620
 TUI_LIMIT = 2_000_000
 TUI_THEME = {"background": "#282c34", "foreground": "#ffffff", "cursor": "#ffffff"}
-TUI_NOTE = "Tax matters most to the accountant"
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
 # The demo questions. "age" is how many hours ago each was asked, so the list shows a mix.
@@ -162,8 +161,9 @@ NEW_GARDEN: dict[str, Any] = {
     "context": "A warning needs the user's location, which the app doesn't ask for yet.",
     "options": ["On, asking for the location", "Off, offered after the first planting"],
 }
-# The GIF's story: answer Q1, then ask for more on Q2, which Claude rewords.
-NOTE = "What does the accountant's software need?"
+# Both GIFs' story: answer Q1 with a note, then ask for more on Q2, which Claude rewords.
+ANSWER_NOTE = "Keep the toolbar simple"
+FOLLOWUP = "What does the accountant's software need?"
 REWORD = {
     "title": "Which columns should the orders export include for the accountant?",
     "context": (
@@ -191,7 +191,7 @@ POINTER = """
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Make the README's screenshots and GIF.")
+    parser = argparse.ArgumentParser(description="Make the README's pictures and GIFs.")
     parser.add_argument("--keep", metavar="DIR", help="Work in DIR and keep what is made there")
     args = parser.parse_args()
     chrome = find_chrome()
@@ -210,8 +210,7 @@ def main() -> int:
     else:
         with tempfile.TemporaryDirectory(prefix="tempo-media-") as folder:
             make(Path(folder), chrome)
-    names = ["screenshot-light.png", "screenshot-dark.png", "demo.gif"]
-    names += ["settings-light.png", "settings-dark.png", "tui.gif"]
+    names = ["demo.gif", "tui.gif", "settings-light.png", "settings-dark.png"]
     for name in names:
         print("Wrote docs/%s (%d KB)" % (name, (DOCS / name).stat().st_size // 1000))
     return 0
@@ -269,7 +268,7 @@ def make(work: Path, chrome: str) -> None:
             demo.backdate()
             with Browser(chrome, work / "chrome") as browser:
                 demo.browser = browser
-                demo.screenshots()
+                demo.first_visit()
                 demo.gif()
                 demo.settings()
                 Tui(work / "tui", browser).record()
@@ -432,16 +431,6 @@ class Demo:
         self.tempo(*args)
         self.reload("document.querySelector('#list .dot') && document.querySelector('#chips .dot')")
 
-    def screenshots(self) -> None:
-        self.first_visit()
-        self.click("#detail input[value=b]")
-        self.wait("document.querySelector('#detail input[value=b]').checked")
-        for scheme in ("light", "dark"):
-            self.theme(scheme)
-            time.sleep(0.3)
-            self.picture(DOCS / ("screenshot-%s.png" % scheme))
-        self.theme("light")
-
     # The GIF
 
     def frame(self, hold: int) -> None:
@@ -478,17 +467,20 @@ class Demo:
             self.frame(60)
 
     def gif(self) -> None:
-        # Start without the option the screenshots picked: the page keeps it as a draft.
-        self.run("document.querySelector('input[name=choice]:checked').checked = false")
-        self.reload()
+        self.theme("dark")
+        time.sleep(0.3)
         self.run(POINTER)
         self.point(860, 250)
         self.frame(700)
-        # Pick the recommended option and send it; the page moves on to Q2.
+        # Pick the recommended option, add a note and send it; the page moves on to Q2.
         self.move("#detail input[value=b] + .letter")
         self.click("#detail input[value=b]")
         self.wait("document.querySelector('#detail input[value=b]').checked", timeout=5)
         self.frame(500)
+        self.move("#note")
+        self.click("#note")
+        self.type(ANSWER_NOTE)
+        self.frame(400)
         self.move("#send")
         self.click("#send")
         self.wait("location.hash === '#/acme-shop/2' && document.querySelector('#note')")
@@ -496,7 +488,7 @@ class Demo:
         # Ask for more context with a note.
         self.move("#note")
         self.click("#note")
-        self.type(NOTE)
+        self.type(FOLLOWUP)
         self.frame(400)
         self.move("#detail .actions button:not(.primary)")
         self.click("#detail .actions button:not(.primary)")
@@ -559,8 +551,8 @@ def encode(
 
 
 class Tui(Demo):
-    """tempo tui on its own throwaway database, shown by ttyd and recorded in Chrome: move
-    through the questions, read one, answer it with a note, and open the help."""
+    """tempo tui on its own throwaway database, shown by ttyd and recorded in Chrome, telling
+    the same story as the page's GIF."""
 
     def __init__(self, work: Path, browser: Browser) -> None:
         work.mkdir()
@@ -652,28 +644,33 @@ class Tui(Demo):
         self.until(shows)
         self.frame(hold)
 
+    def write(self, text: str) -> None:
+        """Type on the bottom line, a few letters to a frame."""
+        for at in range(0, len(text), 3):
+            part = text[at : at + 3]
+            self.browser.send("Input.insertText", text=part)
+            self.until(text[: at + len(part)])
+            self.frame(70)
+        self.frame(500)
+
     def story(self) -> None:
         self.frames_folder = self.work / "frames"
         self.until("Questions")
         self.frame(1400)
-        # Move down the questions, then into the detail of one.
-        self.key("j", "Which columns should the orders export include?", 700)
-        self.key("j", "Which payment providers", 700)
-        self.key("k", "Which columns should the orders export include?", 900)
-        self.key("l", "Every field, one column each", 1200)
-        # Answer it with (b), adding a note before sending.
-        self.key("b", "Answer Q2 with (b)", 1300)
-        self.key("e", "Note", 500)
-        for at in range(0, len(TUI_NOTE), 3):
-            part = TUI_NOTE[at : at + 3]
-            self.browser.send("Input.insertText", text=part)
-            self.until(TUI_NOTE[: at + len(part)])
-            self.frame(70)
-        self.frame(500)
-        self.key("enter", "Answered Q2", 1800)
-        # The keys, then back.
-        self.key("?", "Press any key to close", 2400)
-        self.key(" ", "Questions", 1200)
+        self.key("l", 'In a "More" menu', 900)
+        # Answer Q1 with (b) and a note; the screen moves on to Q2.
+        self.key("b", "Note for (b)", 1000)
+        self.write(ANSWER_NOTE)
+        self.key("enter", "Answered Q1", 1800)
+        # Ask for more on Q2.
+        self.key("r", "Enter sends", 500)
+        self.write(FOLLOWUP)
+        self.key("enter", "Waiting on Claude", 1600)
+        # Claude rewords the question, the way a session does; the screen follows by itself.
+        args = ["reword", "2", "--project", "acme-shop", "--note", REWORD["note"]]
+        self.tempo(*args, "--title", REWORD["title"], "--context", REWORD["context"])
+        self.until("Added what accounting", timeout=8)
+        self.frame(3500)
         encode(self.frames, self.work / "frames.txt", DOCS / "tui.gif", TUI_WIDTH, TUI_LIMIT)
 
 

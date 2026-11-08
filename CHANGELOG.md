@@ -4,6 +4,27 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The README opens with two recordings in dark colours, of the page and of `tempo tui`, that
+  show the same steps: answer with a note, ask for more context, and see Claude reword the
+  question. They replace the question-screen screenshot, which `bin/media` no longer makes.
+- The README has a section on updating and uninstalling and links the changelog. It shows the
+  `tempo` commands before the alias, and the tmux and status-line recipes moved to
+  docs/reference.md.
+
+- In `tempo tui`, pressing an option's letter goes straight to an optional note: `Enter`
+  sends, with or without one, and `Esc` cancels. Before, you first had to press `e` at a
+  separate `y`, `e` or `n` prompt to add a note.
+
+### Fixed
+
+- The README's install notes (the `--plugin-dir` form, what needs Git, Python on a Mac) and
+  its details on the "new" dot, joined projects, the plugin cache path, small screens and
+  pasting now match what Tempo does.
+
 ## [0.8.0] - 2026-11-08
 
 ### Added

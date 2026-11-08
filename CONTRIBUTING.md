@@ -74,15 +74,14 @@ them, use `python3 -m unittest tests.test_page`. They take about two seconds. Th
 saying why, when Chrome isn't installed; set `CHROME` to the browser's path if it isn't
 found on its own. GitHub's Ubuntu runners have Chrome, so they always run there.
 
-## Screenshots and demo GIF
+## Screenshots and demo GIFs
 
 `bin/media` makes the README's pictures again from made-up questions in throwaway
 databases, so run it after a change to the page or to `tempo tui`:
 
-- `docs/screenshot-light.png` and `docs/screenshot-dark.png`: the question screen;
 - `docs/settings-light.png` and `docs/settings-dark.png`: Settings;
-- `docs/demo.gif`: answering on the page and asking for more;
-- `docs/tui.gif`: answering in `tempo tui`.
+- `docs/demo.gif`, in dark colours: answering on the page and asking for more;
+- `docs/tui.gif`, in dark colours: the same steps in `tempo tui`.
 
 It needs Google Chrome, [ffmpeg](https://ffmpeg.org) (`brew install ffmpeg`), which makes
 the GIFs, and [ttyd](https://github.com/tsl0922/ttyd) (`brew install ttyd`), which shows
@@ -97,7 +96,7 @@ touches your own questions or the real page's port: ttyd and `tempo tui` use por
 .claude-plugin/   plugin and marketplace manifests
 bin/              tempo (the command), oq (its old name), ci, check-version, media and
                   release
-docs/             reference, screenshots and the demo GIF
+docs/             reference, screenshots and the demo GIFs
 hooks/            hook configuration
 tempo/
   cli.py          the tempo command and the hooks
