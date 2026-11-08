@@ -170,7 +170,7 @@ keys for the panel you are in.
 | `j` `k`, `↓` `↑` | Move to the next or previous project or question; in Detail, scroll |
 | `h` `l`, `←` `→`, `Tab` `Shift-Tab` | Go to the previous or next panel |
 | `Enter` | Go from Projects to Questions, and from Questions to Detail |
-| `a`, `b`, `c`… | Answer the selected question with that option. The bottom line asks first: `y` sends, `e` adds a note before sending, `n` or `Esc` cancels |
+| `a`, `b`, `c`… | Answer the selected question with that option. The bottom line opens for an optional note: `Enter` sends, with or without one, and `Esc` cancels |
 | `A`, `B`, `C`… | The same. Use Shift for options `h`, `j`, `k`, `l`, `q` and `r`, since those letters also move or quit |
 | `r` | Ask Claude for more (a follow-up): type it on the bottom line, `Enter` sends, `Esc` cancels |
 | `PgDn` `PgUp`, `Ctrl-d` `Ctrl-u` | Scroll the detail by a page |

@@ -15,6 +15,10 @@ All notable changes to Tempo are listed here. The format follows
   `tempo` commands before the alias, and the tmux and status-line recipes moved to
   docs/reference.md.
 
+- In `tempo tui`, pressing an option's letter goes straight to an optional note: `Enter`
+  sends, with or without one, and `Esc` cancels. Before, you first had to press `e` at a
+  separate `y`, `e` or `n` prompt to add a note.
+
 ### Fixed
 
 - The README's install notes (the `--plugin-dir` form, what needs Git, Python on a Mac) and
