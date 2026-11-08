@@ -966,6 +966,15 @@ class CliTest(DatabaseTest):
             self.assertEqual(run("serve", "--background")[0], 0)
         start.assert_called_once()
 
+    def test_answers_arrive_with_one_wording_wherever_they_were_given(self):
+        self.add()
+        run("answer", "1", "a")
+        _, out, _ = run("hook", "user-prompt-submit", stdin="{}")
+        context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        heading = "New from the user in Tempo (http://127.0.0.1:"
+        self.assertTrue(context.startswith(heading), context)
+        self.assertNotIn("on the Tempo page", context)
+
     def test_with_the_page_off_texts_point_to_the_terminal(self):
         self.store.set_start_page(False)
         _, out, _ = run("add", "--title", "T", "--context", "C", "--option", "x", "--option", "y")
