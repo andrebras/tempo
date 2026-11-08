@@ -1367,6 +1367,29 @@ class ProjectNameTest(GitTest):
         self.assertEqual(cli.folder_path(main), os.path.realpath(bare))
         self.assertEqual(cli.project_name(main), "shop")
 
+    def test_a_slow_git_gives_up_and_the_folder_is_still_recorded(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        repo = os.path.join(tmp.name, "shop")
+        subprocess.run([*git, "init", "-q", repo], check=True)
+        subprocess.run([*git, "-C", repo, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+        real = subprocess.run
+        timeouts = []
+
+        def slow_history(command, **kwargs):
+            timeouts.append(kwargs.get("timeout"))
+            if command[:2] == ["git", "rev-list"]:
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return real(command, **kwargs)
+
+        with mock.patch.object(cli.subprocess, "run", side_effect=slow_history):
+            self.assertEqual(cli.project_name(repo, record=True), "shop")
+        self.assertEqual(set(timeouts), {cli.GIT_TIMEOUT})
+        self.assertLess(cli.GIT_TIMEOUT, 10)
+        row = self.store.db.execute("SELECT folder, first_commit FROM folders").fetchall()
+        self.assertEqual([tuple(r) for r in row], [("shop", None)])
+
     def test_a_submodule_is_a_project_of_its_own(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

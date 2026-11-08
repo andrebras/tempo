@@ -1462,7 +1462,7 @@ def repo_path(cwd: str) -> str | None:
             if not os.path.basename(common).startswith("."):
                 return os.path.realpath(common)
         return os.path.realpath(os.path.dirname(common))
-    except (OSError, ValueError, subprocess.CalledProcessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
 
 
@@ -1485,12 +1485,15 @@ def _git_line(cwd: str, *args: str) -> str | None:
     """The first line git prints, or None when it fails or prints nothing."""
     try:
         lines = _git(cwd, *args).splitlines()
-    except (OSError, ValueError, subprocess.CalledProcessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
     return (lines[0].strip() or None) if lines else None
 
 
 def _git(cwd: str, *args: str) -> str:
+    """What git prints. It is stopped after GIT_TIMEOUT seconds (raising
+    subprocess.TimeoutExpired), so a slow repo never holds a hook until Claude Code kills
+    it, which would leave the folder unrecorded."""
     # git is looked up on PATH on purpose. There is no shell, and every caller passes
     # fixed arguments.
     return subprocess.run(  # noqa: S603
@@ -1499,7 +1502,13 @@ def _git(cwd: str, *args: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        timeout=GIT_TIMEOUT,
     ).stdout
+
+
+# Claude Code stops a hook after 10 seconds. The first commit's lookup walks the whole
+# history, so on a huge repo it gives up and the folder is recorded without it.
+GIT_TIMEOUT = 3
 
 
 def folder_name(path: str) -> str:
