@@ -85,6 +85,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             with Store(connect()) as store:
                 run(store)
+        except QuestionError as error:
+            # Only connect() lets one through (each route answers its own with 400): the
+            # database was changed by a newer Tempo, and the message says what to do.
+            with contextlib.suppress(OSError):
+                self._json(503, {"error": str(error)})
         except Exception:
             traceback.print_exc()
             with contextlib.suppress(OSError):
