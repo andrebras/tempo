@@ -4,7 +4,7 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-11-08
 
 ### Added
 
@@ -651,7 +651,8 @@ All notable changes to Tempo are listed here. The format follows
 - First version: questions in SQLite, the `tempo` command, hooks, a skill, and a local page
   to read, follow up on and answer them.
 
-[Unreleased]: https://github.com/andrebras/tempo/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/andrebras/tempo/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/andrebras/tempo/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/andrebras/tempo/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/andrebras/tempo/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/andrebras/tempo/compare/v0.5.4...v0.6.0

@@ -1,6 +1,6 @@
 {
   "name": "tempo",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "You set the tempo, Claude follows: keeps the questions Claude asks you in SQLite, with a local page to read, follow up on and answer them. Answers reach Claude by themselves.",
   "author": { "name": "André Brás" },
   "repository": "https://github.com/andrebras/tempo",
