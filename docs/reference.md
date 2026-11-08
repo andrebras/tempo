@@ -249,9 +249,10 @@ The gear button at the top right of the page opens Settings.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
   its questions, their numbers and its folders along. To join two projects, rename one to
-  the other's name. If both have questions, the renamed one's questions move after the
-  other's, in their order, and get new numbers: joining `tempo` (Q1–Q5) into "Tempo"
-  (Q1–Q27) makes them Q28–Q32. Each moved question gets a note in its thread with its old
+  the other's name. If the other has questions, or numbering set with `tempo set-next`,
+  the renamed one's questions move after its numbers, in their order, and get new numbers:
+  joining `tempo` (Q1–Q5) into "Tempo" (Q1–Q27) makes them Q28–Q32, and into a "Tempo" with
+  no questions but `set-next 30`, Q30–Q34. Each moved question gets a note in its thread with its old
   number, such as "Moved from tempo Q2 when tempo joined Tempo.", so old references can
   still be traced.
   Under each project, Settings lists the folders it covers, with their paths, read-only.
@@ -296,8 +297,9 @@ the installed plugin and the main checkout on `main` use the real database. Code
 database serves its page on a port of its own too, unless `TEMPO_PORT` is set.
 
 A database last changed by a newer Tempo, with changes this code doesn't know, is refused:
-every command stops with an error that says so, before it reads or changes anything. Update
-Tempo, or restart the session so it uses the installed version.
+every command stops with an error that says so, before it reads or changes anything, and
+the page shows that error. Update Tempo, or restart the session so it uses the installed
+version.
 
 The page log, `server.log`, also gets one line for each change made through the page (the
 time in UTC, the method, the path and the status code, such as

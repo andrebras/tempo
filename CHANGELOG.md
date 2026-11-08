@@ -86,6 +86,25 @@ All notable changes to Tempo are listed here. The format follows
 - The slash commands end the typed text with a marker nobody types by chance,
   `TEMPO_END_OF_TYPED_TEXT_9C4F2A7E`. Before, a line of typed or pasted text that was exactly
   `TEMPO_TYPED_TEXT` ended the text early, and the lines after it ran as shell commands.
+- `tempo wait` in a worktree of a bare repo (such as `shop.git`) watches the project `shop`,
+  as the hooks do. Before, it could watch `shop.git`, which nobody writes to.
+- The hooks stop git after 3 seconds, so a huge repo can no longer keep a session's folder
+  from being recorded.
+- When an older session's page server takes the port while a newer session is starting its
+  own, the newer session replaces it.
+- The example links Claude is given use the page's own port, not always 2204.
+- The page shows "The database was last changed by a newer Tempo… Update Tempo, or
+  restart the session" instead of "Something went wrong in Tempo".
+- A question number too big for the database, in a page address, is refused as "not a
+  question number" instead of failing with an error.
+- "Link to project" makes all its changes at once, so a failure halfway can no longer leave
+  the questions joined and the banner still showing.
+- Reading the questions no longer waits for another session that is writing, so the page
+  doesn't fail while a slow write runs.
+- Joining a project into one that has no questions but numbering set with `tempo set-next`
+  moves the questions after that number, so numbers kept for an older list aren't reused.
+- `bin/release` goes back to `main` when a step fails, and deletes the release branch unless
+  it was pushed, so it can simply be run again.
 
 ## [0.7.1] - 2026-11-08
 
