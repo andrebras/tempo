@@ -13,7 +13,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parent.parent
 
 
-def read(name):
+def read(name: str) -> str:
     return (root / name).read_text(encoding="utf-8")
 
 

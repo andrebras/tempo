@@ -69,7 +69,7 @@ def run(args: list[str], cwd: Path, quiet: bool = False) -> str:
 
 def current_version(root: Path) -> str:
     text = (root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
-    return json.loads(text)["version"]
+    return str(json.loads(text)["version"])
 
 
 def check_version(version: str, current: str) -> None:
