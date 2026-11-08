@@ -491,6 +491,31 @@ class CliTest(DatabaseTest):
                 os.remove(self.env["TEMPO_DB"] + suffix)
         self.assertEqual(run("status"), (0, "? 1\n", ""))
 
+    def test_status_never_writes_a_log_left_by_a_killed_process(self):
+        # A process killed with writes still in the write-ahead log leaves it behind. A
+        # read-write connection would copy the log into the file when it closes.
+        self.add()
+        self.store.db.close()
+        path = self.env["TEMPO_DB"]
+        script = (
+            "import os, sqlite3, sys\n"
+            "db = sqlite3.connect(sys.argv[1], isolation_level=None)\n"
+            "db.execute('PRAGMA wal_autocheckpoint = 0')\n"
+            "db.execute(\"UPDATE questions SET project = 'shop'\")\n"
+            "os._exit(0)\n"
+        )
+        subprocess.run([sys.executable, "-c", script, path], check=True)
+
+        def state():
+            with open(path, "rb") as file:
+                return file.read(), os.path.getsize(path + "-wal")
+
+        before = state()
+        self.assertGreater(before[1], 0)
+        # The count comes from the log: the question moved to shop only there.
+        self.assertEqual(run("status", "--project", "shop"), (0, "? 1\n", ""))
+        self.assertEqual(state(), before)
+
     def test_session_start_tells_claude_to_use_tempo_and_lists_open_questions(self):
         self.add()
         self.add(title="Ship it?", goal="Release 0.4", start_here="unlocks the rest")

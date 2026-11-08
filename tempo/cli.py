@@ -486,14 +486,9 @@ def open_count(path: str, project: str | None = None, folder: str | None = None)
     path) is filed under, or in all of them. 0 when the file can't be read."""
     if not os.path.isfile(path):
         return 0
-    from urllib.parse import quote
-
     try:
-        # mode=rw never creates the file. Not mode=ro: a WAL database that no one has open
-        # has no -shm file, and a read-only connection can't make one, so it can't read.
-        db = sqlite3.connect("file:%s?mode=rw" % quote(path), uri=True, timeout=1)
+        db = _read_only(path)
         try:
-            db.execute("PRAGMA query_only = ON")
             if folder:
                 project = _filed_under(db, folder)
             sql = "SELECT COUNT(*) FROM questions WHERE status = 'open'"
@@ -505,6 +500,35 @@ def open_count(path: str, project: str | None = None, folder: str | None = None)
             db.close()
     except sqlite3.Error:
         return 0
+
+
+def _read_only(path: str) -> sqlite3.Connection:
+    """A connection that never writes the database file at path.
+
+    mode=ro: with a write-ahead log (WAL) left by a process that exited without closing,
+    a read-write connection would copy the log into the file as it closes, and a
+    read-only one can't. But a read-only connection can't open a WAL database that has
+    no log file at all, which is how one that no one has open is left. With no log there
+    is nothing to copy, so then mode=rw (which never creates the file) is safe, with
+    writes turned off."""
+    from urllib.parse import quote
+
+    uri = "file:%s?mode=%%s" % quote(path)
+    try:
+        db = sqlite3.connect(uri % "ro", uri=True, timeout=1)
+        try:
+            db.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+        except sqlite3.Error:
+            db.close()
+            raise
+        return db
+    except sqlite3.OperationalError:
+        wal = path + "-wal"
+        if os.path.exists(wal) and os.path.getsize(wal):
+            raise
+    db = sqlite3.connect(uri % "rw", uri=True, timeout=1)
+    db.execute("PRAGMA query_only = ON")
+    return db
 
 
 def _filed_under(db: sqlite3.Connection, path: str) -> str:
