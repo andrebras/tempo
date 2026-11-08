@@ -1,3 +1,4 @@
+import contextlib
 import io
 import os
 import re
@@ -25,6 +26,22 @@ def inbox():
     return out.getvalue()
 
 
+@contextlib.contextmanager
+def deadline(seconds):
+    """Fail, instead of hanging the whole test run, when the block takes too long."""
+
+    def expire(*_):
+        raise AssertionError("took more than %d seconds" % seconds)
+
+    previous = signal.signal(signal.SIGALRM, expire)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 class TextTest(unittest.TestCase):
     def test_paragraphs_lists_and_marks_read_as_on_the_page(self):
         text = "Pick **one** of `a` or `b`.\n\n- First\n- Second\n1. Numbered"
@@ -47,6 +64,20 @@ class TextTest(unittest.TestCase):
     def test_a_word_longer_than_a_line_is_cut(self):
         lines = [plain(line) for line in wrap([("x" * 25, "")], 10)]
         self.assertEqual(lines, ["x" * 10, "x" * 10, "x" * 5])
+
+    def test_an_indent_wider_than_the_line_still_wraps(self):
+        # Each of these looped forever, filling memory with empty lines, before the indent
+        # was cut to the width.
+        with deadline(2):
+            lines = wrap([("(a) ", "letter"), ("Hello world", "")], 3, rest="    ")
+            narrow = rich("- item text", 1)
+            numbered = rich("12345678901234567890123456789012345. item text", 30)
+            negative = rich("abc", -2)
+        self.assertTrue(all(cell_width(plain(line)) <= 3 for line in lines))
+        self.assertEqual("".join(plain(line).strip() for line in lines), "(a)Helloworld")
+        self.assertTrue(all(cell_width(plain(line)) <= 1 for line in narrow))
+        self.assertTrue(all(cell_width(plain(line)) <= 30 for line in numbered))
+        self.assertEqual([plain(line) for line in negative], ["a", "b", "c"])
 
     def test_wide_characters_take_two_columns(self):
         self.assertEqual(cell_width("数据库"), 6)

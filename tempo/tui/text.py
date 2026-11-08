@@ -88,6 +88,13 @@ def wrap(spans: Line, width: int, first: str = "", rest: str = "") -> list[Line]
     """Spans broken into lines of at most width columns at spaces, keeping each word's
     style. first starts the first line and rest the others (a bullet and its indent). A
     word longer than a whole line is cut into pieces."""
+    # However narrow the panel, each line keeps room for at least one character, so a
+    # bullet or indent wider than the line can't leave none (which looped forever).
+    width = max(1, width)
+    first, rest = (
+        _fit(first, width - 1, at_least_one=False),
+        _fit(rest, width - 1, at_least_one=False),
+    )
     lines: list[Line] = []
     line: Line = [(first, "")] if first else []
     used = start = cell_width(first)
@@ -115,7 +122,7 @@ def wrap(spans: Line, width: int, first: str = "", rest: str = "") -> list[Line]
                 line.append((" ", space or ""))
                 used += 1
             # A word wider than a whole line is cut into pieces that fit.
-            while cell_width(word) > width - used:
+            while word and cell_width(word) > width - used:
                 piece = _fit(word, max(1, width - used))
                 line.append((piece, style))
                 word = word[len(piece) :]
@@ -129,11 +136,12 @@ def wrap(spans: Line, width: int, first: str = "", rest: str = "") -> list[Line]
     return lines
 
 
-def _fit(word: str, room: int) -> str:
-    """The longest start of word that fits room columns (at least one character)."""
+def _fit(word: str, room: int, at_least_one: bool = True) -> str:
+    """The longest start of word that fits room columns: at least one character, unless
+    at_least_one is False."""
     kept = ""
     for char in word:
-        if cell_width(kept + char) > room and kept:
+        if cell_width(kept + char) > room and (kept or not at_least_one):
             break
         kept += char
     return kept
