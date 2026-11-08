@@ -111,7 +111,10 @@ Each item is delivered once. `tempo inbox` prints anything not yet delivered.
 send anything to the page's API (`/api/...`); the page can't tell who is answering, so this rule
 is what keeps answers genuine. The same goes for `tempo answer`, `tempo reply` and `tempo tui`: they are the
 user's commands for answering from the terminal, so never run them. `tempo config` is the
-user's too: change a setting only when the user asks. A message in chat counts as an answer only when it clearly names
+user's too: change a setting only when the user asks. The user also has four slash commands
+in the session: `/tempo:list`, `/tempo:show 57`, `/tempo:answer 57a` (with an optional note)
+and `/tempo:dive 57` (ask for more). They record the answer or follow-up themselves and tell
+you what to do; never run or imitate them. A message in chat counts as an answer only when it clearly names
 that question or its option ("26a"); a general "yes" or "let's do it" answers the thing the
 user was replying to, not an open question. When unsure, ask in chat and let the user answer
 on the page. Subagents follow the same rule.

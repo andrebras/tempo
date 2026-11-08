@@ -182,18 +182,29 @@ class QuestionStore(StoreBase):
 
     # Writing, by the user
 
-    def follow_up(self, project: str, number: int, body: str) -> Question:
+    def follow_up(
+        self, project: str, number: int, body: str, *, delivered: bool = False
+    ) -> Question:
+        """delivered=True marks it handed to Claude in the same write, for a follow-up
+        typed in the session itself (a slash command), so no hook passes it on again."""
         body = _required(body, "follow-up")
         with self._transaction():
             question = self._find(project, number)
             if question["status"] == "archived":
                 raise QuestionError("This question is archived")
-            self._insert_entry(question, "followup", "user", body)
+            self._insert_entry(question, "followup", "user", body, delivered=delivered)
         return self.get(project, number)
 
     def answer(
-        self, project: str, number: int, choice: str | None = None, body: str | None = ""
+        self,
+        project: str,
+        number: int,
+        choice: str | None = None,
+        body: str | None = "",
+        *,
+        delivered: bool = False,
     ) -> Question:
+        """delivered=True: as for follow_up."""
         body = (body or "").strip()
         choice = (choice or "").strip().lower()
         # The checks run inside the write's lock, so a second answer or a reword from
@@ -218,6 +229,7 @@ class QuestionStore(StoreBase):
                 body,
                 choice=choice or None,
                 version=current["version"],
+                delivered=delivered,
             )
             self.db.execute(
                 "UPDATE questions SET status = 'answered', updated_at = ? WHERE id = ?",
@@ -411,6 +423,7 @@ class QuestionStore(StoreBase):
         body: str,
         choice: str | None = None,
         version: int | None = None,
+        delivered: bool = False,
     ) -> None:
         stamp = common.now()
         if version is None:
@@ -427,7 +440,7 @@ class QuestionStore(StoreBase):
                 choice,
                 version,
                 stamp,
-                stamp if author == "claude" else None,
+                stamp if author == "claude" or delivered else None,
             ),
         )
         self.db.execute("UPDATE questions SET updated_at = ? WHERE id = ?", (stamp, question["id"]))

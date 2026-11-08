@@ -186,6 +186,14 @@ class ThreadTest(DatabaseTest):
         self.store.mark_delivered([entry["id"] for entry in pending])
         self.assertEqual(self.store.undelivered("demo"), [])
 
+    def test_words_typed_in_the_session_can_be_written_already_delivered(self):
+        self.add()
+        self.add()
+        self.store.follow_up("demo", 1, "Why left?", delivered=True)
+        self.store.answer("demo", 2, "b", "Fine", delivered=True)
+        self.assertEqual(self.store.undelivered("demo"), [])
+        self.assertTrue(self.store.get("demo", 2)["answer"]["delivered"])
+
     def test_undelivered_is_scoped_by_project(self):
         self.add()
         self.add(project="other")

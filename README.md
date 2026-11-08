@@ -86,6 +86,7 @@ work like the page: Claude gets what you send through the same hooks and `tempo 
 tempo list                                # the project's open questions
 tempo show 12                             # one question, with its options and thread
 tempo answer 12 b                         # answer Q12 with option (b)
+tempo answer 61 yes                       # or name the option by its text
 tempo answer 12 b --note "Keep it small"  # with a note
 tempo reply 12 "What would (c) cost?"     # ask for more context, like the page's follow-up
 ```
@@ -180,6 +181,27 @@ tmux fills in `#{pane_current_path}`, the folder of the pane you are in, so the 
 you from project to project.
 
 Then reload it with `tmux source-file ~/.tmux.conf`.
+
+## In the Claude Code session
+
+The same, without leaving the session: type one of these slash commands in Claude Code. They
+are for you, not for Claude (Claude Code does not let Claude invoke them). They record your
+answer or follow-up before Claude reads anything, so it comes from you and reaches Claude
+once, right away.
+
+```text
+/tempo:list                          # the project's open questions
+/tempo:show 57                       # one question, with its options and thread
+/tempo:answer 57a                    # answer Q57 with option (a); also 57 a, Q57a, Q57 a)
+/tempo:answer 57a keep the old flag  # with a note
+/tempo:answer 61 yes                 # name the option by its text, in any case
+/tempo:dive 57                       # ask for more ("Tell me more.")
+/tempo:dive 57 why not b?            # ask something specific
+```
+
+After `/tempo:answer` Claude acts on the answer. After `/tempo:dive` Claude digs in and
+answers in the question itself, so the page shows the new explanation. An unknown question
+or option records nothing and shows Tempo's error instead.
 
 ## How it works
 

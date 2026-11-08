@@ -18,7 +18,7 @@ import zlib
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from tempo import log
+from tempo import log, slash
 from tempo.store import (
     CODE_ROOT,
     Entries,
@@ -70,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     _user_commands(commands)
     _config_commands(commands)
     _run_commands(commands)
+    slash.register(commands)
     return parser
 
 
@@ -196,7 +197,7 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
         "answer", help="Answer a question with an option, as the page does"
     )
     answer.add_argument("number", type=_number)
-    answer.add_argument("letter", help="The option's letter, such as b")
+    answer.add_argument("letter", help="The option's letter, such as b, or its text, such as yes")
     answer.add_argument("--note", default="", help="A note to go with the answer")
     answer.add_argument("--project")
     answer.set_defaults(run=run_answer)
@@ -427,7 +428,9 @@ def run_wait(args: argparse.Namespace) -> int:
 
 
 def run_answer(args: argparse.Namespace) -> None:
-    question = _store().answer(_project(args.project), args.number, args.letter, args.note)
+    store, project = _store(), _project(args.project)
+    letter = slash.option_letter(store.get(project, args.number), args.letter)
+    question = store.answer(project, args.number, letter, args.note)
     print("Answered %s: %s" % (question["label"], _describe_answer(question, question["answer"])))
 
 
