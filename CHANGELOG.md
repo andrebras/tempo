@@ -36,6 +36,10 @@ All notable changes to Tempo are listed here. The format follows
   pick is cleared and your note is kept. When the question is answered or archived
   elsewhere while you type a note, the page stays on it with a short notice and a
   **Move on** button. Before, it jumped to the next question and the note was lost.
+- The hooks keep a session in its own project after Claude `cd`s into another project's
+  folder. Before, they took that other project's answers, which then never reached its own
+  sessions. They now name the project from the folder the session started in
+  (`CLAUDE_PROJECT_DIR`), and use the current folder only when Claude Code doesn't say.
 
 ## [0.7.1] - 2026-11-08
 

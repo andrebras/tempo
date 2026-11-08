@@ -193,6 +193,39 @@ class CliTest(DatabaseTest):
             texts = [cli.take_inbox("demo"), *other]
         self.assertEqual(sum("answered (b) Right" in (text or "") for text in texts), 1)
 
+    def prompt_context(self, payload="{}"):
+        """What the UserPromptSubmit hook hands Claude, or "" when it says nothing."""
+        out = run("hook", "user-prompt-submit", stdin=payload)[1]
+        return json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else ""
+
+    def test_hooks_keep_the_session_project_after_claude_cds_into_another(self):
+        # A session started in shop has cd'd into blog: the hook input's cwd follows the cd,
+        # CLAUDE_PROJECT_DIR stays where the session started.
+        del os.environ["TEMPO_PROJECT"]
+        for project in ("shop", "blog"):
+            self.add(project=project)
+            self.store.answer(project, 1, "a")
+        payload = json.dumps({"cwd": "/x/blog"})
+        with mock.patch.dict("os.environ", {"CLAUDE_PROJECT_DIR": "/x/shop"}):
+            context = self.prompt_context(payload)
+            self.add(project="shop")
+            self.store.answer("shop", 2, "b")
+            stop = run("hook", "stop", stdin=payload)[1]
+        self.assertIn("shop Q1", context)
+        self.assertNotIn("blog", context)
+        self.assertIn("shop Q2", json.loads(stop)["reason"])
+        self.assertEqual(len(self.store.undelivered("blog")), 1)
+        # Without CLAUDE_PROJECT_DIR (an older Claude Code), the cwd still names it.
+        self.assertIn("blog Q1", self.prompt_context(payload))
+
+    def test_wait_uses_the_session_project_folder_when_claude_code_names_it(self):
+        del os.environ["TEMPO_PROJECT"]
+        self.add(project="shop")
+        self.store.follow_up("shop", 1, "Hm?")
+        with mock.patch.dict("os.environ", {"CLAUDE_PROJECT_DIR": "/x/shop"}):
+            _, out, _ = run("wait", "--timeout", "5", "--interval", "0.1")
+        self.assertIn("shop Q1 (Which way?) asks for more: Hm?", out)
+
     def test_an_answer_whose_text_cannot_be_built_is_not_lost(self):
         self.add(title="Which DB?", options=["Postgres", "SQLite"])
         self.store.answer("demo", 1, "a")

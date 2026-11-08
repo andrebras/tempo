@@ -397,7 +397,7 @@ def run_wait(args: argparse.Namespace) -> int:
     named = args.project or setting("PROJECT")
     # Without a name, the folder's project is looked up again on every check, so a
     # project renamed or joined in Settings while the wait runs is followed.
-    path = None if named else folder_path(os.getcwd())
+    path = None if named else folder_path(project_folder())
     project = _folder_project(path) if path else named
     deadline = time.time() + args.timeout if args.timeout else None
     # The session's shell. When it is gone, the wait is an orphan: news it took would
@@ -682,7 +682,7 @@ def run_hook(args: argparse.Namespace) -> int:
         payload = {}
     if not isinstance(payload, dict):
         payload = {}
-    cwd = payload.get("cwd") or os.getcwd()
+    cwd = project_folder(payload)
     if args.event == "stop":
         reason, project, outcome = stop_outcome(payload, cwd)
         log.write("hook", args.event, project, outcome)
@@ -1324,6 +1324,17 @@ def _tempo_pid(port: int) -> int | None:
     except (OSError, subprocess.TimeoutExpired):
         return None
     return int(pids[0]) if SERVE_COMMAND.search(command) else None
+
+
+def project_folder(payload: dict[str, Any] | None = None) -> str:
+    """The folder whose project a session is in: the one Claude Code started it in
+    (CLAUDE_PROJECT_DIR, which Claude Code sets for hooks), else the hook input's cwd,
+    else this process's. The cwd follows each `cd` Claude runs, so a session that `cd`s
+    into another project would otherwise take that project's answers."""
+    cwd = (payload or {}).get("cwd")
+    return (
+        os.environ.get("CLAUDE_PROJECT_DIR") or (cwd if isinstance(cwd, str) else "") or os.getcwd()
+    )
 
 
 def project_name(cwd: str, record: bool = False) -> str:
