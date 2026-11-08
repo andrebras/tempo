@@ -28,7 +28,9 @@ class DeliveryStore(StoreBase):
     def delivering(self, project: str | None = None) -> Iterator[Entries]:
         """take_undelivered for a caller that still has work to do with the entries, such
         as building the text that hands them over: they are marked delivered only when
-        that work ends without an error, so a failure never loses them."""
+        that work ends without an error, so a failure never loses them. Only the entries
+        still in the list then are marked: a caller that hands over just some of them
+        removes the others from the list, and they stay undelivered."""
         with self._transaction():
             entries = self._undelivered(project)
             yield entries
