@@ -265,7 +265,10 @@ class ProjectStore(QuestionStore):
         if not any(project["name"] == old for project in self.project_summaries()):
             raise QuestionError("There is no project called %s" % old)
         moves: Moves = []
-        if self._question_count(new) and self._question_count(old):
+        # A project with no questions yet may still have numbers in use: those below its
+        # next number (set with set-next, for an older list), so moved questions go after.
+        taken = self._question_count(new) or self._next_number(new) > 1
+        if taken and self._question_count(old):
             moves = self._renumber_into(old, new)
         elif self._question_count(old) or self._has_project_row(old):
             self.db.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", (new,))

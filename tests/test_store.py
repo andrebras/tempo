@@ -499,10 +499,19 @@ class ProjectsTest(DatabaseTest):
 
     def test_rename_merges_into_a_project_without_questions(self):
         self.add(project="onzehq")
-        self.store.set_next("ONZE HQ", 10)
         self.store.rename_project("onzehq", "ONZE HQ")
         self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
-        self.assertEqual(self.add(project="ONZE HQ")["label"], "Q10")
+        self.assertEqual(self.add(project="ONZE HQ")["label"], "Q2")
+
+    def test_joining_a_project_numbered_with_set_next_moves_after_its_numbers(self):
+        # set-next keeps Q1-Q9 for an older list: joined questions must not take them.
+        for _ in range(2):
+            self.add(project="onzehq")
+        self.store.set_next("ONZE HQ", 10)
+        moves = self.store.rename_project("onzehq", "ONZE HQ")
+        self.assertEqual(moves, [{"from": 1, "to": 10}, {"from": 2, "to": 11}])
+        self.assertEqual([q["number"] for q in self.store.list("ONZE HQ", "all")], [10, 11])
+        self.assertEqual(self.add(project="ONZE HQ")["label"], "Q12")
 
     def test_rename_joins_two_projects_that_both_have_questions(self):
         # What happened for real: a folder rename split Tempo (Q1-Q27) and a new tempo.
