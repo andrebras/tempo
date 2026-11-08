@@ -8,6 +8,10 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Changed
 
+- The page log says "page start requested" when a session starts the page, instead of "page
+  started": the server may still fail to start, for example when two sessions start at once.
+- This CHANGELOG links each version to its changes on GitHub, and `bin/release` adds the
+  link for each new version.
 - Answers and follow-ups reach Claude as "New from the user in Tempo", wherever they were
   given. Before, the heading said "on the Tempo page" even for answers from the terminal
   screen, `tempo answer` or `/tempo:answer`.
@@ -600,3 +604,16 @@ All notable changes to Tempo are listed here. The format follows
 
 - First version: questions in SQLite, the `tempo` command, hooks, a skill, and a local page
   to read, follow up on and answer them.
+
+[Unreleased]: https://github.com/andrebras/tempo/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/andrebras/tempo/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/andrebras/tempo/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/andrebras/tempo/compare/v0.5.4...v0.6.0
+[0.5.4]: https://github.com/andrebras/tempo/compare/v0.5.3...v0.5.4
+[0.5.3]: https://github.com/andrebras/tempo/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/andrebras/tempo/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/andrebras/tempo/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/andrebras/tempo/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/andrebras/tempo/compare/v0.3.3...v0.4.0
+[0.3.3]: https://github.com/andrebras/tempo/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/andrebras/tempo/releases/tag/v0.3.2
