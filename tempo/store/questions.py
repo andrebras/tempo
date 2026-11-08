@@ -165,6 +165,15 @@ class QuestionStore(StoreBase):
     def archive_old(self) -> int:
         """Archive every answered question whose latest answer is ARCHIVE_AFTER old."""
         cutoff = (datetime.now(timezone.utc) - ARCHIVE_AFTER).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Every list runs this. An UPDATE takes the write lock even when it changes nothing,
+        # so it runs only when a quick read finds something to archive.
+        found = self.db.execute(
+            "SELECT 1 FROM questions WHERE status = 'answered' AND (SELECT MAX(created_at)"
+            " FROM entries WHERE question_id = questions.id AND kind = 'answer') <= ? LIMIT 1",
+            (cutoff,),
+        ).fetchone()
+        if not found:
+            return 0
         return self.db.execute(
             "UPDATE questions SET status = 'archived', updated_at = ?"
             " WHERE status = 'answered' AND (SELECT MAX(created_at) FROM entries"

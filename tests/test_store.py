@@ -402,6 +402,21 @@ class ListTest(DatabaseTest):
             self.assertEqual(_user_version(store.db), len(MIGRATIONS))
             self.assertIsNone(store.get("demo", 1)["goal"])
 
+    def test_reading_never_waits_for_another_writer(self):
+        # Opening and listing take no write lock when there is nothing to change, so a
+        # slow writer elsewhere doesn't hold up the page's reads.
+        self.add()
+        self.store.answer("demo", 1, "a")
+        writer = sqlite3.connect(os.environ["TEMPO_DB"], isolation_level=None)
+        self.addCleanup(writer.close)
+        writer.execute("BEGIN IMMEDIATE")
+        db = connect(os.environ["TEMPO_DB"])
+        self.addCleanup(db.close)
+        db.execute("PRAGMA busy_timeout = 0")
+        with Store(db) as store:
+            self.assertEqual([q["status"] for q in store.list("demo", "all")], ["answered"])
+        writer.execute("ROLLBACK")
+
     def test_answers_older_than_a_week_are_archived_when_listing(self):
         for _ in range(3):
             self.add()
@@ -1040,7 +1055,9 @@ class AdditionTest(DatabaseTest):
                 self.assertEqual(_user_version(store.db), len(MIGRATIONS))
                 self.assertEqual(store.folders()[0]["path"], "/work/web")
                 store.db.execute("SELECT * FROM notes")
-        self.assertEqual(self.locked, [True, True])
+        # The first open adds it inside the write lock; the next only checks that it is
+        # there, with writes turned off.
+        self.assertEqual(self.locked, [True, False])
 
     def test_an_unversioned_database_gets_it_before_the_steps(self):
         path = os.path.join(self.tmp.name, "old.db")

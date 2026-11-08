@@ -260,6 +260,29 @@ def _add_column(db: sqlite3.Connection, table: str, column: str, kind: str) -> N
         db.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, kind))
 
 
+def _up_to_date(db: sqlite3.Connection) -> bool:
+    """Whether _migrate has nothing to do: the database has had every numbered step, and
+    SCHEMA and the additions find nothing missing. They run here with writes turned off,
+    so this never takes the write lock: the first statement that would write fails, which
+    shows that something is missing."""
+    if _version(db) != len(MIGRATIONS):
+        return False
+    db.execute("PRAGMA query_only = ON")
+    try:
+        for statement in SCHEMA.split(";"):
+            if statement.strip():
+                db.execute(statement)
+        for addition in ADDITIONS:
+            addition(db)
+    except sqlite3.OperationalError:
+        # Most often "attempt to write a readonly database". Any other problem is left
+        # to the full migration, which waits for the lock and reports it.
+        return False
+    finally:
+        db.execute("PRAGMA query_only = OFF")
+    return True
+
+
 def _version(db: sqlite3.Connection) -> int:
     return int(db.execute("PRAGMA user_version").fetchone()[0])
 
@@ -277,6 +300,11 @@ def _migrate(db: sqlite3.Connection) -> None:
             " Update Tempo, or restart the session to use the installed version."
             % (_version(db), len(MIGRATIONS))
         )
+    # Every open comes here, even to read. Taking the write lock each time would make page
+    # reads and hooks queue behind any slow writer, so a database that already has
+    # everything is left as it is.
+    if _up_to_date(db):
+        return
     # One statement at a time inside one write transaction, so processes opening a brand-new
     # database at the same moment wait for each other (executescript would commit first).
     with _Transaction(db):
