@@ -133,6 +133,13 @@ class ServerTest(DatabaseTest):
         status, _ = self.post_raw("/api/questions/demo/1/answer", b"", length=10**9)
         self.assertEqual(status, 413)
 
+    def test_a_length_that_is_not_a_number_or_a_body_that_is_not_json_is_refused(self):
+        status, reply = self.post_raw("/api/questions/demo/1/answer", b"", length="ten")
+        self.assertEqual((status, reply["error"]), (400, "Invalid Content-Length"))
+        status, reply = self.post_raw("/api/questions/demo/1/answer", b'{"choice": "a"')
+        self.assertEqual((status, reply["error"]), (400, "Invalid JSON"))
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
     def test_an_unexpected_error_answers_with_a_json_500(self):
         error = RuntimeError("database is locked")
         log = mock.patch("sys.stderr", io.StringIO())

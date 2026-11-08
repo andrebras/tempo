@@ -395,7 +395,7 @@ def _number(body: dict[str, Any], key: str) -> int | None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
         raise QuestionError("%s must be a number" % key)
-    return value
+    return int(value)
 
 
 def _parts(path: str) -> list[str]:

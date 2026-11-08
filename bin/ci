@@ -43,7 +43,13 @@ step "Lint (ruff)" .venv/bin/ruff check .
 step "Format (ruff format)" .venv/bin/ruff format --check .
 step "Security (bandit)" .venv/bin/bandit --quiet -c pyproject.toml -r tempo
 step "Types (mypy)" .venv/bin/mypy
-step "Shell scripts (shellcheck)" shellcheck bin/tempo bin/oq bin/ci
+# The release scripts have no .py ending, so mypy checks each on its own (two at once would
+# both be "__main__"), with the settings in pyproject.toml.
+for script in bin/release bin/check-version; do
+  step "Types (mypy, $script)" .venv/bin/mypy "$script"
+done
+# Every shell script in bin/, found by its first line, so a new one is never skipped.
+step "Shell scripts (shellcheck)" sh -c 'grep -l "^#!/bin/sh" bin/* 2>/dev/null | xargs shellcheck'
 step "Compile" python3 -m compileall -q tempo tests
 step "Lint page script (biome)" npx --yes "@biomejs/biome@$biome_version" lint --error-on-warnings
 step "Page tests (node --test)" node --test tests/page.test.js
@@ -56,8 +62,10 @@ step "Tests" env PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m coverage run \
 .venv/bin/python -m coverage combine --quiet
 step "Coverage (report only)" .venv/bin/python -m coverage report
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  # On its own line, so a failure here stops the script instead of hiding in the heading.
+  version=$(.venv/bin/python -c 'import platform; print(platform.python_version())')
   {
-    echo "### Coverage, Python $(.venv/bin/python -c 'import platform; print(platform.python_version())')"
+    echo "### Coverage, Python $version"
     .venv/bin/python -m coverage report --format=markdown
   } >>"$GITHUB_STEP_SUMMARY"
 fi

@@ -69,7 +69,7 @@ def run(args: list[str], cwd: Path, quiet: bool = False) -> str:
 
 def current_version(root: Path) -> str:
     text = (root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
-    return json.loads(text)["version"]
+    return str(json.loads(text)["version"])
 
 
 def check_version(version: str, current: str) -> None:
@@ -135,6 +135,21 @@ def apply_release(root: Path, version: str, today: date) -> None:
         r"^%s$" % re.escape(UNRELEASED),
         "## [%s] - %s" % (version, today.isoformat()),
     )
+    add_compare_link(root / "CHANGELOG.md", version)
+
+
+def add_compare_link(path: Path, version: str) -> None:
+    """Give the new version its link to the changes since the last one, as Keep a Changelog
+    does at the end of the file, and move the Unreleased link on. Nothing happens when
+    the file has no Unreleased link."""
+    text = path.read_text(encoding="utf-8")
+    pattern = r"^\[Unreleased\]: (\S+)/compare/v(\S+)\.\.\.HEAD$"
+    links = "[Unreleased]: \\1/compare/v%s...HEAD\n[%s]: \\1/compare/v\\2...v%s" % (
+        version,
+        version,
+        version,
+    )
+    path.write_text(re.sub(pattern, links, text, count=1, flags=re.M), encoding="utf-8")
 
 
 def pr_body(version: str, current: str, notes: str, today: date) -> str:

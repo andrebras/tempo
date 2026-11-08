@@ -1,6 +1,5 @@
 __pycache__/
 *.pyc
-.ci.log
 .venv/
 .ruff_cache/
 .mypy_cache/
@@ -8,3 +7,5 @@ __pycache__/
 .coverage
 .coverage.*
 .claude/worktrees/
+.claude/settings.local.json
+.DS_Store
