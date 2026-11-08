@@ -17,6 +17,8 @@ os.chmod(_locked, 0o500)
 atexit.register(shutil.rmtree, _locked, ignore_errors=True)
 os.environ["TEMPO_DB"] = os.path.join(_locked, "no-test-database-picked.db")
 os.environ.pop("OQ_DB", None)
+# Hooks name the project from the folder Claude Code started the session in, when set.
+os.environ.pop("CLAUDE_PROJECT_DIR", None)
 
 # A port kept for tests: not the real page's 2204, and outside cli.BRANCH_PORTS. Tests that
 # run bin/tempo in a process of their own pass it on, since they clear the TEMPO_ settings.
