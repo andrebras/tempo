@@ -218,13 +218,13 @@ class ReleaseTest(unittest.TestCase):
         links = "\n[Unreleased]: %s/compare/v0.5.4...HEAD\n[0.5.4]: %s/compare/v0.5.3...v0.5.4\n"
         (self.root / "CHANGELOG.md").write_text(CHANGELOG + links % (base, base))
         release.apply_release(self.root, "0.6.0", TODAY)
-        self.assertTrue(
-            (self.root / "CHANGELOG.md").read_text().endswith(
-                "\n[Unreleased]: %s/compare/v0.6.0...HEAD\n"
-                "[0.6.0]: %s/compare/v0.5.4...v0.6.0\n"
-                "[0.5.4]: %s/compare/v0.5.3...v0.5.4\n" % (base, base, base)
-            )
+        expected = (
+            "\n[Unreleased]: %s/compare/v0.6.0...HEAD\n"
+            "[0.6.0]: %s/compare/v0.5.4...v0.6.0\n"
+            "[0.5.4]: %s/compare/v0.5.3...v0.5.4\n" % (base, base, base)
         )
+        text = (self.root / "CHANGELOG.md").read_text()
+        self.assertTrue(text.endswith(expected), text)
 
     def test_stops_when_ci_fails(self):
         self.stub("clean_ci", side_effect=subprocess.CalledProcessError(1, ["bin/ci"]))
