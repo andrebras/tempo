@@ -7,9 +7,13 @@ same checks on every pull request, on Python 3.9 and 3.13.
 ## Running the checks
 
 ```bash
-bin/ci                                      # every check below, then all tests
-TEMPO_DB=/tmp/questions.db bin/tempo serve  # run the page on a scratch database
+bin/ci                                                        # every check below, then all tests
+TEMPO_DB=/tmp/questions.db TEMPO_PORT=22417 bin/tempo serve  # the page on a scratch database
 ```
+
+Always set `TEMPO_PORT` together with `TEMPO_DB`. With only `TEMPO_DB` set, the page uses the
+real port, 2204, so it would take the place of your real page, or fail to start while that
+one runs. Any port from 22100 to 22999 is safe.
 
 `bin/ci` installs the pinned tools from `requirements-dev.txt` into `.venv` on its first run.
 It rebuilds `.venv` when its Python no longer runs (after the folder was moved, for example),
@@ -63,7 +67,9 @@ checks that the last release still works on a database the current code has open
 `tests/test_page.py` runs the page in headless Google Chrome against the real server code
 and a throwaway database: answering, asking for more, a reword under a typed note,
 reopening, the timed refresh keeping focus, a server restart keeping the draft, the "new"
-dots, and a link to a missing question. `bin/ci` runs them with the other tests; to run only
+dots, a link to a missing question, long words wrapping, labels for screen readers, and
+Settings keeping the keyboard focus. It also checks that the page's colours meet the
+contrast minimum of WCAG (the Web Content Accessibility Guidelines) in both themes. `bin/ci` runs them with the other tests; to run only
 them, use `python3 -m unittest tests.test_page`. They take about two seconds. They skip,
 saying why, when Chrome isn't installed; set `CHROME` to the browser's path if it isn't
 found on its own. GitHub's Ubuntu runners have Chrome, so they always run there.
@@ -83,9 +89,17 @@ bin/              tempo (the command), oq (its old name), ci, check-version, med
                   release
 docs/             reference, screenshots and the demo GIF
 hooks/            hook configuration
-tempo/            store (SQLite), cli (tempo), server, and the page (page.html and its
-                  script, page.js)
-skills/           the skill that teaches Claude the workflow
+tempo/
+  cli.py          the tempo command and the hooks
+  server.py       the page's web server
+  page.html       the page, with its styles
+  page.js         the page's script
+  slash.py        what the slash commands run
+  log.py          the page log, server.log
+  store/          the SQLite database: questions, projects, settings and delivery
+  tui/            tempo tui, the full-screen terminal view
+skills/           five skills: tempo, which teaches Claude the workflow, and one for each
+                  slash command (list, show, answer, dive)
 tests/            Python tests (test_page.py drives the page in Chrome), and page.test.js
                   for the page's script
 ```
