@@ -217,7 +217,14 @@ def _get_settings(request: Handler, store: Store, args: list[str], body: dict[st
 def _answer(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
     project, number = args
     request._handle(
-        lambda: store.answer(project, _int(number), _text(body, "choice"), _text(body, "body", ""))
+        lambda: store.answer(
+            project,
+            _int(number),
+            _text(body, "choice"),
+            _text(body, "body", ""),
+            # The wording the page showed, so an answer to an older one is refused.
+            version=_number(body, "version"),
+        )
     )
 
 
@@ -378,6 +385,16 @@ def _text(body: dict[str, Any], key: str, default: str | None = None) -> Any:
         return default
     if not isinstance(value, str):
         raise QuestionError("%s must be text" % key)
+    return value
+
+
+def _number(body: dict[str, Any], key: str) -> int | None:
+    """A whole-number field of a request body, or None when it is missing or null."""
+    value = body.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise QuestionError("%s must be a number" % key)
     return value
 
 

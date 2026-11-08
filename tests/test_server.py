@@ -194,6 +194,17 @@ class ServerTest(DatabaseTest):
             ],
         )
 
+    def test_an_answer_to_the_wording_the_page_showed_is_checked(self):
+        path = "/api/questions/demo/1/answer"
+        self.store.reword("demo", 1, "Swapped the options", options=["Right", "Left"])
+        status, data = self.request("POST", path, {"choice": "b", "version": 1})
+        self.assertEqual(status, 400)
+        self.assertIn("changed since you looked", json.loads(data)["error"])
+        status, data = self.request("POST", path, {"choice": "b", "version": "2"})
+        self.assertEqual((status, json.loads(data)["error"]), (400, "version must be a number"))
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+        self.assertEqual(self.request("POST", path, {"choice": "b", "version": 2})[0], 200)
+
     def test_answering_twice_needs_a_reopen(self):
         path = "/api/questions/demo/1/"
         self.assertEqual(self.request("POST", path + "answer", {"choice": "a"})[0], 200)

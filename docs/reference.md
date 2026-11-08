@@ -16,7 +16,7 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo set-next <n>` | Continue numbering from an older list |
 | `tempo inbox` | Print answers and follow-ups Claude hasn't seen yet (`--all-projects` shows every project's without marking them seen) |
 | `tempo wait --timeout 1800` | Wait until you answer or follow up, then print it |
-| `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`). The option may also be named by its whole text, in any case and without trailing punctuation, such as `tempo answer 61 yes`; a valid letter wins |
+| `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`). The option may also be named by its whole text, in any case and without trailing punctuation, such as `tempo answer 61 yes`; a valid letter wins. It answers the current wording; once the question was reworded, the confirmation names it: `Answered Q61 (version 2): (a) Yes` |
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
 | `tempo status` | For you, not Claude: print `? 3` when 3 questions of the current folder's project wait for you, nothing when none do, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
 | `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
@@ -195,6 +195,22 @@ opened, so nothing is marked yet.
 Goals replace the earlier Now / Soon / Later priorities. Old questions keep their priority in
 the database, but nothing uses it. `--priority` and `tempo priority` still run for one
 release, but only print a note.
+
+## When a question changes while you answer
+
+An answer is tied to the wording you saw. The page and the terminal screen (`tempo tui`)
+send the version of the question they showed with your answer. If Claude reworded the
+question in the meantime, Tempo refuses the answer with "Q1 changed since you looked at it
+(now version 2); check it again", because the same letter may now name another option. The
+page then shows the new wording at once and says what changed: your pick is cleared, and
+your note is kept. On the terminal screen, the message shows on the bottom line and the new
+wording in Detail; pick again. `tempo answer` and `/tempo:answer` answer the current
+wording, and their confirmation names the version once the question was reworded.
+
+If the question on the page is answered or archived elsewhere (the terminal screen, the
+`tempo` command or another tab) while you are typing a note, the page stays on it and says
+so, with your note still there to copy. **Move on** opens the next question. Without a
+note or a pick, the page moves on by itself.
 
 ## Settings
 

@@ -191,6 +191,23 @@ class BoardTest(DatabaseTest):
         self.assertEqual(board.message[1], "error")
         self.assertEqual(self.store.get("demo", 2)["status"], "open")
 
+    def test_a_reword_while_confirming_refuses_the_answer(self):
+        self.add(options=["Keep the old API", "Delete everything"])
+        board = self.board()
+        board.press("a")
+        # Claude swaps the options while the prompt still shows (a) Keep the old API.
+        self.store.reword("demo", 1, "Swapped", options=["Delete everything", "Keep the old API"])
+        self.assertTrue(board.changed())
+        board.press("y")
+        self.assertEqual(
+            board.message,
+            ("Q1 changed since you looked at it (now version 2); check it again", "error"),
+        )
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+        # Picked again, on the wording now shown, the answer goes through.
+        self.keys(board, "b", "y")
+        self.assertEqual(self.store.get("demo", 1)["answer"]["choice"], "b")
+
     def test_an_empty_follow_up_is_refused_with_the_stores_words(self):
         self.add()
         board = self.board()

@@ -197,6 +197,42 @@ class PageTest(DatabaseTest):
         self.assertFalse(self.run_js("$('input[name=choice]:checked')"))
         self.assertTrue(self.run_js("$('#send').disabled"))
 
+    def test_an_answer_to_an_older_wording_is_refused_and_shows_the_new_one(self):
+        self.open("#/demo/1")
+        self.click("#detail input[value=a] + .letter")
+        self.click("#note")
+        self.type("Left is closer.")
+        # Claude swaps the options before the timed refresh redraws them.
+        self.store.reword("demo", 1, "Swapped", options=["Right", "Left"])
+        self.click("#send")
+        self.wait("$('#detail .changed')?.textContent.includes('reworded this question')")
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+        self.assertEqual(self.text("#detail .options label .text"), "Right")
+        self.assertEqual(self.run_js("$('#note').value"), "Left is closer.")
+        self.assertFalse(self.run_js("$('input[name=choice]:checked')"))
+
+    def test_a_question_answered_elsewhere_keeps_the_note_on_screen(self):
+        self.open("#/demo/1")
+        self.click("#note")
+        self.type("half-written reasoning")
+        self.store.answer("demo", 1, "a")
+        self.tick()
+        self.wait("$('#detail .changed')")
+        self.assertIn("Q1 was answered elsewhere", self.text("#detail .changed"))
+        self.assertEqual(self.run_js("location.hash"), "#/demo/1")
+        self.assertEqual(self.run_js("$('#note').value"), "half-written reasoning")
+        # It stays put on later refreshes, until the user moves on.
+        self.tick()
+        self.assertEqual(self.run_js("document.querySelectorAll('#detail .changed').length"), 1)
+        self.click("#detail .changed button")
+        self.wait("$('#detail h2')?.textContent === 'How fast?'")
+
+    def test_a_question_answered_elsewhere_without_a_draft_gives_way_to_the_next(self):
+        self.open("#/demo/1")
+        self.store.answer("demo", 1, "a")
+        self.tick()
+        self.wait("$('#detail h2')?.textContent === 'How fast?'")
+
     def test_reopens_an_answered_question(self):
         self.store.answer("demo", 1, "a")
         self.open("#/demo/1")

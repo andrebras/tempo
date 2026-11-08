@@ -132,6 +132,22 @@ class ThreadTest(DatabaseTest):
         self.assertEqual(question["answer"]["choice"], "b")
         self.assertEqual(question["answer"]["version"], 2)
 
+    def test_an_answer_to_an_older_wording_is_refused(self):
+        self.add(options=["Keep them", "Delete them"])
+        self.store.reword("demo", 1, "Swapped", options=["Delete them", "Keep them"])
+        # The user picked (b) "Delete them" on version 1; on version 2, (b) means "Keep them".
+        refused = r"Q1 changed since you looked at it \(now version 2\); check it again"
+        with self.assertRaisesRegex(QuestionError, refused):
+            self.store.answer("demo", 1, "b", version=1)
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+        self.assertEqual(self.store.answer("demo", 1, "b", version=2)["answer"]["version"], 2)
+
+    def test_a_changed_wording_is_named_before_an_option_it_removed(self):
+        self.add(options=["Left", "Right", "Back"])
+        self.store.reword("demo", 1, "Fewer", options=["Up", "Down"])
+        with self.assertRaisesRegex(QuestionError, "changed since you looked"):
+            self.store.answer("demo", 1, "c", version=1)
+
     def test_a_second_answer_needs_the_question_reopened(self):
         self.add()
         self.store.answer("demo", 1, "a")

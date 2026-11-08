@@ -66,8 +66,10 @@ class Board:
         # "normal", "help", "confirm" (an answer waiting for y/n), "note" or "reply".
         self.mode = "normal"
         self.letter = ""
-        # The option's text, for the confirm prompt.
+        # The option's text, for the confirm prompt, and the version of the question it
+        # was picked on, so an answer to a wording Claude has since changed is refused.
         self.option = ""
+        self.version: int | None = None
         # The question an answer or follow-up being written is for, fixed when it starts,
         # so a reload meanwhile (which may select another question) can't redirect it.
         self.target: tuple[str, int] | None = None
@@ -206,6 +208,7 @@ class Board:
             return
         self.mode, self.letter, self.target = "confirm", letter, self._here()
         self.option = texts[letter]
+        self.version = self.question["version"]
 
     def _confirm(self, key: str) -> None:
         if key in ("y", "Y", "enter"):
@@ -234,12 +237,12 @@ class Board:
 
     def answer(self, letter: str, note: str) -> None:
         """Answer the selected question as `tempo answer` does, then move on to the next."""
-        from tempo.cli import _describe_answer
+        from tempo.cli import _describe_answer, answered_label
 
         def save() -> str:
-            question = self.store.answer(*self._target(), letter, note)
+            question = self.store.answer(*self._target(), letter, note, version=self.version)
             return "Answered %s: %s" % (
-                question["label"],
+                answered_label(question),
                 _describe_answer(question, question["answer"]),
             )
 
