@@ -402,6 +402,21 @@ class ListTest(DatabaseTest):
             self.assertEqual(_user_version(store.db), len(MIGRATIONS))
             self.assertIsNone(store.get("demo", 1)["goal"])
 
+    def test_reading_never_waits_for_another_writer(self):
+        # Opening and listing take no write lock when there is nothing to change, so a
+        # slow writer elsewhere doesn't hold up the page's reads.
+        self.add()
+        self.store.answer("demo", 1, "a")
+        writer = sqlite3.connect(os.environ["TEMPO_DB"], isolation_level=None)
+        self.addCleanup(writer.close)
+        writer.execute("BEGIN IMMEDIATE")
+        db = connect(os.environ["TEMPO_DB"])
+        self.addCleanup(db.close)
+        db.execute("PRAGMA busy_timeout = 0")
+        with Store(db) as store:
+            self.assertEqual([q["status"] for q in store.list("demo", "all")], ["answered"])
+        writer.execute("ROLLBACK")
+
     def test_answers_older_than_a_week_are_archived_when_listing(self):
         for _ in range(3):
             self.add()
@@ -499,10 +514,19 @@ class ProjectsTest(DatabaseTest):
 
     def test_rename_merges_into_a_project_without_questions(self):
         self.add(project="onzehq")
-        self.store.set_next("ONZE HQ", 10)
         self.store.rename_project("onzehq", "ONZE HQ")
         self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
-        self.assertEqual(self.add(project="ONZE HQ")["label"], "Q10")
+        self.assertEqual(self.add(project="ONZE HQ")["label"], "Q2")
+
+    def test_joining_a_project_numbered_with_set_next_moves_after_its_numbers(self):
+        # set-next keeps Q1-Q9 for an older list: joined questions must not take them.
+        for _ in range(2):
+            self.add(project="onzehq")
+        self.store.set_next("ONZE HQ", 10)
+        moves = self.store.rename_project("onzehq", "ONZE HQ")
+        self.assertEqual(moves, [{"from": 1, "to": 10}, {"from": 2, "to": 11}])
+        self.assertEqual([q["number"] for q in self.store.list("ONZE HQ", "all")], [10, 11])
+        self.assertEqual(self.add(project="ONZE HQ")["label"], "Q12")
 
     def test_rename_joins_two_projects_that_both_have_questions(self):
         # What happened for real: a folder rename split Tempo (Q1-Q27) and a new tempo.
@@ -682,6 +706,28 @@ class RenameTest(DatabaseTest):
         self.store.link_folder("/lab/tempo", "Tempo")
         self.assertEqual(len(self.store.list("tempo", "all")), 1)
         self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "Tempo")
+
+    def test_linking_is_one_transaction(self):
+        # A failure after the join must not leave the questions joined and the banner up.
+        self.see("/lab/tempo")
+        self.add(project="tempo")
+        real = self.store.db
+
+        class FailingDelete:
+            def __getattr__(self, name):
+                return getattr(real, name)
+
+            def execute(self, sql, *args):
+                if sql.startswith("UPDATE folders SET project = ?, rename_answered_at"):
+                    raise sqlite3.OperationalError("disk I/O error")
+                return real.execute(sql, *args)
+
+        self.store.db = FailingDelete()
+        with self.assertRaises(sqlite3.OperationalError):
+            self.store.link_folder("/lab/tempo", "Tempo")
+        self.store.db = real
+        self.assertEqual(len(self.store.list("tempo", "all")), 1)
+        self.assertEqual(len(self.store.renames()), 1)
 
     def test_keeping_it_apart_settles_it_and_keeps_its_project(self):
         self.see("/lab/tempo")
@@ -1009,7 +1055,9 @@ class AdditionTest(DatabaseTest):
                 self.assertEqual(_user_version(store.db), len(MIGRATIONS))
                 self.assertEqual(store.folders()[0]["path"], "/work/web")
                 store.db.execute("SELECT * FROM notes")
-        self.assertEqual(self.locked, [True, True])
+        # The first open adds it inside the write lock; the next only checks that it is
+        # there, with writes turned off.
+        self.assertEqual(self.locked, [True, False])
 
     def test_an_unversioned_database_gets_it_before_the_steps(self):
         path = os.path.join(self.tmp.name, "old.db")

@@ -194,18 +194,20 @@ class ProjectStore(QuestionStore):
         project = (project or "").strip()
         if not project:
             raise QuestionError("Pick a project for the folder")
-        row = self.db.execute(
-            "SELECT project, renamed_from FROM folders WHERE path = ?", (path,)
-        ).fetchone()
-        if row is None:
-            raise QuestionError("There is no folder at %s" % path)
-        own = row["project"]
-        shared = self.db.execute(
-            "SELECT 1 FROM folders WHERE project = ? AND path IS NOT ?", (own, path)
-        ).fetchone()
-        if own != project and not shared and self._question_count(own):
-            self.rename_project(own, project)
+        # One transaction for the checks and every write, so the project is never joined
+        # with the banner still up, and nothing changes between the checks and the writes.
         with self._transaction():
+            row = self.db.execute(
+                "SELECT project, renamed_from FROM folders WHERE path = ?", (path,)
+            ).fetchone()
+            if row is None:
+                raise QuestionError("There is no folder at %s" % path)
+            own = row["project"]
+            shared = self.db.execute(
+                "SELECT 1 FROM folders WHERE project = ? AND path IS NOT ?", (own, path)
+            ).fetchone()
+            if own != project and not shared and self._question_count(own):
+                self._rename_project(own, project)
             self.db.execute(
                 "UPDATE folders SET project = ?, rename_answered_at = ? WHERE path = ?",
                 (project, common.now(), path),
@@ -249,6 +251,11 @@ class ProjectStore(QuestionStore):
         Returns those moves as {"from": old number, "to": new number}; empty when the
         numbers stay the same.
         """
+        with self._transaction():
+            return self._rename_project(old, new)
+
+    def _rename_project(self, old: str, new: str | None) -> Moves:
+        """rename_project, inside a transaction the caller holds."""
         new = (new or "").strip()
         if not new:
             raise QuestionError("A project needs a name")
@@ -258,26 +265,28 @@ class ProjectStore(QuestionStore):
         if not any(project["name"] == old for project in self.project_summaries()):
             raise QuestionError("There is no project called %s" % old)
         moves: Moves = []
-        with self._transaction():
-            if self._question_count(new) and self._question_count(old):
-                moves = self._renumber_into(old, new)
-            elif self._question_count(old) or self._has_project_row(old):
-                self.db.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", (new,))
-                self.db.execute(
-                    "UPDATE projects SET next_number = MAX(next_number, ?) WHERE name = ?",
-                    (self._next_number(old), new),
-                )
-                self.db.execute("UPDATE questions SET project = ? WHERE project = ?", (new, old))
-            self.db.execute("DELETE FROM projects WHERE name = ?", (old,))
-            moved = self.db.execute(
-                "UPDATE folders SET project = ? WHERE project = ?", (new, old)
-            ).rowcount
-            if not moved:
-                # Projects named after their folder before folders were remembered: keep
-                # sessions in that folder on this project.
-                self.db.execute(
-                    "INSERT OR IGNORE INTO folders (folder, project) VALUES (?, ?)", (old, new)
-                )
+        # A project with no questions yet may still have numbers in use: those below its
+        # next number (set with set-next, for an older list), so moved questions go after.
+        taken = self._question_count(new) or self._next_number(new) > 1
+        if taken and self._question_count(old):
+            moves = self._renumber_into(old, new)
+        elif self._question_count(old) or self._has_project_row(old):
+            self.db.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", (new,))
+            self.db.execute(
+                "UPDATE projects SET next_number = MAX(next_number, ?) WHERE name = ?",
+                (self._next_number(old), new),
+            )
+            self.db.execute("UPDATE questions SET project = ? WHERE project = ?", (new, old))
+        self.db.execute("DELETE FROM projects WHERE name = ?", (old,))
+        moved = self.db.execute(
+            "UPDATE folders SET project = ? WHERE project = ?", (new, old)
+        ).rowcount
+        if not moved:
+            # Projects named after their folder before folders were remembered: keep
+            # sessions in that folder on this project.
+            self.db.execute(
+                "INSERT OR IGNORE INTO folders (folder, project) VALUES (?, ?)", (old, new)
+            )
         return moves
 
     def _renumber_into(self, old: str, new: str) -> Moves:

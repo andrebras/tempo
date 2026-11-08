@@ -127,6 +127,16 @@ class ServerTest(DatabaseTest):
                 self.assertEqual(self.post_raw(path, data)[0], 400)
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
 
+    def test_a_database_changed_by_a_newer_tempo_says_so(self):
+        log = mock.patch("sys.stderr", io.StringIO())
+        log.start()
+        self.addCleanup(log.stop)
+        self.store.db.execute("PRAGMA user_version = 999")
+        status, data = self.request("GET", "/api/questions?status=open")
+        self.assertEqual(status, 503)
+        self.assertIn("last changed by a newer Tempo", json.loads(data)["error"])
+        self.assertIn("Update Tempo", json.loads(data)["error"])
+
     def test_a_negative_or_huge_length_is_refused_without_waiting(self):
         status, _ = self.post_raw("/api/questions/demo/1/answer", b"", length=-1)
         self.assertEqual(status, 400)
@@ -152,6 +162,17 @@ class ServerTest(DatabaseTest):
             status, data = self.request("GET", "/api/questions?status=open")
         self.assertEqual(status, 500)
         self.assertEqual(json.loads(data), {"error": "Something went wrong in Tempo"})
+
+    def test_a_number_too_big_for_sqlite_is_not_a_question_number(self):
+        huge = "99999999999999999999"
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            status, reply = self.post_raw(
+                "/api/questions/demo/%s/followup" % huge, b'{"body": "?"}'
+            )
+            self.assertEqual(self.request("GET", "/api/questions/demo/%s" % huge)[0], 400)
+        self.assertEqual((status, reply), (400, {"error": "%s is not a question number" % huge}))
+        # No traceback in the server log: it is the request that is wrong, not Tempo.
+        self.assertEqual(log.getvalue(), "")
 
     def test_health_needs_this_server_as_its_host(self):
         self.assertEqual(self.request("GET", "/health", host="evil.example")[0], 403)

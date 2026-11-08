@@ -551,7 +551,7 @@ def _filed_under(db: sqlite3.Connection, path: str) -> str:
 
 def _folder_project(path: str) -> str:
     with Store(connect()) as store:
-        return store.project_for(os.path.basename(path), path)
+        return store.project_for(folder_name(path), path)
 
 
 def _write_marker(marker: str, project: str | None) -> None:
@@ -788,7 +788,7 @@ def session_note(project: str, port: int, path: str | None = None, limit: int | 
         "- End every update with the open questions of this project, one line each: %s"
         % (
             "the number as a link to the question, then the title, as in"
-            " `- [Q3](http://127.0.0.1:2204/#/shop/3) Pick a colour`. Never print a bare link."
+            " `- [Q3](http://127.0.0.1:%d/#/shop/3) Pick a colour`. Never print a bare link." % port
             if on
             else "the number, then the title, as in `- Q3 Pick a colour`."
         ),
@@ -1041,7 +1041,7 @@ TEMPO_RUN = re.compile(
     r"(?:^|&&|\|\||;|\n)\s*(?:\w+=\S*\s+)*(?:\S*/)?(?:tempo|oq) (?:add|reword|context)\b"
 )
 PARAGRAPH = re.compile(r"\n[ \t]*\n")
-LINKED_NUMBER = "its number linked to it, as in [Q5](http://127.0.0.1:2204/#/…)"
+LINKED_NUMBER = "its number linked to it, as in [Q5](http://127.0.0.1:%d/#/…)"
 
 
 def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None:
@@ -1082,7 +1082,7 @@ def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None
             " Tempo, give %s in the body of the reply. Merging, publishing and"
             " installing still also need a one-line OK in chat."
             % (
-                (LINKED_NUMBER, "its number as a link")
+                (LINKED_NUMBER % _port(), "its number as a link")
                 if page
                 else ("its number", "its number (such as Q5)")
             )
@@ -1286,10 +1286,19 @@ def start_server(port: int) -> bool:
     from, and so is one on another database and anything on the port that cannot be shown
     to be Tempo.
     """
-    from tempo.server import ROOT
-
     if _listening(port) and not _stop_stale(port):
         return False
+    _spawn_server(port)
+    # An older session starting at the same moment may have found the port free too and
+    # started its older server, which then holds the port. It is replaced, once.
+    if _older_on_port(port) and _stop_stale(port):
+        _spawn_server(port)
+    return True
+
+
+def _spawn_server(port: int) -> None:
+    from tempo.server import ROOT
+
     # The child gets its own copy of the log file handle, so ours can close. The
     # argument list is fixed and there is no shell, so nothing outside reaches it.
     with os.fdopen(log.open_log(), "a") as server_log:
@@ -1301,7 +1310,31 @@ def start_server(port: int) -> bool:
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
-    return True
+
+
+def _older_on_port(port: int) -> bool:
+    """Whether, once a server answers on the port (within about two seconds), it is an
+    older Tempo on this database."""
+    from tempo import server
+
+    # Each try may wait a second for an answer, so the time is bounded too: the
+    # SessionStart hook runs this, and Claude Code stops a hook after 10 seconds.
+    deadline = time.monotonic() + 2
+    for _ in range(20):
+        if time.monotonic() > deadline:
+            break
+        try:
+            health = json.loads(_fetch(port, "/health") or b"null")
+        except ValueError:
+            return False
+        if isinstance(health, dict):
+            return (
+                health.get("app") == "tempo"
+                and (health.get("db") or default_db()) == db_path()
+                and _older(health.get("version"), server.version())
+            )
+        time.sleep(0.1)
+    return False
 
 
 def _listening(port: int) -> bool:
@@ -1462,7 +1495,7 @@ def repo_path(cwd: str) -> str | None:
             if not os.path.basename(common).startswith("."):
                 return os.path.realpath(common)
         return os.path.realpath(os.path.dirname(common))
-    except (OSError, ValueError, subprocess.CalledProcessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
 
 
@@ -1485,12 +1518,15 @@ def _git_line(cwd: str, *args: str) -> str | None:
     """The first line git prints, or None when it fails or prints nothing."""
     try:
         lines = _git(cwd, *args).splitlines()
-    except (OSError, ValueError, subprocess.CalledProcessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
     return (lines[0].strip() or None) if lines else None
 
 
 def _git(cwd: str, *args: str) -> str:
+    """What git prints. It is stopped after GIT_TIMEOUT seconds (raising
+    subprocess.TimeoutExpired), so a slow repo never holds a hook until Claude Code kills
+    it, which would leave the folder unrecorded."""
     # git is looked up on PATH on purpose. There is no shell, and every caller passes
     # fixed arguments.
     return subprocess.run(  # noqa: S603
@@ -1499,7 +1535,13 @@ def _git(cwd: str, *args: str) -> str:
         capture_output=True,
         text=True,
         check=True,
+        timeout=GIT_TIMEOUT,
     ).stdout
+
+
+# Claude Code stops a hook after 10 seconds. The first commit's lookup walks the whole
+# history, so on a huge repo it gives up and the folder is recorded without it.
+GIT_TIMEOUT = 3
 
 
 def folder_name(path: str) -> str:

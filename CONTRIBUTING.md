@@ -132,9 +132,10 @@ one, when `main` has uncommitted changes or isn't the same as `origin/main`, or 
 `Unreleased` has nothing in it. Then it makes the branch `release/0.6.0`, edits the three
 files, commits "Release 0.6.0", runs `bin/ci` in a clean copy (a temporary git worktree outside
 this folder, so the worktrees under `.claude/` can't interfere), pushes, opens the pull request
-and turns on auto-merge. It prints each step and stops at the first that fails; if `bin/ci`
-fails, you are left on the release branch. Fix the problem on `main` as usual, then run
-`git switch main`, `git branch -D release/0.6.0` and `bin/release 0.6.0` again.
+and turns on auto-merge. It prints each step and stops at the first that fails. It then
+goes back to `main` and deletes the release branch, so after fixing the problem on `main` as
+usual you run `bin/release 0.6.0` again. When the branch was already pushed, it is kept, and
+the commands to remove it are printed.
 
 It does not merge, update the installed plugin or restart the page. GitHub merges the pull
 request once its CI passes; the commands for afterwards are printed at the end.

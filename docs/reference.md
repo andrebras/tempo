@@ -133,6 +133,11 @@ it never takes the real page's place. Every new session checks what is running o
 - Anything else that answers, such as a Tempo too old to have `/health` or another
   program: it is left alone.
 
+After starting its server, the session checks, for up to two seconds, what answers on the
+port. An older session starting at the same moment may have found the port free too and
+started its older server, which then holds the port; when what answers is an older Tempo on
+the same database, it is replaced once.
+
 To tell, Tempo asks the server for `/health`. That address answers without opening the
 database, so a broken database can't hide the server. It returns JSON with `app`
 (`"tempo"`), `version`, `commit` (the git commit, when Tempo runs from a git checkout),
@@ -249,9 +254,10 @@ The gear button at the top right of the page opens Settings.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
   its questions, their numbers and its folders along. To join two projects, rename one to
-  the other's name. If both have questions, the renamed one's questions move after the
-  other's, in their order, and get new numbers: joining `tempo` (Q1–Q5) into "Tempo"
-  (Q1–Q27) makes them Q28–Q32. Each moved question gets a note in its thread with its old
+  the other's name. If the other has questions, or numbering set with `tempo set-next`,
+  the renamed one's questions move after its numbers, in their order, and get new numbers:
+  joining `tempo` (Q1–Q5) into "Tempo" (Q1–Q27) makes them Q28–Q32, and into a "Tempo" with
+  no questions but `set-next 30`, Q30–Q34. Each moved question gets a note in its thread with its old
   number, such as "Moved from tempo Q2 when tempo joined Tempo.", so old references can
   still be traced.
   Under each project, Settings lists the folders it covers, with their paths, read-only.
@@ -267,7 +273,9 @@ The gear button at the top right of the page opens Settings.
   GitHub still matches, and a deleted one is not offered to unrelated new repositories. A
   repository remembered before Tempo noted these gets them the next time a session starts
   or a prompt arrives in it. One that goes missing before that is offered to any new git
-  repository, as before. Nothing is linked until you click.
+  repository, as before. Nothing is linked until you click. git gets 3 seconds for each
+  lookup, so a huge repository can't hold up a session: when finding its first commit takes
+  longer, the folder is recorded without it, and only its remote is compared.
 
 Projects are saved in the database, so every session, the hooks and the `tempo` command use
 them.
@@ -296,8 +304,9 @@ the installed plugin and the main checkout on `main` use the real database. Code
 database serves its page on a port of its own too, unless `TEMPO_PORT` is set.
 
 A database last changed by a newer Tempo, with changes this code doesn't know, is refused:
-every command stops with an error that says so, before it reads or changes anything. Update
-Tempo, or restart the session so it uses the installed version.
+every command stops with an error that says so, before it reads or changes anything, and
+the page shows that error. Update Tempo, or restart the session so it uses the installed
+version.
 
 The page log, `server.log`, also gets one line for each change made through the page (the
 time in UTC, the method, the path and the status code, such as

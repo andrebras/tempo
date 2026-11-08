@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import date
 from pathlib import Path
 from unittest import mock
@@ -229,9 +229,38 @@ class ReleaseTest(unittest.TestCase):
     def test_stops_when_ci_fails(self):
         self.stub("clean_ci", side_effect=subprocess.CalledProcessError(1, ["bin/ci"]))
         publish = self.stub("publish")
-        with redirect_stdout(io.StringIO()), self.assertRaises(subprocess.CalledProcessError):
+        err = io.StringIO()
+        with (
+            redirect_stdout(io.StringIO()),
+            redirect_stderr(err),
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
             release.release("0.6.0", root=self.root, today=TODAY)
         publish.assert_not_called()
+        # Back on a clean main without the branch, so the release can simply be run again.
+        self.assertEqual(self.repo("branch", "--show-current"), "main")
+        self.assertEqual(self.repo("branch", "--list", "release/*"), "")
+        self.assertEqual(self.repo("status", "--porcelain"), "")
+        self.assertIn("release/0.6.0 was deleted", err.getvalue())
+
+    def test_a_failure_after_the_push_keeps_the_branch_and_says_how_to_remove_it(self):
+        self.stub("clean_ci")
+
+        def push_then_fail(root, branch, version, body):
+            release.run(["git", "push", "--quiet", "--set-upstream", "origin", branch], root)
+            raise subprocess.CalledProcessError(1, ["gh", "pr", "create"])
+
+        self.stub("publish", side_effect=push_then_fail)
+        err = io.StringIO()
+        with (
+            redirect_stdout(io.StringIO()),
+            redirect_stderr(err),
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
+            release.release("0.6.0", root=self.root, today=TODAY)
+        self.assertEqual(self.repo("branch", "--show-current"), "main")
+        self.assertEqual(self.repo("branch", "--list", "release/*"), "release/0.6.0")
+        self.assertIn("git push origin --delete release/0.6.0", err.getvalue())
 
     def test_runs_ci_in_a_clean_copy_outside_the_checkout(self):
         marker = self.root.parent / "ci-ran-in"

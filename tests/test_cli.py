@@ -550,6 +550,8 @@ class CliTest(DatabaseTest):
             ("assistant", [{"type": "text", "text": "Pick one:\n- (a) Left\n- (b) Right"}]),
         )
         self.assertEqual(json.loads(out)["decision"], "block")
+        # The example link names the page's own port (TEMPO_PORT here), not 2204.
+        self.assertIn("[Q5](http://127.0.0.1:%d/#/…)" % TEST_PORT, json.loads(out)["reason"])
 
     def test_stop_sends_back_questions_the_closing_list_does_not_record(self):
         closing = "\n\nOpen questions in demo:\n- Q1: Which way? http://127.0.0.1:2204/#/demo/1"
@@ -1098,7 +1100,8 @@ class CliTest(DatabaseTest):
             _, out, _ = run("hook", "session-start", stdin="{}")
         note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
         self.assertIn("the number as a link to the question, then the title", note)
-        self.assertIn("`- [Q3](http://127.0.0.1:2204/#/shop/3) Pick a colour`", note)
+        # The page's own port, not the default one: TEMPO_PORT here.
+        self.assertIn("`- [Q3](http://127.0.0.1:%d/#/shop/3) Pick a colour`" % TEST_PORT, note)
         self.assertIn("Never print a bare link.", note)
         # Answers from the terminal, the tui and slash commands don't approve merging either.
         self.assertIn("An answer in Tempo never approves merging", note)
@@ -1346,6 +1349,11 @@ class ProjectNameTest(GitTest):
                 self.assertEqual(cli.folder_path(folder), os.path.realpath(repo))
                 self.assertEqual(cli.project_name(folder), "shop")
 
+    def test_wait_names_a_bare_repo_project_as_the_hooks_do(self):
+        # A worktree of shop.git is the project "shop" for the hooks; the wait looked for
+        # "shop.git", which nobody writes to, until the folder was recorded.
+        self.assertEqual(cli._folder_project("/x/shop.git"), "shop")
+
     def test_worktrees_of_a_bare_repo_share_the_repo_project(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -1361,6 +1369,29 @@ class ProjectNameTest(GitTest):
         subprocess.run([*git, "-C", bare, "worktree", "add", "-q", main, "main"], check=True)
         self.assertEqual(cli.folder_path(main), os.path.realpath(bare))
         self.assertEqual(cli.project_name(main), "shop")
+
+    def test_a_slow_git_gives_up_and_the_folder_is_still_recorded(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        repo = os.path.join(tmp.name, "shop")
+        subprocess.run([*git, "init", "-q", repo], check=True)
+        subprocess.run([*git, "-C", repo, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
+        real = subprocess.run
+        timeouts = []
+
+        def slow_history(command, **kwargs):
+            timeouts.append(kwargs.get("timeout"))
+            if command[:2] == ["git", "rev-list"]:
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return real(command, **kwargs)
+
+        with mock.patch.object(cli.subprocess, "run", side_effect=slow_history):
+            self.assertEqual(cli.project_name(repo, record=True), "shop")
+        self.assertEqual(set(timeouts), {cli.GIT_TIMEOUT})
+        self.assertLess(cli.GIT_TIMEOUT, 10)
+        row = self.store.db.execute("SELECT folder, first_commit FROM folders").fetchall()
+        self.assertEqual([tuple(r) for r in row], [("shop", None)])
 
     def test_a_submodule_is_a_project_of_its_own(self):
         tmp = tempfile.TemporaryDirectory()
@@ -1410,7 +1441,7 @@ class StartServerTest(unittest.TestCase):
         self.fetch = self.patch("_fetch")
         self.tempo_pid = self.patch("_tempo_pid", return_value=None)
         self.kill = self.patch("kill", cli.os, side_effect=self.stopped)
-        self.popen = self.patch("Popen", cli.subprocess)
+        self.popen = self.patch("Popen", cli.subprocess, side_effect=self.started)
         self.patch("sleep", cli.time)
         self.serve()
 
@@ -1421,6 +1452,11 @@ class StartServerTest(unittest.TestCase):
 
     def stopped(self, pid, sig):
         self.listening = False
+
+    def started(self, *args, **kwargs):
+        """The server just started takes the port and answers as this version."""
+        self.listening = True
+        self.serve(health=self.current)
 
     def serve(self, health=None, page=None):
         """What the server on the port answers; None stands for an error or no answer."""
@@ -1503,6 +1539,50 @@ class StartServerTest(unittest.TestCase):
                 self.assertFalse(cli.start_server(2204))
                 self.kill.assert_not_called()
                 self.popen.assert_not_called()
+
+    def test_replaces_an_older_tempo_that_took_the_port_as_this_one_started(self):
+        # An older session found the port free at the same moment and started its server;
+        # this one's then can't bind.
+        self.listening = False
+        old = {**self.current, "version": "0.0.1", "pid": 43}
+        starts = []
+
+        def start(*args, **kwargs):
+            starts.append(args)
+            self.listening = True
+            self.serve(health=old if len(starts) == 1 else self.current)
+
+        self.popen.side_effect = start
+        self.assertTrue(cli.start_server(2204))
+        self.kill.assert_called_once_with(43, cli.signal.SIGTERM)
+        self.assertEqual(len(starts), 2)
+
+    def test_waits_at_most_two_seconds_for_the_started_server(self):
+        # A listener that never answers must not keep the SessionStart hook past its time.
+        self.listening = False
+        self.popen.side_effect = None
+        clock = FakeClock()
+
+        def no_answer(port, path):
+            clock.now += 1  # Each try waits a second for an answer.
+
+        self.fetch.side_effect = no_answer
+        with mock.patch.object(cli.time, "monotonic", clock.time):
+            self.assertTrue(cli.start_server(2204))
+        self.assertLessEqual(self.fetch.call_count, 3)
+
+    def test_leaves_a_newer_tempo_that_took_the_port_as_this_one_started(self):
+        self.listening = False
+        newer = {**self.current, "version": "99.0.0", "pid": 43}
+
+        def start(*args, **kwargs):
+            self.listening = True
+            self.serve(health=newer)
+
+        self.popen.side_effect = start
+        self.assertTrue(cli.start_server(2204))
+        self.kill.assert_not_called()
+        self.popen.assert_called_once()
 
     def test_does_not_start_while_the_old_server_holds_the_port(self):
         self.serve(health={**self.current, "version": "0.0.1"})
