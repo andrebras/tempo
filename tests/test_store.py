@@ -683,6 +683,28 @@ class RenameTest(DatabaseTest):
         self.assertEqual(len(self.store.list("tempo", "all")), 1)
         self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "Tempo")
 
+    def test_linking_is_one_transaction(self):
+        # A failure after the join must not leave the questions joined and the banner up.
+        self.see("/lab/tempo")
+        self.add(project="tempo")
+        real = self.store.db
+
+        class FailingDelete:
+            def __getattr__(self, name):
+                return getattr(real, name)
+
+            def execute(self, sql, *args):
+                if sql.startswith("UPDATE folders SET project = ?, rename_answered_at"):
+                    raise sqlite3.OperationalError("disk I/O error")
+                return real.execute(sql, *args)
+
+        self.store.db = FailingDelete()
+        with self.assertRaises(sqlite3.OperationalError):
+            self.store.link_folder("/lab/tempo", "Tempo")
+        self.store.db = real
+        self.assertEqual(len(self.store.list("tempo", "all")), 1)
+        self.assertEqual(len(self.store.renames()), 1)
+
     def test_keeping_it_apart_settles_it_and_keeps_its_project(self):
         self.see("/lab/tempo")
         self.store.keep_folder("/lab/tempo")
