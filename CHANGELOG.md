@@ -4,6 +4,14 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The README opens with two recordings in dark colours, of the page and of `tempo tui`, that
+  show the same steps: answer with a note, ask for more context, and see Claude reword the
+  question. They replace the question-screen screenshot, which `bin/media` no longer makes.
+
 ## [0.8.0] - 2026-11-08
 
 ### Added

@@ -23,20 +23,22 @@ itself.
 - 🔒 [Security](#security)
 - 🤝 [Contributing](#contributing)
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/screenshot-light.png">
-  <img alt="The Tempo page: project chips across the top, one with a dot for something new; on the left the open questions grouped by goal, one with a dot because Claude added to it and one waiting on Claude; on the right the question &quot;Where should the new Export orders button go?&quot; with its context and three lettered options, the recommended one picked." src="docs/screenshot-light.png" width="1280">
-</picture>
-
 ## See it in action
 
-![Answering on the Tempo page: an option is picked and sent, and the page moves on to the next question. There, a note is typed and "Ask for more context" is pressed; Claude rewords the question and the thread shows both steps.](docs/demo.gif)
+Both recordings show the same steps, once on the local page and once in the terminal. You
+answer a question with a note, and Tempo moves on to the next one. There you ask for more
+context; Claude rewords the question, and its thread shows what you asked and what changed.
 
-You pick an option and send it, and the page moves on to the next question. On that one, you
-ask for more context; Claude rewords the question, and the thread shows what you asked and what
-changed. The pictures use made-up questions; `bin/media` makes them again (see
-[CONTRIBUTING.md](CONTRIBUTING.md#screenshots-and-demo-gif)).
+**On the page**
+
+![Answering on the Tempo page in dark colours: option (b) is picked, a note is typed and the answer is sent, and the page moves on to the next question. There, a follow-up is typed and "Ask for more context" is pressed; Claude rewords the question and the thread shows both steps.](docs/demo.gif)
+
+**In the terminal, with `tempo tui`**
+
+![The same steps in tempo tui, the full-screen terminal view: option (b) is picked with a typed note, the screen moves on to the next question, a follow-up is typed and the question shows "Waiting on Claude"; Claude rewords it and the thread shows both steps.](docs/tui.gif)
+
+The recordings use made-up questions; `bin/media` makes them again (see
+[CONTRIBUTING.md](CONTRIBUTING.md#screenshots-and-demo-gifs)).
 
 ## Install
 
@@ -135,7 +137,7 @@ as on the page: `»` marks the goal's start-here question, `…` one waiting on 
 the lettered options with the recommended one marked, and its thread. The bottom line shows the
 keys for the panel you are in.
 
-![tempo tui in a terminal: the cursor moves down the questions and into one, which is answered with option (b) and a typed note; the screen confirms the answer and moves on, then shows the list of keys.](docs/tui.gif)
+[The recording above](#see-it-in-action) shows it at work.
 
 | Key | What it does |
 | --- | --- |
