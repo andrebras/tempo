@@ -21,15 +21,32 @@ _NUMBERED = re.compile(r"^\s*(\d+)[.)]\s+")
 _INLINE = re.compile(r"\*\*(.+?)\*\*|`([^`]+)`")
 
 
-def cell_width(text: str) -> int:
-    """How many terminal columns text takes: wide characters (such as CJK) take two,
-    combining marks none."""
-    width = 0
+_JOINER = "\u200d"
+# Emoji skin tones: they change the emoji before them and take no room of their own.
+_SKIN_TONES = range(0x1F3FB, 0x1F400)
+
+
+def _widths(text: str) -> list[int]:
+    """How many terminal columns each character of text takes: wide characters (such as
+    CJK and most emoji) two, others one. Combining marks, variation selectors, invisible
+    format characters (such as the zero-width space) and skin tones take none, and so
+    does a character joined to the one before it by a zero-width joiner: a family emoji
+    made of three people shows as one."""
+    widths = []
+    joined = False
     for char in text:
-        if unicodedata.combining(char):
-            continue
-        width += 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
-    return width
+        kind = unicodedata.category(char)
+        if joined or kind in ("Mn", "Me", "Cf") or ord(char) in _SKIN_TONES:
+            widths.append(0)
+        else:
+            widths.append(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1)
+        joined = char == _JOINER
+    return widths
+
+
+def cell_width(text: str) -> int:
+    """How many terminal columns text takes (see _widths)."""
+    return sum(_widths(text))
 
 
 def clip(text: str, width: int) -> str:
@@ -39,8 +56,7 @@ def clip(text: str, width: int) -> str:
     if width <= 0:
         return ""
     kept, used = "", 0
-    for char in text:
-        size = cell_width(char)
+    for char, size in zip(text, _widths(text)):
         if used + size > width - 1:
             break
         kept += char
@@ -139,11 +155,12 @@ def wrap(spans: Line, width: int, first: str = "", rest: str = "") -> list[Line]
 def _fit(word: str, room: int, at_least_one: bool = True) -> str:
     """The longest start of word that fits room columns: at least one character, unless
     at_least_one is False."""
-    kept = ""
-    for char in word:
-        if cell_width(kept + char) > room and (kept or not at_least_one):
+    kept, used = "", 0
+    for char, size in zip(word, _widths(word)):
+        if used + size > room and (kept or not at_least_one):
             break
         kept += char
+        used += size
     return kept
 
 

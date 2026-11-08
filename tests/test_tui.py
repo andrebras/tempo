@@ -79,6 +79,18 @@ class TextTest(unittest.TestCase):
         self.assertTrue(all(cell_width(plain(line)) <= 30 for line in numbered))
         self.assertEqual([plain(line) for line in negative], ["a", "b", "c"])
 
+    def test_emoji_sequences_take_the_columns_a_terminal_gives_them(self):
+        family = "\U0001f468\u200d\U0001f469\u200d\U0001f467"
+        self.assertEqual(cell_width(family), 2)
+        self.assertEqual(cell_width("\U0001f44d\U0001f3fd"), 2)
+        self.assertEqual(cell_width("a\u200bb"), 2)
+        self.assertEqual(cell_width("\u2764\ufe0f"), 1)
+        # Clipping and wrapping keep a joined emoji whole.
+        self.assertEqual(clip("ab" + family + "cde", 6), "ab" + family + "c…")
+        self.assertEqual(
+            [plain(line) for line in wrap([(family + " " + family, "")], 3)], [family, family]
+        )
+
     def test_wide_characters_take_two_columns(self):
         self.assertEqual(cell_width("数据库"), 6)
         self.assertEqual(clip("数据库", 5), "数据…")
