@@ -1317,7 +1317,12 @@ def _older_on_port(port: int) -> bool:
     older Tempo on this database."""
     from tempo import server
 
+    # Each try may wait a second for an answer, so the time is bounded too: the
+    # SessionStart hook runs this, and Claude Code stops a hook after 10 seconds.
+    deadline = time.monotonic() + 2
     for _ in range(20):
+        if time.monotonic() > deadline:
+            break
         try:
             health = json.loads(_fetch(port, "/health") or b"null")
         except ValueError:

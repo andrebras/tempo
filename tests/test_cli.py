@@ -1557,6 +1557,20 @@ class StartServerTest(unittest.TestCase):
         self.kill.assert_called_once_with(43, cli.signal.SIGTERM)
         self.assertEqual(len(starts), 2)
 
+    def test_waits_at_most_two_seconds_for_the_started_server(self):
+        # A listener that never answers must not keep the SessionStart hook past its time.
+        self.listening = False
+        self.popen.side_effect = None
+        clock = FakeClock()
+
+        def no_answer(port, path):
+            clock.now += 1  # Each try waits a second for an answer.
+
+        self.fetch.side_effect = no_answer
+        with mock.patch.object(cli.time, "monotonic", clock.time):
+            self.assertTrue(cli.start_server(2204))
+        self.assertLessEqual(self.fetch.call_count, 3)
+
     def test_leaves_a_newer_tempo_that_took_the_port_as_this_one_started(self):
         self.listening = False
         newer = {**self.current, "version": "99.0.0", "pid": 43}
