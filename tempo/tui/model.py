@@ -174,6 +174,15 @@ class Board:
             self._pick(key.lower())
         return True
 
+    def paste(self, text: str) -> None:
+        """Pasted text: added to the note or follow-up being written, newlines and all.
+        Anywhere else it is ignored, so a paste never acts as keys: a letter in it would
+        pick an option, and a newline would send."""
+        if self.mode in ("note", "reply"):
+            self.typed += "".join(char for char in text if char == "\n" or char.isprintable())
+        elif self.mode == "normal":
+            self.message = ("Paste into a note (e after picking) or a follow-up (r).", "error")
+
     def move(self, step: int) -> None:
         """j/k in the focused panel: another project, another question, or scroll."""
         if self.focus == "projects":
