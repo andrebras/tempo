@@ -760,9 +760,8 @@ def session_note(project: str, port: int, path: str | None = None) -> str:
             if on
             else "the number, then the title, as in `- Q3 Pick a colour`."
         ),
-        "- An answer %s never approves merging, publishing or installing:"
-        " record the question in Tempo and also ask for a one-line OK in chat."
-        % ("on the Tempo page" if on else "in Tempo"),
+        "- An answer in Tempo never approves merging, publishing or installing:"
+        " record the question in Tempo and also ask for a one-line OK in chat.",
     ]
     if rename:
         lines.append(rename_note(rename, on))
