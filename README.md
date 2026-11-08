@@ -15,13 +15,16 @@ itself.
 
 - 🎬 [See it in action](#see-it-in-action)
 - 📦 [Install](#install)
+- 🔄 [Update and uninstall](#update-and-uninstall)
 - 🎛️ [Usage](#usage)
-- ⌨️ [From the terminal](#from-the-terminal): the `tempo` commands, the full-screen
-  `tempo tui`, tmux and the status line
+- ⌨️ [From the terminal](#from-the-terminal): the `tempo` commands and the full-screen
+  `tempo tui`
 - 💬 [In the Claude Code session](#in-the-claude-code-session): slash commands
 - ⚙️ [How it works](#how-it-works)
 - 🔒 [Security](#security)
 - 🤝 [Contributing](#contributing)
+- 📜 [Changelog](CHANGELOG.md)
+- ⚖️ [License](#license)
 
 ## See it in action
 
@@ -54,6 +57,28 @@ Start a new Claude Code session afterwards: sessions that were already open don'
 
 To try it for one session without installing it, clone the repo and run
 `claude --plugin-dir .` inside the clone.
+
+## Update and uninstall
+
+To update Tempo:
+
+```bash
+claude plugin marketplace update tempo
+claude plugin update tempo@tempo
+```
+
+A Claude session keeps the plugin version it started with. After you update Tempo, restart
+open sessions (for example with `claude --continue`) so they use the new hooks. A session
+whose hooks are older than the installed Tempo says so once, so you know to restart it.
+
+To remove it:
+
+```bash
+claude plugin uninstall tempo@tempo
+claude plugin marketplace remove tempo
+```
+
+Your questions stay in `~/.claude/tempo/`. Delete that folder if you want them gone too.
 
 ## Usage
 
@@ -102,18 +127,6 @@ links. `tempo serve --background` still starts the page when you want it, and
 You can also answer without opening the page. These commands are for you, not for Claude, and
 work like the page: Claude gets what you send through the same hooks and `tempo wait`.
 
-`tempo` is on Claude Code's `PATH` only inside a session. To use it in your own shell, add an
-alias, for example in `~/.zshrc`:
-
-```bash
-alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo
-```
-
-That path is Tempo's marketplace copy, which `claude plugin marketplace update tempo` keeps
-up to date. Sessions run the installed copy in `~/.claude/plugins/cache/tempo/tempo/<version>/`, so the marketplace path is the one that doesn't change. If
-you cloned Tempo yourself, use your clone's `bin/tempo` instead. The same goes for every
-path in the examples below.
-
 ```bash
 tempo list                                # the project's open questions
 tempo show 12                             # one question, with its options and thread
@@ -125,6 +138,18 @@ tempo reply 12 "What would (c) cost?"     # ask for more context, like the page'
 
 They act on the project of the folder you run them in; add `--project NAME` for another one
 (`tempo list --all-projects` shows every project's questions).
+
+`tempo` is on Claude Code's `PATH` only inside a session. To use it in your own shell, add an
+alias, for example in `~/.zshrc`:
+
+```bash
+alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo
+```
+
+That path is Tempo's marketplace copy, which `claude plugin marketplace update tempo` keeps
+up to date. Sessions run the installed copy in `~/.claude/plugins/cache/tempo/tempo/<version>/`, so the marketplace path is the one that doesn't change. If
+you cloned Tempo yourself, use your clone's `bin/tempo` instead. The same goes for the
+paths in [tmux and the status line](docs/reference.md#tmux-and-the-status-line).
 
 ### The full-screen view: `tempo tui`
 
@@ -166,87 +191,7 @@ paste never acts as keys, so a newline in it doesn't send and a letter doesn't p
 Pasting anywhere else only shows a hint on the bottom line. Alt (Option on a Mac) with a key, such as
 Option+Left, is ignored too, rather than read as `Esc` and then a letter.
 
-### `tempo tui` in a tmux popup
-
-tmux can open `tempo tui` in a popup window over your panes, and close it when you quit.
-Add this to `~/.tmux.conf` to open it with `prefix` then `T` (`display-popup` needs tmux 3.2
-or later):
-
-```tmux
-bind T display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.claude/plugins/marketplaces/tempo/bin/tempo tui"
-```
-
-`-E` closes the popup when `tempo tui` ends, `-w` and `-h` set its size, and `-d` starts it in
-the current pane's folder, so it opens on that folder's project. To open it with `Alt-t`
-alone, without the prefix, add this line too (`-n` means no prefix):
-
-```tmux
-bind -n M-t display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.claude/plugins/marketplaces/tempo/bin/tempo tui"
-```
-
-Then reload the file with `tmux source-file ~/.tmux.conf`.
-
-### A badge in the tmux status bar
-
-`tempo status` prints `? 3` when the current folder's project has three open questions, and
-nothing when it has none, just like the page shows one project at a time. In a
-pane in `~/Lab/shop` it counts shop's questions, not another project's. `--project NAME`
-counts one project by name and `--all` counts every project. It only reads the database, so it
-is quick and safe to run every few seconds, and it never starts the page. To show it in tmux,
-add this to `~/.tmux.conf` (use the full path of `bin/tempo`, because tmux runs it outside
-your shell and its aliases):
-
-```tmux
-set -g status-interval 5
-set -g status-right '#(cd "#{pane_current_path}" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status) %H:%M'
-```
-
-tmux fills in `#{pane_current_path}`, the folder of the pane you are in, so the badge follows
-you from project to project.
-
-To see a badge on every pane instead, each for its own folder, show it in the pane borders:
-
-```tmux
-set -g pane-border-status top
-set -g pane-border-format ' #(cd "#{pane_current_path}" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status) #{pane_current_command} '
-```
-
-Then reload it with `tmux source-file ~/.tmux.conf`.
-
-### A badge in the Claude Code status line
-
-Claude Code can show a status line under the prompt: it runs a command you choose and shows
-what it prints. Claude Code passes the command details about the session as JSON on its
-standard input, including the session's folder in `workspace.current_dir`. Run
-`tempo status` in that folder to add the badge for the session's project.
-
-If you already have a status line script, add these two lines to it and print `$tempo` at
-the end of its output (they use [jq](https://jqlang.org) to read the JSON):
-
-```sh
-dir=$(printf '%s' "$input" | jq -r '.workspace.current_dir')
-tempo=$(cd "$dir" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status 2>/dev/null)
-```
-
-Here `$input` holds the JSON the script read with `input=$(cat)`. A whole script that shows
-only the folder's name and the badge looks like this, saved as `~/.claude/statusline.sh`
-and made runnable with `chmod +x ~/.claude/statusline.sh`:
-
-```sh
-#!/bin/sh
-input=$(cat)
-dir=$(printf '%s' "$input" | jq -r '.workspace.current_dir')
-tempo=$(cd "$dir" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status 2>/dev/null)
-printf '%s %s\n' "$(basename "$dir")" "$tempo"
-```
-
-Then point Claude Code at it in `~/.claude/settings.json`:
-
-```json
-{
-  "statusLine": { "type": "command", "command": "~/.claude/statusline.sh" }
-}
-```
+To open it in a tmux popup, see [tmux and the status line](docs/reference.md#tmux-and-the-status-line).
 
 ## In the Claude Code session
 
@@ -301,10 +246,6 @@ The hook that runs when a reply ends also keeps the loop going. If the reply ask
 it sends Claude back to add one. If the project has open questions and no `tempo wait` is
 running, it sends Claude back to start one, so your answers from the page reach it without you
 writing in chat. More in [Hooks](docs/reference.md#hooks).
-
-A Claude session keeps the plugin version it started with. After you update Tempo, restart
-open sessions (for example with `claude --continue`) so they use the new hooks. A session
-whose hooks are older than the installed Tempo says so once, so you know to restart it.
 
 Commands, settings and environment variables are listed in [docs/reference.md](docs/reference.md).
 

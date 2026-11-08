@@ -11,6 +11,9 @@ All notable changes to Tempo are listed here. The format follows
 - The README opens with two recordings in dark colours, of the page and of `tempo tui`, that
   show the same steps: answer with a note, ask for more context, and see Claude reword the
   question. They replace the question-screen screenshot, which `bin/media` no longer makes.
+- The README has a section on updating and uninstalling and links the changelog. It shows the
+  `tempo` commands before the alias, and the tmux and status-line recipes moved to
+  docs/reference.md.
 
 ### Fixed
 
