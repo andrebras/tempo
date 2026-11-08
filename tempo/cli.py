@@ -1286,10 +1286,19 @@ def start_server(port: int) -> bool:
     from, and so is one on another database and anything on the port that cannot be shown
     to be Tempo.
     """
-    from tempo.server import ROOT
-
     if _listening(port) and not _stop_stale(port):
         return False
+    _spawn_server(port)
+    # An older session starting at the same moment may have found the port free too and
+    # started its older server, which then holds the port. It is replaced, once.
+    if _older_on_port(port) and _stop_stale(port):
+        _spawn_server(port)
+    return True
+
+
+def _spawn_server(port: int) -> None:
+    from tempo.server import ROOT
+
     # The child gets its own copy of the log file handle, so ours can close. The
     # argument list is fixed and there is no shell, so nothing outside reaches it.
     with os.fdopen(log.open_log(), "a") as server_log:
@@ -1301,7 +1310,26 @@ def start_server(port: int) -> bool:
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
-    return True
+
+
+def _older_on_port(port: int) -> bool:
+    """Whether, once a server answers on the port (within about two seconds), it is an
+    older Tempo on this database."""
+    from tempo import server
+
+    for _ in range(20):
+        try:
+            health = json.loads(_fetch(port, "/health") or b"null")
+        except ValueError:
+            return False
+        if isinstance(health, dict):
+            return (
+                health.get("app") == "tempo"
+                and (health.get("db") or default_db()) == db_path()
+                and _older(health.get("version"), server.version())
+            )
+        time.sleep(0.1)
+    return False
 
 
 def _listening(port: int) -> bool:

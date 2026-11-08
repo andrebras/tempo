@@ -1438,7 +1438,7 @@ class StartServerTest(unittest.TestCase):
         self.fetch = self.patch("_fetch")
         self.tempo_pid = self.patch("_tempo_pid", return_value=None)
         self.kill = self.patch("kill", cli.os, side_effect=self.stopped)
-        self.popen = self.patch("Popen", cli.subprocess)
+        self.popen = self.patch("Popen", cli.subprocess, side_effect=self.started)
         self.patch("sleep", cli.time)
         self.serve()
 
@@ -1449,6 +1449,11 @@ class StartServerTest(unittest.TestCase):
 
     def stopped(self, pid, sig):
         self.listening = False
+
+    def started(self, *args, **kwargs):
+        """The server just started takes the port and answers as this version."""
+        self.listening = True
+        self.serve(health=self.current)
 
     def serve(self, health=None, page=None):
         """What the server on the port answers; None stands for an error or no answer."""
@@ -1531,6 +1536,36 @@ class StartServerTest(unittest.TestCase):
                 self.assertFalse(cli.start_server(2204))
                 self.kill.assert_not_called()
                 self.popen.assert_not_called()
+
+    def test_replaces_an_older_tempo_that_took_the_port_as_this_one_started(self):
+        # An older session found the port free at the same moment and started its server;
+        # this one's then can't bind.
+        self.listening = False
+        old = {**self.current, "version": "0.0.1", "pid": 43}
+        starts = []
+
+        def start(*args, **kwargs):
+            starts.append(args)
+            self.listening = True
+            self.serve(health=old if len(starts) == 1 else self.current)
+
+        self.popen.side_effect = start
+        self.assertTrue(cli.start_server(2204))
+        self.kill.assert_called_once_with(43, cli.signal.SIGTERM)
+        self.assertEqual(len(starts), 2)
+
+    def test_leaves_a_newer_tempo_that_took_the_port_as_this_one_started(self):
+        self.listening = False
+        newer = {**self.current, "version": "99.0.0", "pid": 43}
+
+        def start(*args, **kwargs):
+            self.listening = True
+            self.serve(health=newer)
+
+        self.popen.side_effect = start
+        self.assertTrue(cli.start_server(2204))
+        self.kill.assert_not_called()
+        self.popen.assert_called_once()
 
     def test_does_not_start_while_the_old_server_holds_the_port(self):
         self.serve(health={**self.current, "version": "0.0.1"})
