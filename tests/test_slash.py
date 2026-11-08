@@ -91,6 +91,12 @@ class SlashCommandTest(DatabaseTest):
         self.assertEqual(run("hook", "user-prompt-submit", stdin="{}")[1], "")
         self.assertEqual(run("inbox")[1], "Nothing new from the user.\n")
 
+    def test_answer_names_the_version_it_answered_once_reworded(self):
+        self.store.reword("demo", 1, "Clearer", title="Left or right, by car?")
+        code, out, _ = self.slash("answer", "1 b")
+        self.assertEqual(code, 0)
+        self.assertIn("Recorded your answer to Q1 (version 2) in demo", out)
+
     def test_answer_by_an_options_text(self):
         code, out, _ = self.slash("answer", "2 yes")
         self.assertEqual(code, 0)

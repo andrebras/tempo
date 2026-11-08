@@ -272,6 +272,12 @@ class CliTest(DatabaseTest):
             (question["answer"]["author"], question["answer"]["choice"]), ("user", "b")
         )
 
+    def test_answer_names_the_version_it_answered_once_reworded(self):
+        self.add()
+        self.store.reword("demo", 1, "Swapped", options=["Right", "Left"])
+        code, out, _ = run("answer", "1", "b")
+        self.assertEqual((code, out), (0, "Answered Q1 (version 2): (b) Left\n"))
+
     def test_answer_rejects_an_unknown_option_or_question(self):
         self.add()
         code, _, err = run("answer", "1", "z")

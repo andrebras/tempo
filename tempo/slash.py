@@ -83,7 +83,7 @@ def slash_answer(store: Store, project: str, typed: str) -> str:
     letter, note = split_answer(store.get(project, number), rest)
     question = store.answer(project, number, letter, note, delivered=True)
     return "Recorded your answer to %s in %s (%s): %s\n\n%s" % (
-        question["label"],
+        cli.answered_label(question),
         project,
         question["title"],
         cli._describe_answer(question, question["answer"]),

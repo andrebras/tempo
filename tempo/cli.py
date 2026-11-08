@@ -431,7 +431,10 @@ def run_answer(args: argparse.Namespace) -> None:
     store, project = _store(), _project(args.project)
     letter = slash.option_letter(store.get(project, args.number), args.letter)
     question = store.answer(project, args.number, letter, args.note)
-    print("Answered %s: %s" % (question["label"], _describe_answer(question, question["answer"])))
+    print(
+        "Answered %s: %s"
+        % (answered_label(question), _describe_answer(question, question["answer"]))
+    )
 
 
 def run_reply(args: argparse.Namespace) -> None:
@@ -1118,6 +1121,14 @@ def _describe_inbox(store: Store, entries: Entries) -> str:
             " the box the user reads shows it; use a subagent when it needs research."
         )
     return "\n".join(lines)
+
+
+def answered_label(question: Question) -> str:
+    """The label of a question just answered, naming the version answered once Claude has
+    reworded it: `tempo answer` answers the current wording, which the user may not have
+    seen, so the confirmation says which one it was."""
+    version = question["answer"]["version"]
+    return "%s (version %d)" % (question["label"], version) if version > 1 else question["label"]
 
 
 def _describe_answer(question: Question, entry: Entry) -> str:

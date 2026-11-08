@@ -237,12 +237,12 @@ class Board:
 
     def answer(self, letter: str, note: str) -> None:
         """Answer the selected question as `tempo answer` does, then move on to the next."""
-        from tempo.cli import _describe_answer
+        from tempo.cli import _describe_answer, answered_label
 
         def save() -> str:
             question = self.store.answer(*self._target(), letter, note, version=self.version)
             return "Answered %s: %s" % (
-                question["label"],
+                answered_label(question),
                 _describe_answer(question, question["answer"]),
             )
 
