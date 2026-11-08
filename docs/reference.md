@@ -86,6 +86,14 @@ folder do they use the folder the hook runs in. `tempo wait` does the same when
 `CLAUDE_PROJECT_DIR` is set; in a Bash command it usually isn't, so the wait uses the folder
 it runs in.
 
+Claude Code shows Claude at most 10,000 characters of a hook's text: past that, only a file
+path and a short preview. So a hook hands over only the answers and follow-ups that fit in
+9,000 characters, oldest first, and ends with how many more are waiting. Those stay
+undelivered: the next hook or `tempo wait` brings them, or `tempo inbox` prints them all at
+once. One answer too long on its own still goes, cut short, with `tempo show` for the rest.
+The SessionStart hook's list of open questions is cut the same way, ending with how many
+more there are and `tempo list` to see them.
+
 A Tempo problem never blocks your prompt or the session. When something goes wrong, such as
 a locked database or a folder Tempo can't name, the hooks exit cleanly and say nothing to the
 session. The error goes to standard error, which Claude Code doesn't pass to Claude, and to

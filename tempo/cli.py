@@ -383,7 +383,7 @@ def run_inbox(args: argparse.Namespace) -> None:
     if args.all_projects:
         # Taking every project's news would keep it from the sessions it is meant for.
         store = _store()
-        text = _describe_inbox(store, store.undelivered())
+        text = _describe_inbox(store, store.undelivered())[0]
         if text:
             text += "\n(This is only shown: each project's sessions still receive it.)"
     else:
@@ -706,11 +706,14 @@ def run_hook(args: argparse.Namespace) -> int:
     try:
         override = setting("PROJECT")
         project = override or project_name(cwd, record=True)
+        # The restart line goes out with the rest, in the same capped text.
+        room = HOOK_TEXT_LIMIT - len(note) - 1 if note else HOOK_TEXT_LIMIT
         if args.event == "session-start":
-            text = session_note(project, args.port, None if override else folder_path(cwd))
+            path = None if override else folder_path(cwd)
+            text = session_note(project, args.port, path, limit=room)
             outcome = "note sent" + page
         else:
-            text, delivered = deliver_inbox(project)
+            text, delivered = deliver_inbox(project, limit=room)
             outcome = "delivered %d" % delivered if delivered else "nothing new"
     except Exception as error:
         log.write("hook", args.event, project, "error: %s" % error)
@@ -728,11 +731,14 @@ def run_hook(args: argparse.Namespace) -> int:
     return 0
 
 
-def session_note(project: str, port: int, path: str | None = None) -> str:
+def session_note(project: str, port: int, path: str | None = None, limit: int | None = None) -> str:
     """What every session is told at its start, so questions go through Tempo even when
     the skill isn't picked and nothing about Tempo is in CLAUDE.md. When the session's
     folder (at path) may be a known one renamed or moved, Claude is asked to say so.
-    With the page turned off, questions are pointed to in the terminal instead."""
+    With the page turned off, questions are pointed to in the terminal instead.
+
+    The open questions are listed while the text stays within limit characters; a last
+    line counts the ones left out and says how to see them."""
     with Store(connect()) as store:
         on = store.start_page()
         questions = store.list(project, "open")
@@ -768,13 +774,52 @@ def session_note(project: str, port: int, path: str | None = None) -> str:
         lines.append(rename_note(rename, on))
     if questions:
         lines.append("Open questions in %s:" % project)
+        listed = []
         for q in questions:
             goal = " [%s%s]" % (q["goal"], ", start here" if q["start_here"] else "")
-            lines.append(
+            listed.append(
                 "- %s %s%s %s"
                 % (q["label"], q["title"], goal if q["goal"] else "", _pointer(q, on))
             )
+        lines = _fitting(lines, listed, limit, MORE_QUESTIONS)[0]
     return "\n".join(lines)
+
+
+# What a hook hands Claude at once, in characters. Claude Code caps a hook's
+# additionalContext (and its plain output) at 10,000 characters: beyond that, Claude gets
+# only a file path and a preview of the first 2,000. The Stop hook's reason has no
+# documented cap, so it is held to the same one. The rest is a margin.
+HOOK_TEXT_LIMIT = 9000
+MORE_QUESTIONS = "- … and %d more open questions: run `tempo list` to see them all."
+MORE_NEWS = (
+    "%d more answers or follow-ups from the user are waiting: they come with the next"
+    " message, or run `tempo inbox` to read them now."
+)
+CUT_SHORT = " … (cut short: `tempo show` with its number shows it all)"
+
+
+def _fitting(
+    head: list[str], items: list[str], limit: int | None, more: str, keep_first: bool = False
+) -> tuple[list[str], int]:
+    """The head lines, then the items that fit after them within limit characters, then
+    a line made from more that counts the items left out. Returns the lines and how many
+    items they hold; with no limit, every item. With keep_first, the first item goes in
+    even when it is too long alone, cut short to fit."""
+    if limit is None:
+        return [*head, *items], len(items)
+    lines = list(head)
+    used = len("\n".join(head))
+    for index, item in enumerate(items):
+        # The "N more" line must still fit after this item, unless it is the last one.
+        left = len(items) - index - 1
+        room = limit - used - 1 - (len(more % left) + 1 if left else 0)
+        if len(item) > room:
+            if index or not keep_first:
+                return [*lines, more % (len(items) - index)], index
+            item = item[: max(room - len(CUT_SHORT), 0)] + CUT_SHORT
+        lines.append(item)
+        used += len(item) + 1
+    return lines, len(items)
 
 
 def restart_note(session_id: object) -> str:
@@ -873,7 +918,7 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
         if not project:
             # A folder with no name, such as "/", belongs to no project.
             return None, "-", "let through: no project"
-        inbox, delivered = deliver_inbox(project)
+        inbox, delivered = deliver_inbox(project, limit=HOOK_TEXT_LIMIT)
         if inbox:
             return inbox, project, "delivered %d" % delivered
         page = page_on()
@@ -1076,17 +1121,25 @@ def take_inbox(project: str | None) -> str:
     return deliver_inbox(project)[0]
 
 
-def deliver_inbox(project: str | None) -> tuple[str, int]:
-    """take_inbox, with how many answers and follow-ups it handed over."""
+def deliver_inbox(project: str | None, limit: int | None = None) -> tuple[str, int]:
+    """take_inbox, with how many answers and follow-ups it handed over. With a limit, it
+    hands over only the entries whose text fits in that many characters (always at least
+    one) and leaves the rest undelivered, for the next hook or `tempo inbox`."""
     # The text is built before the entries are marked delivered, so an error while
     # building it leaves them for the next hook instead of losing them.
     with Store(connect()) as store, store.delivering(project) as entries:
-        return _describe_inbox(store, entries), len(entries)
+        text, kept = _describe_inbox(store, entries, limit)
+        # Only the entries still in the list are marked delivered.
+        del entries[kept:]
+        return text, kept
 
 
-def _describe_inbox(store: Store, entries: Entries) -> str:
+def _describe_inbox(store: Store, entries: Entries, limit: int | None = None) -> tuple[str, int]:
+    """The text that hands the entries to Claude, and how many of them it holds: all of
+    them, or with a limit, those that fit in that many characters. The first one always
+    goes in, cut short if it is too long alone, so a long note never blocks the rest."""
     if not entries:
-        return ""
+        return "", 0
     # One wording wherever the answer was given: the page, the terminal screen or a command.
     if store.start_page():
         lines = ["New from the user in Tempo (http://127.0.0.1:%d/):" % _port()]
@@ -1115,12 +1168,16 @@ def _describe_inbox(store: Store, entries: Entries) -> str:
         else:
             line = "- %s asks for more: %s" % (heading, entry["body"])
         lines.append(line)
-    if any(entry["kind"] == "followup" for entry in entries):
-        lines.append(
-            "Answer each follow-up in the question itself with `tempo reword --context`, so"
-            " the box the user reads shows it; use a subagent when it needs research."
-        )
-    return "\n".join(lines)
+    follow_up = (
+        "Answer each follow-up in the question itself with `tempo reword --context`, so"
+        " the box the user reads shows it; use a subagent when it needs research."
+    )
+    # The follow-up line goes last, so the entries' share of the limit leaves room for it.
+    room = None if limit is None else limit - len(follow_up) - 1
+    lines, kept = _fitting(lines[:1], lines[1:], room, MORE_NEWS, keep_first=True)
+    if any(entry["kind"] == "followup" for entry in entries[:kept]):
+        lines.append(follow_up)
+    return "\n".join(lines), kept
 
 
 def answered_label(question: Question) -> str:

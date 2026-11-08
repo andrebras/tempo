@@ -226,6 +226,67 @@ class CliTest(DatabaseTest):
             _, out, _ = run("wait", "--timeout", "5", "--interval", "0.1")
         self.assertIn("shop Q1 (Which way?) asks for more: Hm?", out)
 
+    def test_a_hook_hands_over_only_what_fits_and_leaves_the_rest(self):
+        # Claude Code shows a hook's text past 10,000 characters only as a short preview.
+        for number in range(1, 61):
+            self.add(title="Question %d" % number)
+            self.store.answer("demo", number, "a", "A long note. " * 20)
+        context = self.prompt_context()
+        self.assertLessEqual(len(context), cli.HOOK_TEXT_LIMIT)
+        left = len(self.store.undelivered("demo"))
+        self.assertGreater(left, 0)
+        self.assertIn(cli.MORE_NEWS % left, context)
+        self.assertNotIn("demo Q%d " % (61 - left), context)
+        # The next prompt brings the next batch, in order.
+        self.assertIn("demo Q%d " % (61 - left), self.prompt_context())
+
+    def test_a_note_too_long_alone_is_cut_short_but_delivered(self):
+        self.add()
+        self.store.answer("demo", 1, "a", "x" * 20000)
+        self.add()
+        self.store.follow_up("demo", 2, "y" * 20000)
+        context = self.prompt_context()
+        self.assertLessEqual(len(context), cli.HOOK_TEXT_LIMIT)
+        self.assertIn(cli.CUT_SHORT, context)
+        self.assertIn(cli.MORE_NEWS % 1, context)
+        self.assertEqual([e["number"] for e in self.store.undelivered("demo")], [2])
+
+    def test_the_restart_line_counts_toward_the_hook_limit(self):
+        for number in range(1, 61):
+            self.add()
+            self.store.answer("demo", number, "a", "A long note. " * 20)
+        with mock.patch.object(cli, "restart_note", return_value="r" * 3000):
+            context = self.prompt_context()
+        self.assertLessEqual(len(context), cli.HOOK_TEXT_LIMIT)
+
+    def test_the_stop_hook_hands_over_only_what_fits(self):
+        for number in range(1, 61):
+            self.add()
+            self.store.answer("demo", number, "a", "A long note. " * 20)
+        reason = json.loads(run("hook", "stop", stdin="{}")[1])["reason"]
+        self.assertLessEqual(len(reason), cli.HOOK_TEXT_LIMIT)
+        self.assertIn(cli.MORE_NEWS % len(self.store.undelivered("demo")), reason)
+
+    def test_the_session_note_lists_only_the_open_questions_that_fit(self):
+        for number in range(1, 201):
+            self.add(title="An open question with a fairly long title, number %d" % number)
+        with mock.patch.object(cli, "start_server", return_value=True):
+            out = run("hook", "session-start", stdin="{}")[1]
+        context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertLessEqual(len(context), cli.HOOK_TEXT_LIMIT)
+        listed = context.count("- Q")
+        self.assertGreater(listed, 10)
+        self.assertIn(cli.MORE_QUESTIONS % (200 - listed), context)
+
+    def test_inbox_hands_over_everything_at_once(self):
+        # `tempo inbox` and `tempo wait` print to a Bash tool, which has a larger limit.
+        for number in range(1, 61):
+            self.add()
+            self.store.answer("demo", number, "a", "A long note. " * 20)
+        out = run("inbox")[1]
+        self.assertIn("demo Q60 ", out)
+        self.assertEqual(self.store.undelivered("demo"), [])
+
     def test_an_answer_whose_text_cannot_be_built_is_not_lost(self):
         self.add(title="Which DB?", options=["Postgres", "SQLite"])
         self.store.answer("demo", 1, "a")
