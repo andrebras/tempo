@@ -74,8 +74,15 @@ decision, it adds a question and links to it in chat. On the page you can:
 - **Spot what changed**: a dot after a question's number in the list means Claude reworded
   it or added context since you last opened it.
 - **Adjust Settings** with the gear button: theme, font, text size and line width, whether
-  each session starts the page, and project names. Settings also lists the folders each project covers. When a folder looks renamed or
-  moved, a banner asks whether to link it to its old project.
+  each session starts the page, and project names. Settings also lists the folders each
+  project covers. When a folder looks renamed or moved, a banner asks whether to link it to
+  its old project.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/settings-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/settings-light.png">
+  <img alt="Settings on the Tempo page: the Appearance card with theme, font, text size and width, and the Sessions card with the On and Off switch for starting the page with each session." src="docs/settings-light.png" width="1280">
+</picture>
 
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too.
@@ -126,34 +133,9 @@ for you. Questions (bottom left) lists the selected project's open questions, gr
 as on the page: `»` marks the goal's start-here question, `…` one waiting on Claude, and
 `quick` one that is quick to answer. Detail (right) shows the selected question: its context,
 the lettered options with the recommended one marked, and its thread. The bottom line shows the
-keys for the panel you are in. This is the screen at 80 by 24 characters:
+keys for the panel you are in.
 
-```text
-┌─ Projects ─────────────┐┌─ Detail ───────────────────────────────────────────┐
-│● shop                 2││tempo · Q1 · open                                   │
-│● tempo                3││Which database should the sync use?                 │
-└────────────────────────┘│Goal: Release 0.7 · quick · open 6 minutes          │
-┌─ Questions ────────────┐│Start here: unlocks Q2 and Q3                       │
-│Release 0.7             ││                                                    │
-│»Q1 Which databas… quick││The sync keeps a copy of each project's questions on│
-│ Q2 Ship the scre… quick││a second machine.                                   │
-│Other                   ││                                                    │
-│…Q3 Keep the old oq com…││• SQLite needs nothing installed and is what Tempo  │
-│                        ││  already uses.                                     │
-│                        ││• Postgres handles many writers, but needs a server.│
-│                        ││                                                    │
-│                        ││The sync command runs every few minutes.            │
-│                        ││                                                    │
-│                        ││(a) SQLite, one file per project [recommended]      │
-│                        ││(b) Postgres on the home server                     │
-│                        ││(c) Wait until someone asks for sync                │
-│                        ││                                                    │
-│                        ││Thread                                              │
-│                        ││Asked 2026-11-07 23:33                              │
-│                        ││                                                    │
-└────────────────────────┘└────────────────────────────────────────────────────┘
-j/k question  Enter detail  h/l panels  a-c answer  r follow up  ? help  q quit
-```
+![tempo tui in a terminal: the cursor moves down the questions and into one, which is answered with option (b) and a typed note; the screen confirms the answer and moves on, then shows the list of keys.](docs/tui.gif)
 
 | Key | What it does |
 | --- | --- |

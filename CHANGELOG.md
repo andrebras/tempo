@@ -6,6 +6,13 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The README shows `tempo tui` as an animated GIF, in a terminal's real colours: moving
+  through the questions, answering one with a note, and the list of keys. It replaces a text
+  drawing of the screen. Settings has its own pictures too, in light and dark. `bin/media`
+  makes them all again; the GIF needs ttyd (`brew install ttyd`).
+
 ### Changed
 
 - The page log says "page start requested" when a session starts the page, instead of "page
