@@ -133,6 +133,11 @@ it never takes the real page's place. Every new session checks what is running o
 - Anything else that answers, such as a Tempo too old to have `/health` or another
   program: it is left alone.
 
+After starting its server, the session checks, for up to two seconds, what answers on the
+port. An older session starting at the same moment may have found the port free too and
+started its older server, which then holds the port; when what answers is an older Tempo on
+the same database, it is replaced once.
+
 To tell, Tempo asks the server for `/health`. That address answers without opening the
 database, so a broken database can't hide the server. It returns JSON with `app`
 (`"tempo"`), `version`, `commit` (the git commit, when Tempo runs from a git checkout),
@@ -268,7 +273,9 @@ The gear button at the top right of the page opens Settings.
   GitHub still matches, and a deleted one is not offered to unrelated new repositories. A
   repository remembered before Tempo noted these gets them the next time a session starts
   or a prompt arrives in it. One that goes missing before that is offered to any new git
-  repository, as before. Nothing is linked until you click.
+  repository, as before. Nothing is linked until you click. git gets 3 seconds for each
+  lookup, so a huge repository can't hold up a session: when finding its first commit takes
+  longer, the folder is recorded without it, and only its remote is compared.
 
 Projects are saved in the database, so every session, the hooks and the `tempo` command use
 them.
