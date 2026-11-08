@@ -157,6 +157,11 @@ On a screen narrower than 60 characters it shows one panel at a time, and `h` an
 the others. Set `NO_COLOR` to turn colors off. It never starts the page. For answered and
 archived questions, search and Settings, use the page.
 
+Text you paste goes into the note or follow-up you are writing, line breaks included (shown
+as `↵`); a paste never acts as keys, so a newline in it doesn't send and a letter doesn't
+pick an option. Pasting anywhere else is ignored. Alt (Option on a Mac) with a key, such as
+Option+Left, is ignored too, rather than read as `Esc` and then a letter.
+
 ### `tempo tui` in a tmux popup
 
 tmux can open `tempo tui` in a popup window over your panes, and close it when you quit.

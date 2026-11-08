@@ -66,6 +66,19 @@ All notable changes to Tempo are listed here. The format follows
   a hook's text, and says how many more are waiting; those come with the next hook. Before,
   a large batch was marked delivered in full, but Claude saw only its first 2,000
   characters. The SessionStart list of open questions is held to the same limit.
+- In the terminal screen (`tempo tui`), pasted text stays text. A multi-line paste into a
+  note used to send the note at its first line break and then read the rest as keys, which
+  could answer the next question. The screen now turns on bracketed paste, so the terminal
+  marks pasted text, and line breaks in it are kept in the note. With a terminal that
+  doesn't mark pastes, keys that arrive with the Enter that sends are dropped.
+- In the terminal screen, Alt (Option on a Mac) with a key, such as Option+Left, is ignored.
+  Before, it was read as `Esc` and then a letter: it threw away the text being typed, picked
+  an option or quit.
+- The terminal screen no longer hangs, with its memory growing, when the Detail panel is
+  only a few columns wide.
+- The terminal screen counts an emoji made of several joined ones (such as a family) as two
+  columns, and zero-width characters as none, so rows that hold them keep their borders in
+  place.
 
 ## [0.7.1] - 2026-11-08
 
