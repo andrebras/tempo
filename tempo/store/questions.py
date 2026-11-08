@@ -203,8 +203,14 @@ class QuestionStore(StoreBase):
         body: str | None = "",
         *,
         delivered: bool = False,
+        version: int | None = None,
     ) -> Question:
-        """delivered=True: as for follow_up."""
+        """delivered=True: as for follow_up.
+
+        version is the wording the user saw, from the page or the terminal screen. When
+        Claude has reworded the question since, the answer is refused: the same letter may
+        now name another option. None answers the current wording, as `tempo answer` does.
+        """
         body = (body or "").strip()
         choice = (choice or "").strip().lower()
         # The checks run inside the write's lock, so a second answer or a reword from
@@ -216,6 +222,11 @@ class QuestionStore(StoreBase):
             if question["status"] == "answered":
                 raise QuestionError("This question is already answered; reopen it to answer again")
             current = self._current_version(question["id"])
+            if version is not None and version != current["version"]:
+                raise QuestionError(
+                    "Q%d changed since you looked at it (now version %d); check it again"
+                    % (question["number"], current["version"])
+                )
             letters = [option["letter"] for option in json.loads(current["options"])]
             if choice:
                 if choice not in letters:
