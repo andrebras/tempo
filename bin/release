@@ -4,7 +4,8 @@
     bin/release 0.6.0
 
 Run it in the main checkout, on an up-to-date and clean `main`. It does the steps of a
-release by hand, in order, printing each one and stopping at the first that fails:
+release by hand, in order, printing each one and stopping at the first that fails (then
+it goes back to `main`, and deletes the release branch unless it was pushed):
 
 1. checks the version (x.y.z, higher than the current one), that `main` is clean and the
    same as `origin/main`, and that CHANGELOG.md has something under `## [Unreleased]`;
@@ -225,19 +226,45 @@ def release(version: str, root: Path = ROOT, today: date | None = None) -> None:
 
     step("Make the branch %s" % branch)
     run(["git", "switch", "--quiet", "--create", branch], root)
-    step("Set the version to %s and date the CHANGELOG %s" % (version, today.isoformat()))
-    apply_release(root, version, today)
-    step("Commit")
-    run(["git", "commit", "--quiet", "--all", "--message", "Release %s" % version], root)
+    try:
+        step("Set the version to %s and date the CHANGELOG %s" % (version, today.isoformat()))
+        apply_release(root, version, today)
+        step("Commit")
+        run(["git", "commit", "--quiet", "--all", "--message", "Release %s" % version], root)
 
-    step("Run bin/ci in a clean copy")
-    clean_ci(root, branch)
-    step("Push, open the pull request and turn on auto-merge")
-    url = publish(root, branch, version, pr_body(version, current, notes, today))
+        step("Run bin/ci in a clean copy")
+        clean_ci(root, branch)
+        step("Push, open the pull request and turn on auto-merge")
+        url = publish(root, branch, version, pr_body(version, current, notes, today))
+    except BaseException:
+        back_to_main(root, branch)
+        raise
     run(["git", "switch", "--quiet", "main"], root)
 
     print("\nOpened %s. GitHub merges it once its CI passes.\n" % url)
     print(FOLLOW_UP)
+
+
+def back_to_main(root: Path, branch: str) -> None:
+    """After a failed step, go back to main, so the release can be run again. The release
+    branch is deleted when it never reached GitHub; when it did, how to remove it is
+    printed. Only the release's own changes are discarded: main was clean before."""
+    try:
+        run(["git", "reset", "--quiet", "--hard"], root)
+        run(["git", "switch", "--quiet", "main"], root)
+        # The push sets up origin/<branch> here, so it shows whether the branch got there.
+        if run(["git", "branch", "--list", "--remotes", "origin/" + branch], root, quiet=True):
+            print(
+                "Back on main. %s is on GitHub: once it is not needed, remove it with"
+                " `git push origin --delete %s` and `git branch -D %s`." % (branch, branch, branch),
+                file=sys.stderr,
+            )
+        else:
+            run(["git", "branch", "--quiet", "-D", branch], root)
+            print("Back on main; %s was deleted." % branch, file=sys.stderr)
+    except (OSError, subprocess.CalledProcessError) as error:
+        # The step that failed matters more: it is the error shown.
+        print("Could not go back to main (%s): do it by hand." % error, file=sys.stderr)
 
 
 def main(argv: list[str]) -> int:
