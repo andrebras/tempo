@@ -10,9 +10,9 @@ The user answered a Tempo question by typing /tempo:answer. Tempo has already re
 answer and marked it delivered, so no hook passes it on again:
 
 ```!
-"${CLAUDE_PLUGIN_ROOT}"/bin/tempo slash answer --cwd "${CLAUDE_PROJECT_DIR}" <<'TEMPO_TYPED_TEXT'
+"${CLAUDE_PLUGIN_ROOT}"/bin/tempo slash answer --cwd "${CLAUDE_PROJECT_DIR}" <<'TEMPO_END_OF_TYPED_TEXT_9C4F2A7E'
 $ARGUMENTS
-TEMPO_TYPED_TEXT
+TEMPO_END_OF_TYPED_TEXT_9C4F2A7E
 ```
 
 If the output says nothing was recorded, tell the user why in one line and do nothing else.

@@ -1,5 +1,7 @@
 import os
+import re
 import subprocess
+import tempfile
 import unittest
 
 from tempo import slash
@@ -9,6 +11,11 @@ from tests.test_cli import run
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS = ("list", "show", "answer", "dive")
+# The line that ends the typed text in each skill's shell block: one nobody types or pastes
+# by chance. The old one, TEMPO_TYPED_TEXT, was a plain name.
+END = "TEMPO_END_OF_TYPED_TEXT_9C4F2A7E"
+# What Claude Code puts its values in place of: $ARGUMENTS and ${CLAUDE_...}.
+PLACEHOLDER = re.compile(r"\$(ARGUMENTS)\b|\$\{(CLAUDE_[A-Z_]+)\}")
 
 
 class ParsingTest(DatabaseTest):
@@ -150,7 +157,7 @@ class SkillFilesTest(unittest.TestCase):
             )
             self.assertIn(
                 '```!\n"${CLAUDE_PLUGIN_ROOT}"/bin/tempo slash %s --cwd "${CLAUDE_PROJECT_DIR}"'
-                " <<'TEMPO_TYPED_TEXT'\n$ARGUMENTS\nTEMPO_TYPED_TEXT\n```" % name,
+                " <<'%s'\n$ARGUMENTS\n%s\n```" % (name, END, END),
                 text,
             )
             words = " ".join(text.split())
@@ -160,7 +167,7 @@ class SkillFilesTest(unittest.TestCase):
     def test_the_heredoc_hands_the_text_over_untouched(self):
         # The same shell lines the skill runs, with the text Claude Code puts in place.
         typed = '57 it\'s "odd" $(id) `id` ; echo no'
-        script = "cat <<'TEMPO_TYPED_TEXT'\n%s\nTEMPO_TYPED_TEXT\n" % typed
+        script = "cat <<'%s'\n%s\n%s\n" % (END, typed, END)
         out = subprocess.run(
             ["/bin/sh", "-c", script], capture_output=True, text=True, check=True
         ).stdout
@@ -168,9 +175,36 @@ class SkillFilesTest(unittest.TestCase):
 
     def test_a_line_with_only_the_closing_word_ends_the_text(self):
         # The known limit in docs/reference.md: the rest runs as shell commands.
-        typed = "57 first\nTEMPO_TYPED_TEXT\necho after"
-        script = "cat <<'TEMPO_TYPED_TEXT'\n%s\nTEMPO_TYPED_TEXT\n" % typed
+        typed = "57 first\n%s\necho after" % END
+        script = "cat <<'%s'\n%s\n%s\n" % (END, typed, END)
         out = subprocess.run(
             ["/bin/sh", "-c", script], capture_output=True, text=True, check=False
         ).stdout
         self.assertEqual(out, "57 first\nafter\n")
+
+    def test_typed_lines_like_the_old_end_marker_stay_text(self):
+        # Claude Code puts the typed text in place of $ARGUMENTS, then the session's values
+        # in place of ${CLAUDE_...}, inside the typed text too, before the shell reads the
+        # block. A line that ends the heredoc early runs the lines after it as commands.
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        proof = os.path.join(tmp.name, "proof")
+        typed = "57 fine\nTEMPO_TYPED_TEXT\n${CLAUDE_SESSION_ID}\ntouch %s\nnote" % proof
+        values = {
+            "ARGUMENTS": typed,
+            "CLAUDE_PLUGIN_ROOT": ROOT,
+            "CLAUDE_PROJECT_DIR": tmp.name,
+            "CLAUDE_SESSION_ID": "0a1b2c3d",
+        }
+
+        def fill(text):
+            return PLACEHOLDER.sub(lambda match: values[match.group(1) or match.group(2)], text)
+
+        env = dict(os.environ, TEMPO_DB=os.path.join(tmp.name, "q.db"), TEMPO_PORT=str(TEST_PORT))
+        for name in SKILLS:
+            block = re.search(r"```!\n(.*?)```", self.read(name), re.S).group(1)
+            done = subprocess.run(
+                ["/bin/sh", "-c", fill(fill(block))], capture_output=True, text=True, env=env
+            )
+            self.assertEqual(done.returncode, 0, (name, done.stdout, done.stderr))
+            self.assertFalse(os.path.exists(proof), name)
