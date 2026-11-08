@@ -358,7 +358,7 @@ class QuestionStore(StoreBase):
         return row["next_number"] if row else 1
 
     def _find(self, project: str, number: int | str) -> sqlite3.Row:
-        row = self.db.execute(
+        row: sqlite3.Row | None = self.db.execute(
             "SELECT * FROM questions WHERE project = ? AND number = ?", (project, int(number))
         ).fetchone()
         if row is None:
@@ -405,10 +405,11 @@ class QuestionStore(StoreBase):
         self.db.execute("UPDATE questions SET start_here = ? WHERE id = ?", (reason, question_id))
 
     def _current_version(self, question_id: int) -> sqlite3.Row:
-        return self.db.execute(
+        version: sqlite3.Row = self.db.execute(
             "SELECT * FROM versions WHERE question_id = ? ORDER BY version DESC LIMIT 1",
             (question_id,),
         ).fetchone()
+        return version
 
     def _insert_version(
         self,

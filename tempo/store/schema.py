@@ -261,7 +261,7 @@ def _add_column(db: sqlite3.Connection, table: str, column: str, kind: str) -> N
 
 
 def _version(db: sqlite3.Connection) -> int:
-    return db.execute("PRAGMA user_version").fetchone()[0]
+    return int(db.execute("PRAGMA user_version").fetchone()[0])
 
 
 def _migrate(db: sqlite3.Connection) -> None:

@@ -317,9 +317,11 @@ class ProjectStore(QuestionStore):
     # Helpers
 
     def _question_count(self, project: str) -> int:
-        return self.db.execute(
-            "SELECT COUNT(*) FROM questions WHERE project = ?", (project,)
-        ).fetchone()[0]
+        return int(
+            self.db.execute(
+                "SELECT COUNT(*) FROM questions WHERE project = ?", (project,)
+            ).fetchone()[0]
+        )
 
     def _has_project_row(self, project: str) -> bool:
         return (
