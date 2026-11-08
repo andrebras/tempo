@@ -4,6 +4,14 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Answers and follow-ups reach Claude as "New from the user in Tempo", wherever they were
+  given. Before, the heading said "on the Tempo page" even for answers from the terminal
+  screen, `tempo answer` or `/tempo:answer`.
+
 ## [0.7.1] - 2026-11-08
 
 ### Added

@@ -1084,8 +1084,9 @@ def deliver_inbox(project: str | None) -> tuple[str, int]:
 def _describe_inbox(store: Store, entries: Entries) -> str:
     if not entries:
         return ""
+    # One wording wherever the answer was given: the page, the terminal screen or a command.
     if store.start_page():
-        lines = ["New from the user on the Tempo page (http://127.0.0.1:%d/):" % _port()]
+        lines = ["New from the user in Tempo (http://127.0.0.1:%d/):" % _port()]
     else:
         lines = ["New from the user in Tempo:"]
     for entry in entries:
