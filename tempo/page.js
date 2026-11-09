@@ -283,11 +283,12 @@ function renameBanner(rename) {
     onclick: () => act("/api/folders/link", { path: rename.path, project: old.project }),
   }, several ? `Link to ${old.project} (${old.shown})` : `Link to ${old.project}`));
   const where = [el("code", {}, rename.folder), ` (${rename.shown}) is a new folder`];
+  const why = `They have the same git ${rename.proof}. `;
   const text = several
     ? [". Several known folders no longer exist, so it may be one of them renamed or moved. "
-      + "Link it to the one it was, or keep it apart."]
+      + why + "Link it to the one it was, or keep it apart."]
     : [", and ", el("code", {}, rename.candidates[0].shown),
-      `, filed under ${rename.candidates[0].project}, no longer exists. `
+      `, filed under ${rename.candidates[0].project}, no longer exists. ${why}`
       + "Is it the same folder, renamed or moved?"];
   return el("div", { class: "rename", role: "status" },
     el("p", {}, ...where, ...text), el("div", { class: "actions" }, ...links, keep, error));

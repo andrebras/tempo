@@ -906,22 +906,23 @@ def rename_note(rename: dict[str, Any], page: bool = True) -> str:
     candidates = rename["candidates"]
     shows = "shows" if page else "(started with `tempo serve --background`) shows"
     where = "This folder, `%s` (%s), is new to Tempo" % (rename["folder"], rename["shown"])
+    why = "Tempo thinks so because they have the same git %s." % rename["proof"]
     if len(candidates) == 1:
         old = candidates[0]
         return (
-            "- %s, and %s, filed under %s, no longer exists, so it looks renamed or moved."
+            "- %s, and %s, filed under %s, no longer exists, so it looks renamed or moved. %s"
             ' Tell the user in chat: the Tempo page %s a banner with a "Link to %s" button,'
             " or they can keep this folder as its own project. Until they pick, its questions"
             " go to the project %s."
-            % (where, old["shown"], old["project"], shows, old["project"], rename["project"])
+            % (where, old["shown"], old["project"], why, shows, old["project"], rename["project"])
         )
     gone = ", ".join(str(old["shown"]) for old in candidates)
     return (
         "- %s, and several known folders no longer exist (%s), so it may be one of them"
-        " renamed or moved. Tell the user in chat: the Tempo page %s a banner with a"
+        " renamed or moved. %s Tell the user in chat: the Tempo page %s a banner with a"
         ' "Link to <project>" button for each missing folder, or they can keep this folder'
         " as its own project. Until they pick, its questions go to the project %s."
-        % (where, gone, shows, rename["project"])
+        % (where, gone, why, shows, rename["project"])
     )
 
 

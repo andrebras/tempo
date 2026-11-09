@@ -1258,6 +1258,15 @@ class RepoIdentityNoteTest(GitTest):
         os.rename(self.old, self.new)
         self.assertIn("looks renamed or moved", self.start(self.new))
 
+    def test_the_note_says_a_shared_first_commit_is_why(self):
+        os.rename(self.old, self.new)
+        self.assertIn("they have the same git first commit", self.start(self.new))
+
+    def test_the_note_says_a_shared_remote_is_why(self):
+        shutil.rmtree(self.old)
+        self.repo(self.new, "git@github.com:me/open-questions.git")
+        self.assertIn("they have the same git remote address", self.start(self.new))
+
     def test_a_missing_repo_without_identity_is_not_offered(self):
         self.forget_identity(self.old)
         shutil.rmtree(self.old)
