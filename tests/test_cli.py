@@ -634,6 +634,72 @@ class CliTest(DatabaseTest):
                 reply = [("user", "Go"), ("assistant", [{"type": "text", "text": text}])]
                 self.assertEqual(self.stop(*reply), "")
 
+    def test_stop_catches_a_request_to_pick_between_choices(self):
+        cases = [
+            "**Pending steps for you:** tell me A, B or C.",
+            "**Pending steps for you:** reply with A, B or C.",
+            "Pick A or B.",
+            "Choose one of 1a or 1b.",
+            "Answer with a, b, or c.",
+            "Reply with **A** or **B** and I will carry on.",
+            "Tell me: A or B?",
+            "Please choose either 1 or 2.",
+        ]
+        for text in cases:
+            with self.subTest(text):
+                out = self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
+                self.assertEqual(json.loads(out or "{}").get("decision"), "block")
+
+    def test_stop_lets_a_request_to_do_something_through(self):
+        cases = [
+            "run bin/setup",
+            "tell me when it finishes",
+            "reply here if it fails",
+            "Pending steps: run tempo serve --background",
+            "Pick a name you like or keep the old one.",
+            "Tell me what you think or leave a note.",
+            "Choose a port or use the default.",
+        ]
+        for text in cases:
+            with self.subTest(text):
+                reply = [("user", "Go"), ("assistant", [{"type": "text", "text": text}])]
+                self.assertEqual(self.stop(*reply), "")
+
+    def test_stop_exempts_a_request_to_pick_that_tempo_already_has(self):
+        ask = "Tell me A, B or C."
+        cases = {
+            "ran tempo add": [
+                ("user", "Go"),
+                ("assistant", [bash("tempo add --title T", "t1")]),
+                ("user", [result("t1", "Added Q1")]),
+                ("assistant", [{"type": "text", "text": ask}]),
+            ],
+            "ran tempo reword": [
+                ("user", "Go"),
+                ("assistant", [bash("tempo reword 3 --note N", "t2")]),
+                ("user", [result("t2", "Reworded Q3")]),
+                ("assistant", [{"type": "text", "text": ask}]),
+            ],
+            "ran tempo context": [
+                ("user", "Go"),
+                ("assistant", [bash("tempo context 3 --note N", "t3")]),
+                ("user", [result("t3", "Added context to Q3")]),
+                ("assistant", [{"type": "text", "text": ask}]),
+            ],
+            "linked": [
+                ("user", "Go"),
+                (
+                    "assistant",
+                    [{"type": "text", "text": ask + " See http://127.0.0.1:2204/#/demo/4"}],
+                ),
+            ],
+            "code": [("user", "Go"), ("assistant", [{"type": "text", "text": "`%s`" % ask}])],
+            "quoted": [("user", "Go"), ("assistant", [{"type": "text", "text": "> %s" % ask}])],
+        }
+        for name, replies in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.stop(*replies), "")
+
     def test_stop_lets_tempo_questions_and_old_replies_through(self):
         options = [{"type": "text", "text": "(a) Left (b) Right"}]
         linked = [{"type": "text", "text": "(a) Left (b) Right http://127.0.0.1:2204/#/demo/1"}]
