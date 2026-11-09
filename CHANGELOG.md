@@ -4,6 +4,15 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Tempo no longer says a new git repository may be a missing folder renamed or moved unless
+  it can prove it, by the same first commit or else the same remote. A missing folder with
+  neither recorded is offered to no one, and offers saved earlier without proof stop showing.
+  When there is proof, the banner and Claude's note say what it is.
+
 ## [0.9.0] - 2026-11-08
 
 ### Changed

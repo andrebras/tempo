@@ -272,8 +272,10 @@ The gear button at the top right of the page opens Settings.
   same first commit or, when none has that, the same remote. So a repository renamed on
   GitHub still matches, and a deleted one is not offered to unrelated new repositories. A
   repository remembered before Tempo noted these gets them the next time a session starts
-  or a prompt arrives in it. One that goes missing before that is offered to any new git
-  repository, as before. Nothing is linked until you click. git gets 3 seconds for each
+  or a prompt arrives in it. One that goes missing before that has no proof, so it is
+  offered to no one and nothing is said; an offer saved earlier without proof no longer
+  shows either. When there is proof, the banner and Claude's note say which: the same first
+  commit or the same remote. Nothing is linked until you click. git gets 3 seconds for each
   lookup, so a huge repository can't hold up a session: when finding its first commit takes
   longer, the folder is recorded without it, and only its remote is compared.
 
