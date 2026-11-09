@@ -387,9 +387,9 @@ function renderSessions(data) {
       error));
 }
 
-// A Settings row: what it is on the left, a small form on the right. read() returns the
-// value to save, or null while nothing changed; the button is enabled only for a change.
-function saveRow(about, fields, read, save, label = "Save") {
+// A small Settings form that saves one value, and the line for its errors. read() returns
+// the value to save, or null while nothing changed; the button is enabled only for a change.
+function saveForm(fields, read, save, label = "Save") {
   const error = el("p", { class: "error", hidden: true });
   const button = el("button", { type: "submit", disabled: true }, label);
   const form = el("form", {
@@ -405,7 +405,7 @@ function saveRow(about, fields, read, save, label = "Save") {
       });
     },
   }, fields, button);
-  return el("div", { class: "row" }, about, form, error);
+  return [form, error];
 }
 
 function count(number, word) {
@@ -421,16 +421,16 @@ function renderProjects(data) {
     data.notice && el("p", { class: "meta", role: "status" }, data.notice),
     data.projects.length ? data.projects.map((project) => {
       const input = el("input", { value: project.name, "aria-label": `New name for ${project.name}` });
-      return saveRow(
+      return el("div", { class: "row" },
         el("div", {}, el("strong", {}, project.name),
           el("span", { class: "meta" }, count(project.questions, "question")),
           renderFolders(project)),
-        input,
-        () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
-        (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
-          renamed(project.name, name);
-          return { ...result, notice: joinNotice(project.name, name, result.moved || []) };
-        }), "Rename");
+        saveForm(input,
+          () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
+          (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
+            renamed(project.name, name);
+            return { ...result, notice: joinNotice(project.name, name, result.moved || []) };
+          }), "Rename"));
     }) : el("p", { class: "empty" }, "No projects yet. One appears when Claude asks its first question."));
 }
 
