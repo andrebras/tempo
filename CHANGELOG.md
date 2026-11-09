@@ -12,6 +12,11 @@ All notable changes to Tempo are listed here. The format follows
   one project into another (`m`, pick the other, then `y`), for example the old project of a
   folder that was renamed or moved. It joins them as renaming one to the other's name on the
   page does, and says where the questions went. Option (s) now needs Shift, like (r).
+- Each project in the page's Settings has a "Merge into…" list and a Merge button, to join a
+  folder's old project into its new one after the folder was renamed or moved. The page says
+  what will move and waits for a second click before it merges, then says where the
+  questions went and their new numbers. Renaming a project to another's name still does the
+  same.
 
 ### Fixed
 
