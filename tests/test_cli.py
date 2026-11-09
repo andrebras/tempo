@@ -2,7 +2,6 @@ import contextlib
 import io
 import json
 import os
-import shutil
 import sqlite3
 import subprocess
 import sys
@@ -1234,201 +1233,24 @@ class GitTest(DatabaseTest):
         self.addCleanup(patcher.stop)
 
 
-class RenameNoteTest(GitTest):
+class RenamedFolderTest(GitTest):
     """A session starts in a folder Tempo has never seen while a known one is gone."""
 
-    remote = "git@github.com:me/open-questions.git"
-
-    def setUp(self):
-        super().setUp()
+    def test_a_renamed_folder_starts_its_own_project_and_nothing_is_said(self):
         del os.environ["TEMPO_PROJECT"]
-        self.lab = os.path.realpath(self.tmp.name)
-        self.old = os.path.join(self.lab, "open-questions")
-        self.new = os.path.join(self.lab, "tempo")
-        subprocess.run(["git", "init", "-q", self.old], check=True)
-        remote = ["git", "-C", self.old, "remote", "add", "origin", self.remote]
-        subprocess.run(remote, check=True)
-        self.store.see_folder("open-questions", self.old, lambda: (None, self.remote))
+        lab = os.path.realpath(self.tmp.name)
+        old, new = os.path.join(lab, "open-questions"), os.path.join(lab, "tempo")
+        subprocess.run(["git", "init", "-q", old], check=True)
+        self.store.see_folder("open-questions", old)
         self.store.rename_project("open-questions", "Tempo")
-
-    def start(self, cwd):
+        os.rename(old, new)
         with mock.patch.object(cli, "start_server"):
-            _, out, _ = run("hook", "session-start", stdin=json.dumps({"cwd": cwd}))
-        return json.loads(out)["hookSpecificOutput"]["additionalContext"]
-
-    def test_a_renamed_folder_is_offered_and_claude_is_told(self):
-        os.rename(self.old, self.new)
-        note = self.start(self.new)
-        self.assertIn("This folder, `tempo`", note)
-        self.assertIn("filed under Tempo, no longer exists, so it looks renamed or moved", note)
-        self.assertIn('"Link to Tempo" button', note)
-        # Not linked until the user says so.
-        self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
-        self.assertEqual(len(self.store.renames()), 1)
-
-    def test_several_missing_folders_offer_a_link_for_each(self):
-        shop = os.path.join(self.lab, "shop")
-        self.store.see_folder("shop", shop, lambda: (None, self.remote))
-        os.rename(self.old, self.new)
-        note = self.start(self.new)
-        self.assertIn("several known folders no longer exist", note)
-        self.assertIn('"Link to <project>" button for each missing folder', note)
-        self.assertNotIn("Settings", note)
-        self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
-
-    def test_a_new_folder_outside_git_is_not_offered(self):
-        # A quick session in a scratch folder must not take the renamed repo's banner.
-        os.rename(self.old, self.new)
-        scratch = os.path.join(self.lab, "scratch")
-        os.makedirs(scratch)
-        self.assertNotIn("is new to Tempo", self.start(scratch))
-        self.assertIn("looks renamed or moved", self.start(self.new))
-        self.assertEqual([r["path"] for r in self.store.renames()], [self.new])
-
-    def test_no_missing_folder_starts_a_new_project_as_before(self):
-        subprocess.run(["git", "init", "-q", self.new], check=True)
-        note = self.start(self.new)
-        self.assertNotIn("is new to Tempo", note)
-        self.assertEqual(self.store.renames(), [])
-        self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
-
-
-class RepoIdentityNoteTest(GitTest):
-    """Real repos with commits and remotes, first seen by a session: a missing one is
-    offered only to a copy of it."""
-
-    # No signing: the test must not depend on how the developer signs commits.
-    git = ("git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false")
-    start = RenameNoteTest.start
-
-    def setUp(self):
-        super().setUp()
-        del os.environ["TEMPO_PROJECT"]
-        self.lab = os.path.realpath(self.tmp.name)
-        self.old = os.path.join(self.lab, "open-questions")
-        self.new = os.path.join(self.lab, "tempo")
-        self.repo(self.old, "git@github.com:me/open-questions.git")
-        self.start(self.old)
-        self.store.rename_project("open-questions", "Tempo")
-
-    def repo(self, path, remote=None):
-        subprocess.run([*self.git, "init", "-q", path], check=True)
-        # Its own message: two empty commits made in the same second would be the same.
-        message = os.path.basename(path)
-        commit = [*self.git, "-C", path, "commit", "-q", "--allow-empty", "-m", message]
-        subprocess.run(commit, check=True)
-        if remote:
-            subprocess.run(["git", "-C", path, "remote", "add", "origin", remote], check=True)
-
-    def test_the_renamed_repo_is_offered(self):
-        os.rename(self.old, self.new)
-        self.assertIn("looks renamed or moved", self.start(self.new))
-
-    def test_the_note_says_a_shared_first_commit_is_why(self):
-        os.rename(self.old, self.new)
-        self.assertIn("they have the same git first commit", self.start(self.new))
-
-    def test_the_note_says_a_shared_remote_is_why(self):
-        shutil.rmtree(self.old)
-        self.repo(self.new, "git@github.com:me/open-questions.git")
-        self.assertIn("they have the same git remote address", self.start(self.new))
-
-    def test_a_missing_repo_without_identity_is_not_offered(self):
-        self.forget_identity(self.old)
-        shutil.rmtree(self.old)
-        self.repo(self.new, "git@github.com:me/tempo.git")
-        self.assertNotIn("is new to Tempo", self.start(self.new))
-        self.assertEqual(self.store.renames(), [])
-
-    def test_a_saved_match_without_proof_says_nothing_at_session_start(self):
-        self.forget_identity(self.old)
-        shutil.rmtree(self.old)
-        self.repo(self.new, "git@github.com:me/tempo.git")
-        self.start(self.new)
-        # As an older Tempo left it: offered with no proof, never answered.
-        self.store.db.execute(
-            "UPDATE folders SET renamed_from = ? WHERE path = ?",
-            (json.dumps([self.old]), self.new),
-        )
-        self.store.db.commit()
-        self.assertNotIn("is new to Tempo", self.start(self.new))
-
-    def test_a_repo_renamed_on_github_too_is_offered(self):
-        os.rename(self.old, self.new)
-        url = "git@github.com:me/tempo.git"
-        subprocess.run(["git", "-C", self.new, "remote", "set-url", "origin", url], check=True)
-        self.assertIn("looks renamed or moved", self.start(self.new))
-
-    def test_an_unrelated_repo_is_not_offered_a_deleted_one(self):
-        shutil.rmtree(self.old)
-        self.repo(self.new, "git@github.com:me/tempo.git")
-        self.assertNotIn("is new to Tempo", self.start(self.new))
-        self.assertEqual(self.store.renames(), [])
-
-    def test_without_git_on_path_sessions_still_start(self):
-        shutil.rmtree(self.old)
-        self.repo(self.new)
-        with mock.patch.dict(os.environ, {"PATH": "/nonexistent"}):
-            note = self.start(self.new)
-            self.assertEqual(cli.repo_identity(self.new), (None, None))
-        self.assertNotIn("is new to Tempo", note)
-        self.assertEqual(self.store.project_for("tempo", self.new), "tempo")
-
-    def forget_identity(self, path):
-        """Make path look remembered before identities were stored."""
-        self.store.db.execute(
-            "UPDATE folders SET first_commit = NULL, remote = NULL WHERE path = ?", (path,)
-        )
-        self.store.db.commit()
-
-    def identity_of(self, path):
-        row = self.store.db.execute(
-            "SELECT first_commit, remote FROM folders WHERE path = ?", (path,)
-        ).fetchone()
-        return tuple(row)
-
-    def test_a_known_repo_without_identity_gets_it_once(self):
-        self.forget_identity(self.old)
-        self.start(self.old)
-        first_commit, remote = self.identity_of(self.old)
-        self.assertTrue(first_commit)
-        self.assertEqual(remote, "git@github.com:me/open-questions.git")
-        with mock.patch.object(cli, "repo_identity") as identity:
-            self.start(self.old)
-        identity.assert_not_called()
-        # Now a copy of it is matched when it goes missing.
-        os.rename(self.old, self.new)
-        self.assertIn("looks renamed or moved", self.start(self.new))
-
-    def test_a_known_repo_fills_in_a_stripped_remote(self):
-        url = "https://me:secret@github.com/me/open-questions.git"
-        subprocess.run(["git", "-C", self.old, "remote", "set-url", "origin", url], check=True)
-        self.forget_identity(self.old)
-        self.start(self.old)
-        self.assertEqual(self.identity_of(self.old)[1], "https://github.com/me/open-questions.git")
-
-    def test_a_known_folder_outside_git_makes_no_git_call(self):
-        scratch = os.path.join(self.lab, "scratch")
-        os.makedirs(scratch)
-        self.start(scratch)
-        with mock.patch.object(cli, "repo_identity") as identity:
-            self.start(scratch)
-        identity.assert_not_called()
-        self.assertEqual(self.identity_of(scratch), (None, None))
-
-    def test_without_git_on_path_a_known_repo_still_starts_and_fills_in_later(self):
-        self.forget_identity(self.old)
-        with mock.patch.dict(os.environ, {"PATH": "/nonexistent"}):
-            self.assertIn("Tempo", self.start(self.old))
-        self.assertEqual(self.identity_of(self.old), (None, None))
-        self.start(self.old)
-        self.assertTrue(self.identity_of(self.old)[0])
-
-    def test_a_token_in_the_remote_address_is_not_kept(self):
-        url = "https://me:secret@github.com/me/open-questions.git"
-        subprocess.run(["git", "-C", self.old, "remote", "set-url", "origin", url], check=True)
-        _, remote = cli.repo_identity(self.old)
-        self.assertEqual(remote, "https://github.com/me/open-questions.git")
+            _, out, _ = run("hook", "session-start", stdin=json.dumps({"cwd": new}))
+        note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("renamed", note)
+        self.assertNotIn("Link to", note)
+        self.assertEqual(self.store.project_for("tempo", new), "tempo")
+        self.assertEqual(self.store.project_for("open-questions", old), "Tempo")
 
 
 class ProjectNameTest(GitTest):
@@ -1472,25 +1294,20 @@ class ProjectNameTest(GitTest):
     def test_a_slow_git_gives_up_and_the_folder_is_still_recorded(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
-        repo = os.path.join(tmp.name, "shop")
-        subprocess.run([*git, "init", "-q", repo], check=True)
-        subprocess.run([*git, "-C", repo, "commit", "-q", "--allow-empty", "-m", "x"], check=True)
-        real = subprocess.run
+        repo = os.path.join(os.path.realpath(tmp.name), "shop")
+        subprocess.run(["git", "init", "-q", repo], check=True)
         timeouts = []
 
-        def slow_history(command, **kwargs):
+        def slow_git(command, **kwargs):
             timeouts.append(kwargs.get("timeout"))
-            if command[:2] == ["git", "rev-list"]:
-                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-            return real(command, **kwargs)
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
 
-        with mock.patch.object(cli.subprocess, "run", side_effect=slow_history):
+        with mock.patch.object(cli.subprocess, "run", side_effect=slow_git):
             self.assertEqual(cli.project_name(repo, record=True), "shop")
         self.assertEqual(set(timeouts), {cli.GIT_TIMEOUT})
         self.assertLess(cli.GIT_TIMEOUT, 10)
-        row = self.store.db.execute("SELECT folder, first_commit FROM folders").fetchall()
-        self.assertEqual([tuple(r) for r in row], [("shop", None)])
+        row = self.store.db.execute("SELECT folder, path FROM folders").fetchall()
+        self.assertEqual([tuple(r) for r in row], [("shop", repo)])
 
     def test_a_submodule_is_a_project_of_its_own(self):
         tmp = tempfile.TemporaryDirectory()
