@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 import stat
@@ -651,17 +652,22 @@ class ProjectsTest(DatabaseTest):
         self.assertEqual(self.store.folders()[0]["project"], "dataforge")
 
 
+def SAME_REPO():
+    """The identity of a repository every folder in a test is a copy of."""
+    return "c1", None
+
+
 class RenameTest(DatabaseTest):
     """A new folder while a known folder's path is gone: offer to link, never guess."""
 
     def setUp(self):
         super().setUp()
-        self.store.see_folder("open-questions", "/lab/open-questions")
+        self.store.see_folder("open-questions", "/lab/open-questions", SAME_REPO)
         self.store.rename_project("open-questions", "Tempo")
         self.gone = {"/lab/open-questions"}
 
     def see(self, path):
-        self.store.see_folder(path.rsplit("/", 1)[1], path)
+        self.store.see_folder(path.rsplit("/", 1)[1], path, SAME_REPO)
         return self.store.spot_rename(path, gone=lambda known: known in self.gone)
 
     def test_one_missing_path_is_offered_but_not_linked(self):
@@ -736,7 +742,7 @@ class RenameTest(DatabaseTest):
         self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "tempo")
 
     def test_several_missing_paths_are_all_offered(self):
-        self.store.see_folder("shop", "/lab/shop")
+        self.store.see_folder("shop", "/lab/shop", SAME_REPO)
         self.gone.add("/lab/shop")
         candidates = self.see("/lab/tempo")
         self.assertEqual([c["path"] for c in candidates], ["/lab/open-questions", "/lab/shop"])
@@ -820,10 +826,38 @@ class RepoIdentityTest(DatabaseTest):
         remote = "git@github.com:me/open-questions.git"
         self.assertEqual(self.see("/lab/other", "c4", remote), ["/lab/fork", "/lab/open-questions"])
 
-    def test_a_folder_remembered_without_identity_is_offered_as_before(self):
+    def test_a_folder_remembered_without_identity_is_not_offered(self):
         self.store.see_folder("notes", "/lab/notes")
         self.gone.add("/lab/notes")
-        self.assertEqual(self.see("/lab/shop", "c2", None), ["/lab/notes"])
+        self.assertEqual(self.see("/lab/shop", "c2", None), [])
+        self.assertEqual(self.store.renames(), [])
+
+    def test_renames_says_what_proves_the_match(self):
+        self.see("/lab/tempo", "c1", None)
+        self.assertEqual(self.store.renames()[0]["proof"], "first commit")
+        self.store.keep_folder("/lab/tempo")
+        self.see("/lab/rewritten", "c9", "git@github.com:me/open-questions.git")
+        self.assertEqual(self.store.renames()[0]["proof"], "remote address")
+
+    def save_match(self, path, *candidates):
+        """Store a match the way an older Tempo did, whether or not it has proof."""
+        self.store.db.execute(
+            "UPDATE folders SET renamed_from = ? WHERE path = ?", (json.dumps(candidates), path)
+        )
+        self.store.db.commit()
+
+    def test_a_saved_match_without_proof_stays_quiet(self):
+        self.store.see_folder("proj", "/tmp/proj")
+        self.see("/lab/deploy", "c2", None)
+        self.save_match("/lab/deploy", "/tmp/proj")
+        self.assertEqual(self.store.renames(), [])
+
+    def test_a_saved_match_keeps_only_its_proven_candidates(self):
+        self.store.see_folder("proj", "/tmp/proj")
+        self.see("/lab/tempo", "c1", None)
+        self.save_match("/lab/tempo", "/tmp/proj", "/lab/open-questions")
+        [rename] = self.store.renames()
+        self.assertEqual([c["path"] for c in rename["candidates"]], ["/lab/open-questions"])
 
     def test_identity_is_asked_only_for_a_new_folder_or_a_new_path(self):
         self.see("/lab/open-questions")
