@@ -6,6 +6,13 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `tempo tui` has a Settings view: press `s` to see every project with its folders, and merge
+  one project into another (`m`, pick the other, then `y`), for example the old project of a
+  folder that was renamed or moved. It joins them as renaming one to the other's name on the
+  page does, and says where the questions went. Option (s) now needs Shift, like (r).
+
 ### Fixed
 
 - Tempo no longer says a new git repository may be a missing folder renamed or moved unless
