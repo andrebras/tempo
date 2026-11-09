@@ -251,17 +251,6 @@
                font-size: .9em; background: var(--line); border-radius: 4px; padding: 0 .3em; }
   .rich a { color: var(--accent); }
 
-  #notice { padding: 12px 40px; background: var(--accent-soft); border-bottom: 1px solid var(--line); }
-  #notice .rename + .rename { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-  #notice p { margin: 0 0 8px; overflow-wrap: anywhere; }
-  #notice code { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: .875em; }
-  #notice .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  #notice .actions > :not(.error) { padding: 6px 14px; border-radius: 10px; border: 1px solid var(--accent);
-                                    background: var(--panel); color: var(--accent); font-weight: 600;
-                                    text-decoration: none; }
-  #notice .actions .primary { background: var(--accent); color: var(--on-accent); }
-  #notice .error { margin: 0; }
-
   #settings { padding: 32px 40px 48px; }
   .settings { max-width: 760px; margin: 0 auto; }
   .back { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 600; }
@@ -308,7 +297,7 @@
     /* The page fills the window and each pane scrolls on its own, so a long question
        doesn't scroll the list away, and a long list doesn't push the question down. */
     body { display: flex; flex-direction: column; height: 100vh; }
-    header, #notice { flex: none; }
+    header { flex: none; }
     main, #settings { flex: 1; min-height: 0; }
     main > * { min-height: 0; }
     #side { overflow: hidden; }
@@ -325,7 +314,6 @@
     #detail { padding: 20px 16px 40px; }
     #detail h2 { font-size: 1.375rem; }
     #settings { padding: 20px 16px 40px; }
-    #notice { padding: 12px 16px; }
     .card { padding: 16px 16px 4px; }
   }
 </style>
@@ -349,7 +337,6 @@
     <button id="gear" aria-pressed="false" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   </div>
 </header>
-<div id="notice" hidden></div>
 <main>
   <div id="side">
     <div class="side-top">

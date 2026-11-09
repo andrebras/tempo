@@ -1,18 +1,14 @@
 """Projects and the folders filed under them: remembering the folders sessions run in,
-spotting a folder that was renamed or moved, and renaming or joining projects in
-Settings."""
+and renaming or joining projects in Settings."""
 
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
-from collections.abc import Callable
 
 from tempo.store import common
 from tempo.store.common import (
     Folders,
-    Identity,
     Moves,
     Names,
     QuestionError,
@@ -33,20 +29,6 @@ def shown_path(path: str | None) -> str | None:
     return path
 
 
-def _proven(
-    path: str, folders: Folders, identities: dict[str, tuple[str | None, str | None]]
-) -> tuple[Folders, str | None]:
-    """Those of folders proven to be the repository at path, and what proves it: the same
-    first commit or, when none has that, the same remote address. A folder with neither
-    recorded is never proven."""
-    first_commit, remote = identities.get(path, (None, None))
-    same = [f for f in folders if first_commit and identities[str(f["path"])][0] == first_commit]
-    if same:
-        return same, "first commit"
-    same = [f for f in folders if remote and identities[str(f["path"])][1] == remote]
-    return same, "remote address" if same else None
-
-
 class ProjectStore(QuestionStore):
     """The Store's project and folder methods."""
 
@@ -55,45 +37,29 @@ class ProjectStore(QuestionStore):
 
     # Projects and their folders, renamed in Settings
 
-    def see_folder(
-        self, folder: str, path: str | None = None, identity: Identity | None = None
-    ) -> bool:
+    def see_folder(self, folder: str, path: str | None = None) -> bool:
         """Remember a folder a session ran in; a new one is filed under its own name.
 
         A folder is matched by its path first, then by a row of the same name that has no
         path yet (from before paths were stored), which then gets this path. Returns True
-        when the folder is new.
-
-        identity gives a git folder's first commit and remote address. It may be slow on a
-        long history, so it is asked only when the folder is new, gets its path, or has
-        neither yet (a folder remembered before they were stored gets them once), and
-        before the write lock is taken, so other sessions do not wait for git.
+        when the folder is new. A folder that was renamed or moved has a new path, so it
+        is a new folder: its project starts empty.
         """
         folder = _required(folder, "folder")
-        row = self._folder_row(folder, path)
-        fresh = path is not None and (
-            row is None
-            or row["path"] is None
-            or (row["first_commit"] is None and row["remote"] is None)
-        )
-        first_commit, remote = identity() if identity and fresh else (None, None)
         with self._transaction():
             row = self._folder_row(folder, path)
             if row is not None:
                 self.db.execute(
-                    "UPDATE folders SET path = ?, seen_at = ?,"
-                    " first_commit = COALESCE(?, first_commit), remote = COALESCE(?, remote)"
-                    " WHERE rowid = ?",
-                    (path or row["path"], common.now(), first_commit, remote, row["rowid"]),
+                    "UPDATE folders SET path = ?, seen_at = ? WHERE rowid = ?",
+                    (path or row["path"], common.now(), row["rowid"]),
                 )
                 return False
             # The name is the key, unless another folder of this name has it already.
             taken = self.db.execute("SELECT 1 FROM folders WHERE folder = ?", (folder,))
             key = path if path and taken.fetchone() else folder
             self.db.execute(
-                "INSERT INTO folders (folder, path, project, seen_at, first_commit, remote)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (key, path, self._new_project(folder, path), common.now(), first_commit, remote),
+                "INSERT INTO folders (folder, path, project, seen_at) VALUES (?, ?, ?, ?)",
+                (key, path, self._new_project(folder, path), common.now()),
             )
             return True
 
@@ -142,96 +108,6 @@ class ProjectStore(QuestionStore):
             for row in self.db.execute("SELECT * FROM folders")
         ]
         return sorted(folders, key=lambda folder: (folder["folder"] or "", folder["path"] or ""))
-
-    # Folders that may be a known one renamed or moved
-
-    def spot_rename(self, path: str, gone: Callable[[str], bool]) -> Folders:
-        """Note that the new folder at path may be a known folder renamed or moved: one
-        whose path is gone (no longer on disk). A gone folder stays on offer to each new
-        folder until one is linked to it, so a banner the user kept apart, or one not
-        answered yet, never hides it from the real renamed folder. Returns the
-        candidates; the folder keeps its own project until the user picks.
-
-        A gone folder whose repository is known is offered only to a copy of it: one with
-        the same first commit or, when none has that, the same remote address. So a
-        deleted repository is not offered to every unrelated new one. A gone folder with
-        neither recorded proves nothing, so it is offered to no one.
-        """
-        identities = self._identities()
-        missing = [
-            folder
-            for folder in self.folders()
-            if folder["path"] and folder["path"] != path and gone(str(folder["path"]))
-        ]
-        candidates, _ = _proven(path, missing, identities)
-        if candidates:
-            self.db.execute(
-                "UPDATE folders SET renamed_from = ? WHERE path = ?",
-                (json.dumps([folder["path"] for folder in candidates]), path),
-            )
-        return candidates
-
-    def renames(self) -> Summaries:
-        """New folders that may be renamed or moved ones, waiting for the user to say, each
-        with its candidates and the proof they share.
-
-        A folder whose every candidate was since linked to another folder has none left.
-        The proof is checked again here because renamed_from may hold a match saved before
-        proof was required: such a candidate is left out, and the saved row is not changed.
-        """
-        known = {folder["path"]: folder for folder in self.folders()}
-        identities = self._identities()
-        rows = self.db.execute(
-            "SELECT path, renamed_from FROM folders"
-            " WHERE renamed_from IS NOT NULL AND rename_answered_at IS NULL ORDER BY path"
-        )
-        renames = []
-        for row in rows:
-            saved = [known[old] for old in json.loads(row["renamed_from"]) if old in known]
-            candidates, proof = _proven(row["path"], saved, identities)
-            if candidates:
-                renames.append(dict(known[row["path"]], candidates=candidates, proof=proof))
-        return renames
-
-    def link_folder(self, path: str, project: str | None) -> None:
-        """File the folder at path under a project, and settle any rename it waited on.
-        The missing folders of that project it was offered are forgotten: the folder
-        was found, so no other new folder is offered it again.
-
-        Questions asked in the folder before it was linked went to its own project; when
-        no other folder uses that project, it joins the one linked to, so their answers
-        reach the folder's sessions."""
-        project = (project or "").strip()
-        if not project:
-            raise QuestionError("Pick a project for the folder")
-        # One transaction for the checks and every write, so the project is never joined
-        # with the banner still up, and nothing changes between the checks and the writes.
-        with self._transaction():
-            row = self.db.execute(
-                "SELECT project, renamed_from FROM folders WHERE path = ?", (path,)
-            ).fetchone()
-            if row is None:
-                raise QuestionError("There is no folder at %s" % path)
-            own = row["project"]
-            shared = self.db.execute(
-                "SELECT 1 FROM folders WHERE project = ? AND path IS NOT ?", (own, path)
-            ).fetchone()
-            if own != project and not shared and self._question_count(own):
-                self._rename_project(own, project)
-            self.db.execute(
-                "UPDATE folders SET project = ?, rename_answered_at = ? WHERE path = ?",
-                (project, common.now(), path),
-            )
-            for old in json.loads(row["renamed_from"] or "[]"):
-                self.db.execute(
-                    "DELETE FROM folders WHERE path = ? AND project = ?", (old, project)
-                )
-
-    def keep_folder(self, path: str) -> None:
-        """The folder at path is not a renamed one: it stays its own project."""
-        self.db.execute(
-            "UPDATE folders SET rename_answered_at = ? WHERE path = ?", (common.now(), path)
-        )
 
     def project_summaries(self) -> Summaries:
         """Every project with its question count and folders: projects that have
@@ -334,15 +210,6 @@ class ProjectStore(QuestionStore):
         return moves
 
     # Helpers
-
-    def _identities(self) -> dict[str, tuple[str | None, str | None]]:
-        """Each known path's recorded first commit and remote address."""
-        return {
-            row["path"]: (row["first_commit"], row["remote"])
-            for row in self.db.execute(
-                "SELECT path, first_commit, remote FROM folders WHERE path IS NOT NULL"
-            )
-        }
 
     def _question_count(self, project: str) -> int:
         return int(

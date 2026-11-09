@@ -66,8 +66,7 @@ three, each a call to `tempo hook …`:
   [The page server](#the-page-server)), unless you turned that off (see
   [Turning the page off](#turning-the-page-off)), and tells Claude how to use Tempo: every decision
   goes in Tempo, each question gets a goal, and every update ends with the project's open
-  questions. It then lists those open questions. When the session's folder looks like a
-  known folder renamed or moved, it asks Claude to tell you about the banner on the page.
+  questions. It then lists those open questions.
 - **UserPromptSubmit**, when you send a message: adds the answers and follow-ups Claude
   hasn't seen yet, so Claude reads them before your message.
 - **Stop**, when Claude finishes a reply: sends Claude back to work, at most once per
@@ -270,21 +269,10 @@ The gear button at the top right of the page opens Settings.
   Under each project, Settings lists the folders it covers, with their paths, read-only.
   Only folders still on disk are listed: a folder that no longer exists, or that was
   remembered before Tempo stored paths, is hidden but not deleted.
-- **Renamed or moved folders**: when a session runs in a new folder while a known folder no
-  longer exists, a banner on every screen asks whether the new folder is that one renamed or
-  moved. It has a "Link to <project>" button for each missing folder, named with that
-  folder's path, and a "Keep as its own project" button. Only a new git repository gets the
-  banner. Tempo notes each repository's first commit and the address of its `origin` remote
-  when it first sees the folder, and offers a missing folder only to a repository with the
-  same first commit or, when none has that, the same remote. So a repository renamed on
-  GitHub still matches, and a deleted one is not offered to unrelated new repositories. A
-  repository remembered before Tempo noted these gets them the next time a session starts
-  or a prompt arrives in it. One that goes missing before that has no proof, so it is
-  offered to no one and nothing is said; an offer saved earlier without proof no longer
-  shows either. When there is proof, the banner and Claude's note say which: the same first
-  commit or the same remote. Nothing is linked until you click. git gets 3 seconds for each
-  lookup, so a huge repository can't hold up a session: when finding its first commit takes
-  longer, the folder is recorded without it, and only its remote is compared.
+- **Renamed or moved folders**: Tempo knows a folder by its path, so a folder that was
+  renamed or moved is a new one to it and starts its own empty project. Tempo never guesses
+  that it is an old one. To bring the old project's questions along, merge the old project
+  into the new one with "Merge into…" (above), or with Settings (`s`) in `tempo tui`.
 
 Projects are saved in the database, so every session, the hooks and the `tempo` command use
 them.

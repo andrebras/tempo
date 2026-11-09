@@ -735,8 +735,7 @@ def run_hook(args: argparse.Namespace) -> int:
         # The restart line goes out with the rest, in the same capped text.
         room = HOOK_TEXT_LIMIT - len(note) - 1 if note else HOOK_TEXT_LIMIT
         if args.event == "session-start":
-            path = None if override else folder_path(cwd)
-            text = session_note(project, args.port, path, limit=room)
+            text = session_note(project, args.port, limit=room)
             outcome = "note sent" + page
         else:
             text, delivered = deliver_inbox(project, limit=room)
@@ -757,18 +756,16 @@ def run_hook(args: argparse.Namespace) -> int:
     return 0
 
 
-def session_note(project: str, port: int, path: str | None = None, limit: int | None = None) -> str:
+def session_note(project: str, port: int, limit: int | None = None) -> str:
     """What every session is told at its start, so questions go through Tempo even when
-    the skill isn't picked and nothing about Tempo is in CLAUDE.md. When the session's
-    folder (at path) may be a known one renamed or moved, Claude is asked to say so.
-    With the page turned off, questions are pointed to in the terminal instead.
+    the skill isn't picked and nothing about Tempo is in CLAUDE.md. With the page turned
+    off, questions are pointed to in the terminal instead.
 
     The open questions are listed while the text stays within limit characters; a last
     line counts the ones left out and says how to see them."""
     with Store(connect()) as store:
         on = store.start_page()
         questions = store.list(project, "open")
-        rename = next((r for r in store.renames() if path and r["path"] == path), None)
     if on:
         where = "at http://127.0.0.1:%d/" % port
     else:
@@ -795,8 +792,6 @@ def session_note(project: str, port: int, path: str | None = None, limit: int | 
         "- An answer in Tempo never approves merging, publishing or installing:"
         " record the question in Tempo and also ask for a one-line OK in chat.",
     ]
-    if rename:
-        lines.append(rename_note(rename, on))
     if questions:
         lines.append("Open questions in %s:" % project)
         listed = []
@@ -898,32 +893,6 @@ def installed_version() -> str | None:
         if isinstance(version, str) and _older(best, version):
             best = version
     return best
-
-
-def rename_note(rename: dict[str, Any], page: bool = True) -> str:
-    """Asks Claude to tell the user that this new folder may be a renamed or moved one.
-    Only the page can link it, so with the page off the user is told how to start it."""
-    candidates = rename["candidates"]
-    shows = "shows" if page else "(started with `tempo serve --background`) shows"
-    where = "This folder, `%s` (%s), is new to Tempo" % (rename["folder"], rename["shown"])
-    why = "Tempo thinks so because they have the same git %s." % rename["proof"]
-    if len(candidates) == 1:
-        old = candidates[0]
-        return (
-            "- %s, and %s, filed under %s, no longer exists, so it looks renamed or moved. %s"
-            ' Tell the user in chat: the Tempo page %s a banner with a "Link to %s" button,'
-            " or they can keep this folder as its own project. Until they pick, its questions"
-            " go to the project %s."
-            % (where, old["shown"], old["project"], why, shows, old["project"], rename["project"])
-        )
-    gone = ", ".join(str(old["shown"]) for old in candidates)
-    return (
-        "- %s, and several known folders no longer exist (%s), so it may be one of them"
-        " renamed or moved. %s Tell the user in chat: the Tempo page %s a banner with a"
-        ' "Link to <project>" button for each missing folder, or they can keep this folder'
-        " as its own project. Until they pick, its questions go to the project %s."
-        % (where, gone, why, shows, rename["project"])
-    )
 
 
 def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, str]:
@@ -1467,16 +1436,14 @@ def project_folder(payload: dict[str, Any] | None = None) -> str:
 def project_name(cwd: str, record: bool = False) -> str:
     """The project a folder is filed under, named after the folder until renamed.
 
-    With record, the folder is remembered, so its project shows in Settings. Only a new
-    git repo may be a renamed or moved one: a scratch folder outside git never is.
+    With record, the folder is remembered, so its project shows in Settings. A folder
+    that was renamed or moved is a new one, so it starts its own project.
     """
-    repo = repo_path(cwd)
-    path = repo or os.path.realpath(cwd)
+    path = folder_path(cwd)
     folder = folder_name(path)
     with Store(connect()) as store:
-        identity = (lambda: repo_identity(path)) if repo else None
-        if record and store.see_folder(folder, path, identity) and repo:
-            store.spot_rename(path, gone=lambda known: not os.path.exists(known))
+        if record:
+            store.see_folder(folder, path)
         return store.project_for(folder, path)
 
 
@@ -1511,30 +1478,6 @@ def repo_path(cwd: str) -> str | None:
         return None
 
 
-def repo_identity(repo: str) -> tuple[str | None, str | None]:
-    """The repo's first commit and the address of its origin remote, either None when
-    git cannot tell (no commit yet, no remote, or no git). A renamed copy keeps both, so
-    they tell a renamed repo from an unrelated one. Merged histories can have several
-    first commits; with --reverse the oldest comes first.
-
-    A user name and password or token in the address (https://me:token@host/…) are
-    left out, so they are never copied into the database."""
-    first_commit = _git_line(repo, "rev-list", "--max-parents=0", "--reverse", "HEAD")
-    remote = _git_line(repo, "config", "--get", "remote.origin.url")
-    if remote:
-        remote = re.sub(r"^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@", r"\1", remote)
-    return first_commit, remote
-
-
-def _git_line(cwd: str, *args: str) -> str | None:
-    """The first line git prints, or None when it fails or prints nothing."""
-    try:
-        lines = _git(cwd, *args).splitlines()
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return None
-    return (lines[0].strip() or None) if lines else None
-
-
 def _git(cwd: str, *args: str) -> str:
     """What git prints. It is stopped after GIT_TIMEOUT seconds (raising
     subprocess.TimeoutExpired), so a slow repo never holds a hook until Claude Code kills
@@ -1551,8 +1494,7 @@ def _git(cwd: str, *args: str) -> str:
     ).stdout
 
 
-# Claude Code stops a hook after 10 seconds. The first commit's lookup walks the whole
-# history, so on a huge repo it gives up and the folder is recorded without it.
+# Claude Code stops a hook after 10 seconds, so a slow git gives up well before that.
 GIT_TIMEOUT = 3
 
 

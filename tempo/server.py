@@ -197,7 +197,6 @@ def _questions(request: Handler, store: Store, args: list[str], body: dict[str, 
     project = query.get("project", [None])[0]
     # Projects whose folders have no questions yet are listed too.
     projects = [summary["name"] for summary in store.project_summaries()]
-    # New folders that may be renamed ones: the banner shows on every screen.
     request._json(
         200,
         {
@@ -205,7 +204,6 @@ def _questions(request: Handler, store: Store, args: list[str], body: dict[str, 
             "projects": projects,
             # When each project last had news, for the header's "new" dot.
             "activity": store.project_activity(),
-            "renames": store.renames(),
         },
     )
 
@@ -248,16 +246,8 @@ def _rename(request: Handler, store: Store, args: list[str], body: dict[str, Any
     request._save_setting(store, lambda: {"moved": store.rename_project(old, _text(body, "name"))})
 
 
-def _link_folder(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
-    request._save_setting(store, lambda: _link(store, body))
-
-
 def _start_page(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
     request._save_setting(store, lambda: _set_start_page(store, body))
-
-
-def _keep_folder(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
-    request._save_setting(store, lambda: _keep(store, body))
 
 
 # A part of a route's path that matches any one part, which is passed to the route.
@@ -275,8 +265,6 @@ ROUTES: list[tuple[str, tuple[str | None, ...], Run]] = [
     ("POST", ("api", "questions", ANY, ANY, "followup"), _follow_up),
     ("POST", ("api", "questions", ANY, ANY, "reopen"), _reopen),
     ("POST", ("api", "projects", ANY, "rename"), _rename),
-    ("POST", ("api", "folders", "link"), _link_folder),
-    ("POST", ("api", "folders", "keep"), _keep_folder),
     ("POST", ("api", "settings", "page"), _start_page),
 ]
 
@@ -343,35 +331,21 @@ def _commit() -> str | None:
 
 
 def _settings(store: Store) -> dict[str, Any]:
-    """What the Settings screen shows: projects with their folders, and new folders that
-    may be renamed ones, and whether each session starts the page. Only folders still on
-    disk are listed; a folder that no longer exists, or whose path isn't known yet, stays
-    in the database but is hidden."""
+    """What the Settings screen shows: projects with their folders, and whether each
+    session starts the page. Only folders still on disk are listed; a folder that no
+    longer exists, or whose path isn't known yet, stays in the database but is hidden."""
     projects = [
         dict(project, folders=[folder for folder in project["folders"] if _on_disk(folder)])
         for project in store.project_summaries()
     ]
     return {
         "projects": projects,
-        "renames": store.renames(),
         "start_page": store.start_page(),
     }
 
 
 def _on_disk(folder: dict[str, Any]) -> bool:
     return bool(folder["path"]) and os.path.exists(str(folder["path"]))
-
-
-def _link(store: Store, body: Any) -> dict[str, Any]:
-    """File a folder under a project, from the rename banner."""
-    store.link_folder(_text(body, "path") or "", _text(body, "project"))
-    return {}
-
-
-def _keep(store: Store, body: Any) -> dict[str, Any]:
-    """The banner's "keep it apart": the folder stays its own project."""
-    store.keep_folder(_text(body, "path") or "")
-    return {}
 
 
 def _set_start_page(store: Store, body: Any) -> dict[str, Any]:
