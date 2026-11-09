@@ -254,9 +254,15 @@ The gear button at the top right of the page opens Settings.
   in the database.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
-  its questions, their numbers and its folders along. To join two projects, rename one to
-  the other's name. If the other has questions, or numbering set with `tempo set-next`,
-  the renamed one's questions move after its numbers, in their order, and get new numbers:
+  its questions, their numbers and its folders along.
+  To join two projects, for example a folder's old project and the new one Tempo started
+  after the folder was renamed or moved, pick the other project in "Merge into…" under the
+  one to merge and click "Merge…". The page says what will move and asks again, inline,
+  with "Merge into <project>" and "Cancel" (`Esc` cancels too); nothing moves until then.
+  The merged project's questions and folders move to the other one, and the merged project
+  goes away. Renaming a project to another's name does the same. If the other has
+  questions, or numbering set with `tempo set-next`, the merged one's questions move after
+  its numbers, in their order, and get new numbers:
   joining `tempo` (Q1–Q5) into "Tempo" (Q1–Q27) makes them Q28–Q32, and into a "Tempo" with
   no questions but `set-next 30`, Q30–Q34. Each moved question gets a note in its thread with its old
   number, such as "Moved from tempo Q2 when tempo joined Tempo.", so old references can

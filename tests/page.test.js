@@ -48,7 +48,7 @@ globalThis.Node = Node;
 globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
-  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
+  rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renameBanner, renderFolders, chipProjects,
   noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 } = require("../tempo/page.js");
 
@@ -144,6 +144,41 @@ test("joinNotice says how many questions moved and their new numbers", () => {
     joinNotice("tempo", "Tempo", [{ from: 1, to: 28 }, { from: 2, to: 29 }]),
     "Moved 2 questions from tempo to Tempo: now Q28–Q29.",
   );
+});
+
+test("mergeNotice gives the new numbers, or how many questions moved when they kept theirs", () => {
+  assert.equal(mergeNotice("old", "new", 1, [{ from: 1, to: 3 }]), "Moved 1 question from old to new: now Q3.");
+  assert.equal(mergeNotice("old", "new", 2, []), "Moved 2 questions from old to new, with the same numbers.");
+  assert.equal(mergeNotice("old", "new", 0, []), "Merged old into new.");
+});
+
+test("mergeQuestion says what moves, and warns of new numbers only when both have questions", () => {
+  const old = { name: "old", questions: 2 };
+  assert.equal(mergeQuestion(old, { name: "new", questions: 0 }),
+    "Merge old into new? Its 2 questions and folders move to new, and old goes away.");
+  assert.match(mergeQuestion(old, { name: "new", questions: 5 }), /They get numbers after new's/);
+  assert.match(mergeQuestion({ name: "old", questions: 0 }, { name: "new", questions: 5 }), /\? Its folders move/);
+});
+
+test("the merge form lists every other project, and waits for a pick", () => {
+  const projects = [{ name: "old", questions: 1 }, { name: "new", questions: 2 }, { name: "shop", questions: 0 }];
+  const [form, confirm] = mergeForm(projects[0], projects);
+  const select = all(form, "SELECT")[0];
+  assert.equal(select.attributes["aria-label"], "Merge old into");
+  assert.equal(select.attributes.disabled, undefined);
+  assert.deepEqual(all(select, "OPTION").map((option) => option.attributes.value), ["", "new", "shop"]);
+  const button = all(form, "BUTTON")[0];
+  assert.equal(button.textContent, "Merge…");
+  assert.equal(button.attributes.disabled, "");
+  assert.equal(confirm.attributes.hidden, "");
+  assert.equal(confirm.attributes.role, "group");
+});
+
+test("with no other project the merge list is switched off and says why", () => {
+  const [form] = mergeForm({ name: "only", questions: 1 }, [{ name: "only", questions: 1 }]);
+  const select = all(form, "SELECT")[0];
+  assert.equal(select.attributes.disabled, "");
+  assert.equal(select.textContent, "No other project to merge into");
 });
 
 test("serverChanged notices a restarted server, not a missing answer", () => {

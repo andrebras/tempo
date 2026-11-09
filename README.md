@@ -104,7 +104,8 @@ decision, it adds a question and links to it in chat. On the page you can:
   or Claude reworded it or added context, since you last opened it.
 - **Adjust Settings** with the gear button: theme, font, text size and line width, whether
   each session starts the page, and project names. Settings also lists the folders each
-  project covers. When a folder looks renamed or moved, a banner asks whether to link it to
+  project covers, and merges one project into another, for example after you rename or
+  move a folder. When a folder looks renamed or moved, a banner asks whether to link it to
   its old project.
 
 <picture>
@@ -114,7 +115,7 @@ decision, it adds a question and links to it in chat. On the page you can:
 </picture>
 
 Every question has a number per project that is never reused, so answering "12b" in chat
-works too. Joining two projects renumbers the questions that move.
+works too. Merging two projects renumbers the questions that move.
 
 If you would rather answer from the terminal, run `tempo config page off` (or use the switch
 under Sessions in Settings): sessions then stop
