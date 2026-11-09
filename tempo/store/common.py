@@ -4,7 +4,6 @@ clock, the write transaction, and the connection (StoreBase)."""
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable
 from datetime import datetime, timezone
 from types import TracebackType
 from typing import Any, Optional, TypeVar
@@ -27,8 +26,6 @@ Summaries = list[dict[str, Any]]
 Ids = list[int]
 # Questions moved by a join: {"from": old number, "to": new number}.
 Moves = list[dict[str, int]]
-# Gives a git folder's (first commit, remote address); either may be None.
-Identity = Callable[[], tuple[Optional[str], Optional[str]]]
 
 
 class QuestionError(ValueError):

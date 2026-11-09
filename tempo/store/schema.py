@@ -203,8 +203,8 @@ def _add_folder_paths(db: sqlite3.Connection) -> None:
 
 
 def _add_renames(db: sqlite3.Connection) -> None:
-    """A new folder may be a known one renamed or moved: it keeps the paths it may have
-    come from until the user links it or keeps it apart."""
+    """Columns once used to offer a new folder as a known one renamed or moved. Tempo
+    no longer reads them; they stay so an older session can still use the database."""
     columns = [row["name"] for row in db.execute("PRAGMA table_info(folders)")]
     for column in ("renamed_from", "rename_answered_at"):
         if column not in columns:
@@ -241,8 +241,9 @@ MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
 # it runs before the numbered steps. An index on a new column is made here too, after the
 # column, as SCHEMA runs before the column exists on an older database.
 def _add_repo_identity(db: sqlite3.Connection) -> None:
-    """A git folder keeps its repository's first commit and remote address, so a missing
-    folder is offered only to a new folder that is a copy of the same repository."""
+    """Columns once used to prove that a new git folder was a renamed copy of a missing
+    one. Tempo no longer reads them; they stay so an older session can still use the
+    database."""
     _add_column(db, "folders", "first_commit", "TEXT")
     _add_column(db, "folders", "remote", "TEXT")
 
