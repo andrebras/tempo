@@ -313,6 +313,30 @@ class PageTest(DatabaseTest):
         self.assertEqual(self.run_js("document.activeElement.textContent"), "Off")
         self.assertTrue(self.run_js("$('#settings').contains(document.activeElement)"))
 
+    def test_merges_one_project_into_another_from_settings(self):
+        # A folder renamed by hand: its old project keeps its question until it is merged.
+        self.add(project="old-name", title="Which colour?")
+        pick = "[aria-label='Merge old-name into']"
+        self.open("#/settings", ready="$(%s)" % json.dumps(pick))
+        self.run_js(
+            "(s => { s.value = 'demo'; s.dispatchEvent(new Event('change', {bubbles: true})); })"
+            "($(%s))" % json.dumps(pick)
+        )
+        self.click("form:has(%s) button" % pick)
+        # Nothing moves until the inline confirmation is accepted; the keyboard is on it.
+        self.wait("$('#settings .confirm:not([hidden])')")
+        self.assertEqual(self.run_js("document.activeElement.textContent"), "Merge into demo")
+        self.assertIn("old-name", [project["name"] for project in self.store.project_summaries()])
+        self.click("#settings .confirm .primary")
+        self.wait("$('#settings p[role=status]')")
+        self.assertEqual(
+            self.text("#settings p[role=status]"), "Moved 1 question from old-name to demo: now Q3."
+        )
+        self.assertEqual(
+            [(p["name"], p["questions"]) for p in self.store.project_summaries()], [("demo", 3)]
+        )
+        self.assertIsNone(self.run_js("$(%s)" % json.dumps(pick)))
+
 
 class ContrastTest(TestCase):
     """Text colours on the page meet WCAG's 4.5:1 minimum for normal text, in both themes.
