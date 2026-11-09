@@ -310,6 +310,79 @@ class BoardTest(DatabaseTest):
         self.keys(board, "k")
         self.assertEqual(board.question["title"], "Here")
 
+    def test_s_opens_settings_with_every_project_and_its_folders(self):
+        self.add()
+        self.store.see_folder("shop", "/work/shop")
+        board = self.board()
+        board.press("s")
+        self.assertEqual(board.mode, "settings")
+        self.assertEqual(board.chosen, "demo")
+        self.assertEqual([p["name"] for p in board.summaries], ["demo", "shop"])
+        self.assertEqual(board.summaries[1]["folders"][0]["path"], "/work/shop")
+        board.press("j")
+        self.assertEqual(board.chosen, "shop")
+        board.press("esc")
+        self.assertEqual(board.mode, "normal")
+
+    def test_merging_moves_the_questions_and_says_where_they_went(self):
+        self.add(title="Here")
+        self.add(title="Also here")
+        self.add(project="shop", title="There")
+        self.store.see_folder("shop", "/work/shop")
+        board = self.board(home="shop")
+        self.keys(board, "s", "m")
+        self.assertEqual((board.mode, board.into), ("merge", "demo"))
+        board.press("enter")
+        self.assertEqual(board.mode, "confirm")
+        board.press("y")
+        self.assertEqual(board.message, ("Moved 1 question from shop to demo: now Q3.", "ok"))
+        self.assertEqual((board.mode, board.chosen), ("settings", "demo"))
+        self.assertEqual([p["name"] for p in board.summaries], ["demo"])
+        self.assertEqual(self.store.get("demo", 3)["title"], "There")
+        self.assertEqual(self.store.project_for("shop", "/work/shop"), "demo")
+        # The home project was merged away: the screen moves to the one that took it.
+        board.press("esc")
+        self.assertEqual((board.mode, board.project, board.home), ("normal", "demo", "demo"))
+        self.assertEqual(board.projects, [("demo", 3)])
+
+    def test_a_merge_of_several_names_the_range_and_one_without_moves_says_so(self):
+        self.add()
+        for title in ("One", "Two"):
+            self.add(project="shop", title=title)
+        self.store.see_folder("empty", "/work/empty")
+        board = self.board()
+        self.keys(board, "s", "j", "j", "m", "enter", "y")
+        self.assertEqual(board.message[0], "Moved 2 questions from shop to demo: now Q2\u2013Q3.")
+        # A project with no questions yet only brings its folders.
+        self.keys(board, "j", "m", "enter", "y")
+        self.assertEqual(board.message, ("Merged empty into demo.", "ok"))
+        self.assertEqual(self.store.project_for("empty", "/work/empty"), "demo")
+
+    def test_cancelling_a_merge_changes_nothing(self):
+        self.add()
+        self.add(project="shop")
+        board = self.board()
+        self.keys(board, "s", "m", "esc")
+        self.assertEqual((board.mode, board.into), ("settings", None))
+        self.keys(board, "m", "enter", "n")
+        self.assertEqual((board.mode, board.into), ("settings", None))
+        self.keys(board, "m", "enter", "esc", "q")
+        self.assertEqual(board.mode, "normal")
+        self.assertEqual(self.store.get("shop", 1)["project"], "shop")
+        self.assertEqual(board.projects, [("demo", 1), ("shop", 1)])
+
+    def test_a_project_cannot_be_merged_into_itself_or_alone(self):
+        self.add()
+        board = self.board()
+        board.press("s")
+        board.press("m")
+        self.assertEqual(board.message, ("There is no other project to merge into.", "error"))
+        self.add(project="shop")
+        board.reload()
+        self.keys(board, "m", "k", "enter")
+        self.assertEqual(board.message, ("Pick another project to merge demo into.", "error"))
+        self.assertEqual(board.mode, "merge")
+
     def test_detail_shows_options_with_the_recommended_one_and_the_thread(self):
         self.add(
             title="Which database?",
@@ -604,9 +677,29 @@ class ViewTest(DatabaseTest):
         self.board.press("?")
         text = "\n".join(self.screen()[0])
         self.assertIn("─ Help ", text)
-        self.assertIn("Shift is needed for h j k l q r", text)
+        self.assertIn("Shift is needed for h j k l q r s", text)
         self.board.press("x")
         self.assertNotIn("─ Help ", "\n".join(self.screen()[0]))
+
+    def test_settings_lists_projects_with_their_folders_and_asks_before_merging(self):
+        self.add()
+        self.add(project="shop")
+        self.store.see_folder("shop", "/work/shop")
+        self.board.press("s")
+        lines, cursor = self.screen()
+        text = "\n".join(lines)
+        self.assertIn("─ Settings · Projects ", lines[0])
+        self.assertIn("demo", text)
+        self.assertIn("1 question", text)
+        self.assertIn("    shop  /work/shop", text)
+        self.assertTrue(lines[-1].startswith("j/k project  m merge into…  Esc back"))
+        self.assertIsNone(cursor)
+        self.board.press("m")
+        lines, _ = self.screen()
+        self.assertIn("─ Settings · Merge demo into… ", lines[0])
+        self.board.press("enter")
+        lines, _ = self.screen()
+        self.assertEqual(lines[-1], "Merge demo into shop? y merges, n cancels")
 
     def test_wide_characters_fill_two_cells(self):
         canvas = TextCanvas(1, 6)

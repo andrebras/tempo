@@ -1,6 +1,7 @@
 """What the terminal screen shows and what its keys do, without a terminal: the Board
 loads the projects and questions, keeps the selection, turns keys into actions (answer,
-follow up, move, scroll), and notices when the database changes. The curses layer only
+follow up, move, scroll, merge projects in Settings), and notices when the database
+changes. The curses layer only
 draws it and passes keys in, so all of this is tested directly.
 
 Answers and follow-ups go through the same store methods as `tempo answer`, `tempo reply`
@@ -16,15 +17,17 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import NamedTuple
 
-from tempo.store import Entry, Question, QuestionError, Questions, Store
+from tempo.store import Entry, Moves, Question, QuestionError, Questions, Store, Summaries
 from tempo.tui.text import Line, rich, wrap
 
 PANELS = ("projects", "questions", "detail")
 # Lowercase letters that move around, so they can't also pick an option: options with
 # these letters are picked with Shift (Shift+h for option h). Shift+letter always works.
-BOUND = set("hjklqr")
+BOUND = set("hjklqrs")
 # Below this width the screen shows one panel at a time.
 NARROW = 60
+# The modes of the Settings view: the projects, picking the one to merge into, and y/n.
+SETTINGS = ("settings", "merge", "confirm")
 # How the thread names each kind of entry, as the page's renderThread does.
 DESCRIBE = {
     "context": "Claude added context",
@@ -51,7 +54,7 @@ class Row(NamedTuple):
 class Board:
     """The screen's state: the projects, the selected project's open questions, the
     selected question in full, which panel has the focus, and what the keys are doing
-    (moving, typing a note or a follow-up, or showing help)."""
+    (moving, typing a note or a follow-up, showing help, or Settings)."""
 
     def __init__(self, store: Store, home: str) -> None:
         self.store = store
@@ -63,7 +66,8 @@ class Board:
         self.number: int | None = None
         self.question: Question | None = None
         self.focus = "questions"
-        # "normal", "help", "note" (an answer waiting for Enter) or "reply".
+        # "normal", "help", "note" (an answer waiting for Enter), "reply", or one of
+        # SETTINGS.
         self.mode = "normal"
         self.letter = ""
         # The version of the question the option was picked on, so an answer to a wording
@@ -79,6 +83,11 @@ class Board:
         # sets page and keeps scroll within the text as it draws.
         self.scroll = 0
         self.page = 10
+        # Settings: every project with its folders, the selected one, and while merging,
+        # the one picked to merge it into. Names, so a reload keeps them in place.
+        self.summaries: Summaries = []
+        self.chosen = home
+        self.into: str | None = None
         self._seen: int | None = None
         self.reload()
 
@@ -103,6 +112,14 @@ class Board:
             self.number = numbers[min(place, len(numbers) - 1)] if numbers else None
             self.scroll = 0
         self.question = self.store.get(self.project, self.number) if self.number else None
+        if self.mode in SETTINGS:
+            self.summaries = self.store.project_summaries()
+            listed = [str(project["name"]) for project in self.summaries]
+            if self.into is not None and not {self.chosen, self.into} <= set(listed):
+                # One of the two was merged or renamed elsewhere meanwhile: pick again.
+                self.mode, self.into = "settings", None
+            if self.chosen not in listed:
+                self.chosen = listed[0] if listed else self.project
 
     def changed(self) -> bool:
         """Reload if another connection (Claude, the page, a command) wrote to the database
@@ -145,6 +162,9 @@ class Board:
             self._type(key)
             return True
         self.message = None
+        if self.mode in SETTINGS:
+            self._settings(key)
+            return True
         if key in ("q", "esc"):
             return False
         if key in ("j", "down"):
@@ -163,6 +183,9 @@ class Board:
             self.scroll = max(0, self.scroll + step)
         elif key == "?":
             self.mode = "help"
+        elif key == "s":
+            self.mode, self.chosen = "settings", self.project
+            self.reload()
         elif key == "r":
             if self._selected():
                 self.mode, self.typed, self.target = "reply", "", self._here()
@@ -229,6 +252,65 @@ class Board:
         elif len(key) == 1 and key.isprintable():
             self.typed += key
 
+    # Settings
+
+    def _settings(self, key: str) -> None:
+        """A key in Settings: j/k move along the projects; m merges the selected one into
+        another, picked the same way, then y confirms. Esc steps back; from the list, Esc,
+        q and s go back to the questions."""
+        if self.mode == "confirm":
+            if key == "y":
+                self.merge()
+            elif key in ("n", "esc"):
+                self.mode, self.into = "settings", None
+        elif key in ("j", "down", "k", "up"):
+            names = [str(project["name"]) for project in self.summaries]
+            if not names:
+                return
+            current = self.into if self.mode == "merge" else self.chosen
+            index = names.index(current) if current in names else 0
+            index = max(0, min(len(names) - 1, index + (1 if key in ("j", "down") else -1)))
+            if self.mode == "merge":
+                self.into = names[index]
+            else:
+                self.chosen = names[index]
+        elif self.mode == "merge":
+            if key == "esc":
+                self.mode, self.into = "settings", None
+            elif key == "enter" and self.into == self.chosen:
+                self.message = ("Pick another project to merge %s into." % self.chosen, "error")
+            elif key == "enter":
+                self.mode = "confirm"
+        elif key == "m":
+            if len(self.summaries) < 2:
+                self.message = ("There is no other project to merge into.", "error")
+            else:
+                # Start on the first other project, so Enter right away picks one.
+                others = [str(p["name"]) for p in self.summaries if p["name"] != self.chosen]
+                self.mode, self.into = "merge", others[0]
+        elif key in ("esc", "q", "s"):
+            self.mode = "normal"
+            self.reload()
+
+    def merge(self) -> None:
+        """Merge the selected project into the one picked, as the page's Settings joins
+        them, and say where its questions went."""
+        old, new = self.chosen, str(self.into)
+        self.mode, self.into = "settings", None
+        try:
+            moves = self.store.rename_project(old, new)
+        except (QuestionError, sqlite3.Error) as error:
+            self.message = (str(error), "error")
+            return
+        self.message = (merged(old, new, moves), "ok")
+        # The old project is gone: stay on the one that took its questions and folders.
+        self.chosen = new
+        if self.project == old:
+            self.project, self.number = new, None
+        if self.home == old:
+            self.home = new
+        self.reload()
+
     # Saving
 
     def answer(self, letter: str, note: str) -> None:
@@ -268,6 +350,18 @@ class Board:
         except (QuestionError, sqlite3.Error) as error:
             self.message = (str(error), "error")
         self.reload()
+
+
+def merged(old: str, new: str, moves: Moves) -> str:
+    """Where a merged project's questions went, worded as the page's joinNotice: "Moved
+    5 questions from tempo to Tempo: now Q28-Q32." (with an en dash). When no numbers
+    changed, which the page doesn't mention, just that it is done."""
+    if not moves:
+        return "Merged %s into %s." % (old, new)
+    first, last = moves[0]["to"], moves[-1]["to"]
+    numbers = "Q%d" % first if first == last else "Q%d\u2013Q%d" % (first, last)
+    count = "%d question%s" % (len(moves), "" if len(moves) == 1 else "s")
+    return "Moved %s from %s to %s: now %s." % (count, old, new, numbers)
 
 
 def detail_lines(question: Question, width: int) -> list[Line]:

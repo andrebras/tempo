@@ -1,5 +1,6 @@
 """How the Board looks: the panels with their borders, the rows in each, the bottom line
-(key hints, a prompt, or what just happened) and the help overlay, drawn onto a canvas.
+(key hints, a prompt, or what just happened), the help overlay and the Settings view,
+drawn onto a canvas.
 
 A canvas only needs its size and a way to put styled text at a place. The curses screen
 is one (screen.py); TextCanvas, a grid of characters, is another, so tests and the
@@ -10,14 +11,16 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from tempo.tui.model import Board, Rect, detail_lines, layout, waiting_on_claude
-from tempo.tui.text import Line, cell_width, clip
+from tempo.tui.model import SETTINGS, Board, Rect, detail_lines, layout, waiting_on_claude
+from tempo.tui.text import Line, cell_width, clip, plain, wrap
 
 TITLES = {"projects": "Projects", "questions": "Questions", "detail": "Detail"}
 HINTS = {
-    "projects": [("j/k", "project"), ("l", "questions")],
+    "projects": [("j/k", "project"), ("l", "questions"), ("s", "settings")],
     "questions": [("j/k", "question"), ("Enter", "detail"), ("h/l", "panels")],
     "detail": [("j/k", "scroll"), ("PgUp/PgDn", "page"), ("h", "back")],
+    "settings": [("j/k", "project"), ("m", "merge into…"), ("Esc", "back to the questions")],
+    "merge": [("j/k", "project"), ("Enter", "merge into this one"), ("Esc", "cancel")],
 }
 HELP = [
     ("j k ↑ ↓", "move; in Detail, scroll"),
@@ -25,8 +28,9 @@ HELP = [
     ("Tab S-Tab", "next or previous panel"),
     ("Enter", "open the questions, then the detail"),
     ("a b c …", "answer with that option (asks y/n)"),
-    ("A B C …", "the same; Shift is needed for h j k l q r"),
+    ("A B C …", "the same; Shift is needed for h j k l q r s"),
     ("r", "ask Claude for more (a follow-up)"),
+    ("s", "Settings: the projects, their folders, merging"),
     ("PgUp PgDn", "scroll the detail a page (or Ctrl-u Ctrl-d)"),
     ("?", "this help"),
     ("q Esc", "quit"),
@@ -72,6 +76,9 @@ class TextCanvas:
 def draw(board: Board, canvas: Canvas) -> tuple[int, int] | None:
     """Draw the whole screen; returns where the cursor goes while typing, else None."""
     height, width = canvas.size()
+    if board.mode in SETTINGS:
+        _settings(board, canvas, Rect(0, 0, max(1, height - 1), width))
+        return _bottom(board, canvas, height - 1, width)
     panels = layout(width, height, board.focus, len(board.projects))
     for name, rect in panels.items():
         title = TITLES[name]
@@ -177,6 +184,50 @@ def _detail(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
         canvas.put(rect.top + rect.height, x, where, "border-focus" if focused else "border")
 
 
+def _settings(board: Board, canvas: Canvas, rect: Rect) -> None:
+    """Every project with its question count and folders, the selected one highlighted;
+    while merging, the project picked to merge it into."""
+    merging = board.into is not None
+    title = "Settings · Merge %s into…" % board.chosen if merging else "Settings · Projects"
+    _box(canvas, rect, title, True)
+    inner = Rect(rect.top + 1, rect.left + 1, rect.height - 2, rect.width - 2)
+    if inner.height <= 0 or inner.width <= 0:
+        return
+    about = (
+        "Merging moves a project's questions and folders into another. If both have "
+        "questions, the moved ones get new numbers after the other's; each keeps a note "
+        "of its old one."
+    )
+    lines: list[tuple[Line, str, str]] = [
+        (line, "", "") for line in wrap([(about, "dim")], inner.width)
+    ]
+    lines.append(([], "", ""))
+    selected = 0
+    for project in board.summaries:
+        name = str(project["name"])
+        style = ""
+        if name == (board.into if merging else board.chosen):
+            style, selected = "selected", len(lines)
+        elif merging and name == board.chosen:
+            style = "current"
+        count = project["questions"]
+        end = "%d question%s" % (count, "" if count == 1 else "s")
+        lines.append(([(name, style)], style, end))
+        for folder in project["folders"]:
+            place = [("    %s" % folder["folder"], "dim")]
+            if folder["shown"]:
+                place.append(("  %s" % folder["shown"], "dim"))
+            lines.append((place, "", ""))
+    if not board.summaries:
+        lines.append(([("No projects yet.", "dim")], "", ""))
+    start = _first_shown(selected, len(lines), inner.height)
+    for y, (line, style, end) in enumerate(lines[start : start + inner.height]):
+        if style or end:
+            _row(canvas, inner.top + y, inner, plain(line), style, end)
+        else:
+            _spans(canvas, inner.top + y, inner.left, line, inner.width)
+
+
 def _spans(canvas: Canvas, y: int, x: int, line: Line, width: int) -> None:
     end = x + width
     for text, style in line:
@@ -203,9 +254,16 @@ def _bottom(board: Board, canvas: Canvas, y: int, width: int) -> tuple[int, int]
         canvas.put(y, 0, ask, "prompt")
         canvas.put(y, cell_width(ask), typed)
         return y, cell_width(ask) + cell_width(typed)
+    if board.mode == "confirm":
+        ask = "Merge %s into %s? y merges, n cancels" % (board.chosen, board.into)
+        canvas.put(y, 0, clip(ask, width - 1), "prompt")
+        return None
     if board.message:
         text, kind = board.message
         canvas.put(y, 0, clip(text, width - 1), kind)
+        return None
+    if board.mode in HINTS:
+        _spans(canvas, y, 0, _keys(list(HINTS[board.mode])), width - 1)
         return None
     keys = list(HINTS[board.focus])
     if board.question:
