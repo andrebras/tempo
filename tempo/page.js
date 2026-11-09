@@ -192,7 +192,6 @@ function waitBadge(question, compact = false) {
 async function loadList() {
   const data = await api(`/api/questions?${new URLSearchParams({ status: state.status })}`);
   const open = state.status === "open" ? data : await api("/api/questions?status=open");
-  renderRenames(data.renames || []);
   const current = route();
   if (current) chooseProject(current.project);
   if (!data.projects.includes(state.project)) {
@@ -252,46 +251,6 @@ function drawList(list, next) {
   const focused = list.contains(document.activeElement) && document.activeElement.getAttribute("href");
   list.replaceChildren(...next.childNodes);
   if (focused) [...list.querySelectorAll("a")].find((link) => link.getAttribute("href") === focused)?.focus();
-}
-
-// A banner above every screen for each new folder that may be a known one renamed or
-// moved. It stays until the user links the folder or keeps it apart. Redrawn only when
-// it changes, so the timed refresh doesn't swallow a click.
-function renderRenames(renames) {
-  const notice = $("#notice");
-  const key = JSON.stringify(renames);
-  if (notice.dataset.key === key) return;
-  notice.dataset.key = key;
-  notice.hidden = !renames.length;
-  notice.replaceChildren(...renames.map(renameBanner));
-}
-
-// One new folder's banner: a "Link to <project>" button for each known folder that no
-// longer exists, named with that folder's path, and a button to keep it apart.
-function renameBanner(rename) {
-  const error = el("span", { class: "error", hidden: true });
-  const act = (path, body) => api(path, body).then((settings) => {
-    if (body.project && state.project === rename.project) chooseProject(body.project);
-    if (settingsOpen()) renderSettings(settings);
-    return refresh();
-  }, (problem) => { error.textContent = problem.message; error.hidden = false; });
-  const keep = el("button", { onclick: () => act("/api/folders/keep", { path: rename.path }) },
-    "Keep as its own project");
-  const several = rename.candidates.length > 1;
-  const links = rename.candidates.map((old) => el("button", {
-    class: "primary",
-    onclick: () => act("/api/folders/link", { path: rename.path, project: old.project }),
-  }, several ? `Link to ${old.project} (${old.shown})` : `Link to ${old.project}`));
-  const where = [el("code", {}, rename.folder), ` (${rename.shown}) is a new folder`];
-  const why = `They have the same git ${rename.proof}. `;
-  const text = several
-    ? [". Several known folders no longer exist, so it may be one of them renamed or moved. "
-      + why + "Link it to the one it was, or keep it apart."]
-    : [", and ", el("code", {}, rename.candidates[0].shown),
-      `, filed under ${rename.candidates[0].project}, no longer exists. ${why}`
-      + "Is it the same folder, renamed or moved?"];
-  return el("div", { class: "rename", role: "status" },
-    el("p", {}, ...where, ...text), el("div", { class: "actions" }, ...links, keep, error));
 }
 
 function setStatus(status) {
@@ -517,7 +476,7 @@ function joinNotice(from, to, moved) {
 }
 
 // The folders a project covers, each with its full path (wrapped when long). Only
-// folders still on disk come from the server; a renamed one is linked from the banner.
+// folders still on disk come from the server.
 function renderFolders(project) {
   if (!project.folders.length) return null;
   return el("ul", { class: "folders", "aria-label": "Folders" }, project.folders.map((folder) =>
@@ -532,7 +491,8 @@ function renamed(from, to) {
 }
 
 // Names being typed, and projects picked to merge into, are kept, by field, so a redraw
-// from elsewhere (such as the rename banner) doesn't wipe them. A saved rename's field has a new label, so it starts fresh.
+// from elsewhere (such as the timed refresh) doesn't wipe them. A saved rename's field
+// has a new label, so it starts fresh.
 function renderSettings(data) {
   const fields = () => document.querySelectorAll("#settings input, #settings select");
   const typed = new Map([...fields()]
@@ -1018,7 +978,7 @@ function start() {
 }
 
 if (typeof module === "object") module.exports = {
-  rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renameBanner, renderFolders, chipProjects,
+  rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
   noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 };
 else start();

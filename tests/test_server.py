@@ -12,11 +12,6 @@ from tempo.store import Store
 from tests.helpers import DatabaseTest
 
 
-def same_repo():
-    """The identity of a repository both folders in a test are copies of."""
-    return "c1", None
-
-
 class ServerTest(DatabaseTest):
     def setUp(self):
         super().setUp()
@@ -126,7 +121,6 @@ class ServerTest(DatabaseTest):
         for path, data in (
             ("/api/questions/demo/1/followup", b'{"body": 5}'),
             ("/api/projects/demo/rename", b'{"name": 5}'),
-            ("/api/folders/link", b'{"path": "/x", "project": 5}'),
         ):
             with self.subTest(path=path):
                 self.assertEqual(self.post_raw(path, data)[0], 400)
@@ -298,34 +292,6 @@ class ServerTest(DatabaseTest):
         # Hidden, not deleted.
         self.assertEqual(len(self.store.folders()), 3)
 
-    def test_offers_a_renamed_folder_on_every_screen_and_links_it(self):
-        self.store.see_folder("open-questions", "/lab/open-questions", same_repo)
-        self.store.see_folder("tempo", "/lab/tempo", same_repo)
-        self.store.spot_rename("/lab/tempo", gone=lambda path: path == "/lab/open-questions")
-        _, data = self.request("GET", "/api/questions")
-        [rename] = json.loads(data)["renames"]
-        self.assertEqual(rename["candidates"][0]["project"], "open-questions")
-        status, data = self.request(
-            "POST", "/api/folders/link", {"path": "/lab/tempo", "project": "open-questions"}
-        )
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(data)["renames"], [])
-        self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "open-questions")
-
-    def test_keeps_a_new_folder_apart(self):
-        self.store.see_folder("open-questions", "/lab/open-questions", same_repo)
-        self.store.see_folder("tempo", "/lab/tempo", same_repo)
-        self.store.spot_rename("/lab/tempo", gone=lambda path: True)
-        status, data = self.request("POST", "/api/folders/keep", {"path": "/lab/tempo"})
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(data)["renames"], [])
-        _, data = self.request("GET", "/api/questions")
-        self.assertEqual(json.loads(data)["renames"], [])
-        status, data = self.request(
-            "POST", "/api/folders/link", {"path": "/nowhere", "project": "x"}
-        )
-        self.assertEqual(status, 400)
-
     def test_turns_the_page_off_and_on_for_new_sessions(self):
         _, data = self.request("GET", "/api/settings")
         self.assertTrue(json.loads(data)["start_page"])
@@ -383,7 +349,6 @@ class ServerTest(DatabaseTest):
         self.store.see_folder("onzehq")
         for path, body in [
             ("/api/projects/demo/rename", {"name": "Hijacked"}),
-            ("/api/folders/link", {"path": "/x/onzehq", "project": "Hijacked"}),
             ("/api/settings/page", {"on": False}),
         ]:
             with self.subTest(path=path):
@@ -403,3 +368,12 @@ class ServerTest(DatabaseTest):
                 status, _ = self.request(method, path, {} if method == "POST" else None)
                 self.assertEqual(status, 404)
         self.assertNotIn("threads", json.loads(self.request("GET", "/api/settings")[1]))
+
+    def test_renamed_folders_are_no_longer_offered(self):
+        for path in ("/api/folders/link", "/api/folders/keep"):
+            with self.subTest(path=path):
+                status, _ = self.request("POST", path, {"path": "/x", "project": "x"})
+                self.assertEqual(status, 404)
+        for path in ("/api/questions", "/api/settings"):
+            with self.subTest(path=path):
+                self.assertNotIn("renames", json.loads(self.request("GET", path)[1]))
