@@ -33,6 +33,20 @@ def shown_path(path: str | None) -> str | None:
     return path
 
 
+def _proven(
+    path: str, folders: Folders, identities: dict[str, tuple[str | None, str | None]]
+) -> tuple[Folders, str | None]:
+    """Those of folders proven to be the repository at path, and what proves it: the same
+    first commit or, when none has that, the same remote address. A folder with neither
+    recorded is never proven."""
+    first_commit, remote = identities.get(path, (None, None))
+    same = [f for f in folders if first_commit and identities[str(f["path"])][0] == first_commit]
+    if same:
+        return same, "first commit"
+    same = [f for f in folders if remote and identities[str(f["path"])][1] == remote]
+    return same, "remote address" if same else None
+
+
 class ProjectStore(QuestionStore):
     """The Store's project and folder methods."""
 
@@ -140,25 +154,16 @@ class ProjectStore(QuestionStore):
 
         A gone folder whose repository is known is offered only to a copy of it: one with
         the same first commit or, when none has that, the same remote address. So a
-        deleted repository is not offered to every unrelated new one. A gone folder
-        remembered before Tempo stored these is offered to any new git folder, as before.
+        deleted repository is not offered to every unrelated new one. A gone folder with
+        neither recorded proves nothing, so it is offered to no one.
         """
-        identities = {
-            row["path"]: (row["first_commit"], row["remote"])
-            for row in self.db.execute(
-                "SELECT path, first_commit, remote FROM folders WHERE path IS NOT NULL"
-            )
-        }
-        first_commit, remote = identities.get(path, (None, None))
+        identities = self._identities()
         missing = [
             folder
             for folder in self.folders()
             if folder["path"] and folder["path"] != path and gone(str(folder["path"]))
         ]
-        same = [f for f in missing if first_commit and identities[f["path"]][0] == first_commit]
-        if not same:
-            same = [f for f in missing if remote and identities[f["path"]][1] == remote]
-        candidates = [f for f in missing if f in same or not any(identities[f["path"]])]
+        candidates, _ = _proven(path, missing, identities)
         if candidates:
             self.db.execute(
                 "UPDATE folders SET renamed_from = ? WHERE path = ?",
@@ -167,21 +172,26 @@ class ProjectStore(QuestionStore):
         return candidates
 
     def renames(self) -> Summaries:
-        """New folders that may be renamed or moved ones, waiting for the user to say.
-        A folder whose every candidate was since linked to another folder has none left."""
+        """New folders that may be renamed or moved ones, waiting for the user to say, each
+        with its candidates and the proof they share.
+
+        A folder whose every candidate was since linked to another folder has none left.
+        The proof is checked again here because renamed_from may hold a match saved before
+        proof was required: such a candidate is left out, and the saved row is not changed.
+        """
         known = {folder["path"]: folder for folder in self.folders()}
+        identities = self._identities()
         rows = self.db.execute(
             "SELECT path, renamed_from FROM folders"
             " WHERE renamed_from IS NOT NULL AND rename_answered_at IS NULL ORDER BY path"
         )
-        renames = [
-            dict(
-                known[row["path"]],
-                candidates=[known[old] for old in json.loads(row["renamed_from"]) if old in known],
-            )
-            for row in rows
-        ]
-        return [rename for rename in renames if rename["candidates"]]
+        renames = []
+        for row in rows:
+            saved = [known[old] for old in json.loads(row["renamed_from"]) if old in known]
+            candidates, proof = _proven(row["path"], saved, identities)
+            if candidates:
+                renames.append(dict(known[row["path"]], candidates=candidates, proof=proof))
+        return renames
 
     def link_folder(self, path: str, project: str | None) -> None:
         """File the folder at path under a project, and settle any rename it waited on.
@@ -324,6 +334,15 @@ class ProjectStore(QuestionStore):
         return moves
 
     # Helpers
+
+    def _identities(self) -> dict[str, tuple[str | None, str | None]]:
+        """Each known path's recorded first commit and remote address."""
+        return {
+            row["path"]: (row["first_commit"], row["remote"])
+            for row in self.db.execute(
+                "SELECT path, first_commit, remote FROM folders WHERE path IS NOT NULL"
+            )
+        }
 
     def _question_count(self, project: str) -> int:
         return int(

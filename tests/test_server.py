@@ -12,6 +12,11 @@ from tempo.store import Store
 from tests.helpers import DatabaseTest
 
 
+def same_repo():
+    """The identity of a repository both folders in a test are copies of."""
+    return "c1", None
+
+
 class ServerTest(DatabaseTest):
     def setUp(self):
         super().setUp()
@@ -294,8 +299,8 @@ class ServerTest(DatabaseTest):
         self.assertEqual(len(self.store.folders()), 3)
 
     def test_offers_a_renamed_folder_on_every_screen_and_links_it(self):
-        self.store.see_folder("open-questions", "/lab/open-questions")
-        self.store.see_folder("tempo", "/lab/tempo")
+        self.store.see_folder("open-questions", "/lab/open-questions", same_repo)
+        self.store.see_folder("tempo", "/lab/tempo", same_repo)
         self.store.spot_rename("/lab/tempo", gone=lambda path: path == "/lab/open-questions")
         _, data = self.request("GET", "/api/questions")
         [rename] = json.loads(data)["renames"]
@@ -308,8 +313,8 @@ class ServerTest(DatabaseTest):
         self.assertEqual(self.store.project_for("tempo", "/lab/tempo"), "open-questions")
 
     def test_keeps_a_new_folder_apart(self):
-        self.store.see_folder("open-questions", "/lab/open-questions")
-        self.store.see_folder("tempo", "/lab/tempo")
+        self.store.see_folder("open-questions", "/lab/open-questions", same_repo)
+        self.store.see_folder("tempo", "/lab/tempo", same_repo)
         self.store.spot_rename("/lab/tempo", gone=lambda path: True)
         status, data = self.request("POST", "/api/folders/keep", {"path": "/lab/tempo"})
         self.assertEqual(status, 200)

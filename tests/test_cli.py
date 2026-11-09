@@ -1237,6 +1237,8 @@ class GitTest(DatabaseTest):
 class RenameNoteTest(GitTest):
     """A session starts in a folder Tempo has never seen while a known one is gone."""
 
+    remote = "git@github.com:me/open-questions.git"
+
     def setUp(self):
         super().setUp()
         del os.environ["TEMPO_PROJECT"]
@@ -1244,7 +1246,9 @@ class RenameNoteTest(GitTest):
         self.old = os.path.join(self.lab, "open-questions")
         self.new = os.path.join(self.lab, "tempo")
         subprocess.run(["git", "init", "-q", self.old], check=True)
-        self.store.see_folder("open-questions", self.old)
+        remote = ["git", "-C", self.old, "remote", "add", "origin", self.remote]
+        subprocess.run(remote, check=True)
+        self.store.see_folder("open-questions", self.old, lambda: (None, self.remote))
         self.store.rename_project("open-questions", "Tempo")
 
     def start(self, cwd):
@@ -1264,7 +1268,7 @@ class RenameNoteTest(GitTest):
 
     def test_several_missing_folders_offer_a_link_for_each(self):
         shop = os.path.join(self.lab, "shop")
-        self.store.see_folder("shop", shop)
+        self.store.see_folder("shop", shop, lambda: (None, self.remote))
         os.rename(self.old, self.new)
         note = self.start(self.new)
         self.assertIn("several known folders no longer exist", note)
@@ -1319,6 +1323,35 @@ class RepoIdentityNoteTest(GitTest):
     def test_the_renamed_repo_is_offered(self):
         os.rename(self.old, self.new)
         self.assertIn("looks renamed or moved", self.start(self.new))
+
+    def test_the_note_says_a_shared_first_commit_is_why(self):
+        os.rename(self.old, self.new)
+        self.assertIn("they have the same git first commit", self.start(self.new))
+
+    def test_the_note_says_a_shared_remote_is_why(self):
+        shutil.rmtree(self.old)
+        self.repo(self.new, "git@github.com:me/open-questions.git")
+        self.assertIn("they have the same git remote address", self.start(self.new))
+
+    def test_a_missing_repo_without_identity_is_not_offered(self):
+        self.forget_identity(self.old)
+        shutil.rmtree(self.old)
+        self.repo(self.new, "git@github.com:me/tempo.git")
+        self.assertNotIn("is new to Tempo", self.start(self.new))
+        self.assertEqual(self.store.renames(), [])
+
+    def test_a_saved_match_without_proof_says_nothing_at_session_start(self):
+        self.forget_identity(self.old)
+        shutil.rmtree(self.old)
+        self.repo(self.new, "git@github.com:me/tempo.git")
+        self.start(self.new)
+        # As an older Tempo left it: offered with no proof, never answered.
+        self.store.db.execute(
+            "UPDATE folders SET renamed_from = ? WHERE path = ?",
+            (json.dumps([self.old]), self.new),
+        )
+        self.store.db.commit()
+        self.assertNotIn("is new to Tempo", self.start(self.new))
 
     def test_a_repo_renamed_on_github_too_is_offered(self):
         os.rename(self.old, self.new)
