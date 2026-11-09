@@ -789,8 +789,6 @@ def session_note(project: str, port: int, limit: int | None = None) -> str:
             if on
             else "the number, then the title, as in `- Q3 Pick a colour`."
         ),
-        "- An answer in Tempo never approves merging, publishing or installing:"
-        " record the question in Tempo and also ask for a one-line OK in chat.",
     ]
     if questions:
         lines.append("Open questions in %s:" % project)
@@ -1060,8 +1058,7 @@ def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None
             " Tempo. Add it with"
             " `tempo add` (see the tempo skill; a yes-or-no question gets the options Yes"
             " and No), then give the question in full with %s. If it is already in"
-            " Tempo, give %s in the body of the reply. Merging, publishing and"
-            " installing still also need a one-line OK in chat."
+            " Tempo, give %s in the body of the reply."
             % (
                 (LINKED_NUMBER % _port(), "its number as a link")
                 if page

@@ -27,6 +27,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- An answer in Tempo now counts like any other answer. The session note, the Stop hook
+  and the skill no longer say that merging, publishing and installing also need a one-line
+  OK in chat, which made those questions get asked twice.
 - The hook that runs when a reply ends now notices a request to pick between options, such as
   "tell me A, B or C" or "reply with 1a or 1b", and sends Claude back to add it to Tempo. A
   request to do something, such as "run bin/setup", still isn't counted as a question.
