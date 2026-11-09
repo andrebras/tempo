@@ -285,12 +285,22 @@
   /* Every project's name field and Rename button share one right-hand column. */
   .row form { display: flex; gap: 8px; flex: 0 1 400px; margin-left: auto; }
   .row form > :not(button) { flex: 1 1 0; min-width: 0; }
-  .row input { padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  .row input, .row select { padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px;
+                            background: var(--panel); }
+  .row select:disabled { opacity: .6; }
   .row form button { padding: 8px 16px; border-radius: 10px; font-weight: 600; border: 1px solid var(--accent);
                      background: var(--accent); color: var(--on-accent); }
   .row form button:hover:not(:disabled) { background: var(--accent-strong); }
   .row form button:disabled { opacity: .4; cursor: not-allowed; }
   .row .error { flex-basis: 100%; margin: 0; }
+  /* A project's Rename and Merge forms stack in that column, with the merge's
+     confirmation below them. */
+  .row .forms { display: flex; flex-direction: column; gap: 8px; flex: 0 1 400px; margin-left: auto; min-width: 0; }
+  .row .forms form { flex: none; margin: 0; }
+  .row .forms .error { flex-basis: auto; }
+  .row .confirm { padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); }
+  .row .confirm p { margin: 0 0 10px; overflow-wrap: anywhere; }
+  .row .confirm .actions button { padding: 6px 14px; }
   .card .empty { padding: 12px 0 16px; margin: 0; border-top: 1px solid var(--line); }
 
   @media (min-width: 761px) {

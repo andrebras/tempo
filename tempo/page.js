@@ -416,8 +416,10 @@ function renderProjects(data) {
   return el("section", { class: "card" },
     el("h3", {}, "Projects"),
     el("p", {}, "A project's name is what you see everywhere. Renaming it takes its questions and the "
-      + "git folders it covers along. To join two projects, rename one to the other's name. If both have questions, "
-      + "the renamed one's questions move after the other's and get new numbers; each keeps a note of its old one."),
+      + "git folders it covers along. To join two projects, such as a folder's old project and its new one "
+      + "after a rename or move, use Merge into… (renaming one to the other's name does the same). If both "
+      + "have questions, the merged one's questions move after the other's and get new numbers; each keeps "
+      + "a note of its old one."),
     data.notice && el("p", { class: "meta", role: "status" }, data.notice),
     data.projects.length ? data.projects.map((project) => {
       const input = el("input", { value: project.name, "aria-label": `New name for ${project.name}` });
@@ -425,13 +427,84 @@ function renderProjects(data) {
         el("div", {}, el("strong", {}, project.name),
           el("span", { class: "meta" }, count(project.questions, "question")),
           renderFolders(project)),
-        saveForm(input,
-          () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
-          (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
-            renamed(project.name, name);
-            return { ...result, notice: joinNotice(project.name, name, result.moved || []) };
-          }), "Rename"));
+        el("div", { class: "forms" },
+          saveForm(input,
+            () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
+            (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
+              renamed(project.name, name);
+              return { ...result, notice: joinNotice(project.name, name, result.moved || []) };
+            }), "Rename"),
+          mergeForm(project, data.projects)));
     }) : el("p", { class: "empty" }, "No projects yet. One appears when Claude asks its first question."));
+}
+
+// Merges a project into another one picked from a list. "Merge…" first shows what will
+// happen, with buttons to go ahead or cancel: the page never opens a browser dialog, so
+// it stays usable when a script drives it. Joining is a rename to the other's name.
+function mergeForm(project, projects) {
+  const others = projects.filter((other) => other.name !== project.name);
+  const select = el("select", { "aria-label": `Merge ${project.name} into`, disabled: !others.length },
+    el("option", { value: "" }, others.length ? "Merge into…" : "No other project to merge into"),
+    others.map((other) => el("option", { value: other.name }, other.name)));
+  const button = el("button", { type: "submit", disabled: true }, "Merge…");
+  const error = el("p", { class: "error", hidden: true });
+  const confirm = el("div", { class: "confirm", role: "group", hidden: true, onkeydown: (event) => {
+    if (event.key !== "Escape") return;
+    close();
+    select.focus();
+  } });
+  const close = () => {
+    confirm.hidden = true;
+    confirm.replaceChildren();
+  };
+  const merge = (target, yes) => {
+    yes.disabled = true;
+    api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name: target.name }).then((result) => {
+      renamed(project.name, target.name);
+      return { ...result, notice: mergeNotice(project.name, target.name, project.questions, result.moved || []) };
+    }).then(renderSettings, (problem) => {
+      error.textContent = problem.message;
+      error.hidden = false;
+      yes.disabled = false;
+    });
+  };
+  const form = el("form", {
+    onchange: () => {
+      button.disabled = !select.value;
+      close();
+    },
+    onsubmit: (event) => {
+      event.preventDefault();
+      const target = others.find((other) => other.name === select.value);
+      if (!target) return;
+      const text = mergeQuestion(project, target);
+      const yes = el("button", { class: "primary", onclick: () => merge(target, yes) }, `Merge into ${target.name}`);
+      const no = el("button", { onclick: () => { close(); select.focus(); } }, "Cancel");
+      confirm.replaceChildren(el("p", {}, text), el("div", { class: "actions" }, yes, no));
+      // Read out when the keyboard lands on the first button.
+      confirm.setAttribute("aria-label", text);
+      confirm.hidden = false;
+      yes.focus();
+    },
+  }, select, button);
+  return [form, confirm, error];
+}
+
+// What merging a project into another does, shown before it happens.
+function mergeQuestion(project, target) {
+  const what = project.questions ? `Its ${count(project.questions, "question")} and folders` : "Its folders";
+  const renumber = project.questions && target.questions
+    ? ` They get numbers after ${target.name}'s; each keeps a note of its old one.` : "";
+  return `Merge ${project.name} into ${target.name}? ${what} move to ${target.name}, `
+    + `and ${project.name} goes away.${renumber}`;
+}
+
+// Says where a merged project's questions went: their new numbers when they changed,
+// otherwise how many moved.
+function mergeNotice(from, to, questions, moved) {
+  if (moved.length) return joinNotice(from, to, moved);
+  if (!questions) return `Merged ${from} into ${to}.`;
+  return `Moved ${count(questions, "question")} from ${from} to ${to}, with the same numbers.`;
 }
 
 // Says where a joined project's questions went, e.g. "Moved 5 questions from tempo to
@@ -458,22 +531,23 @@ function renamed(from, to) {
   if (back && decodeURIComponent(back[1]) === from) state.back = `#/${encodeURIComponent(to)}/${back[2]}`;
 }
 
-// Names being typed are kept, by field, so a redraw from elsewhere (such as the rename
-// banner) doesn't wipe them. A saved rename's field has a new label, so it starts fresh.
+// Names being typed, and projects picked to merge into, are kept, by field, so a redraw
+// from elsewhere (such as the rename banner) doesn't wipe them. A saved rename's field has a new label, so it starts fresh.
 function renderSettings(data) {
-  const typed = new Map([...document.querySelectorAll("#settings input")]
-    .filter((input) => input.value !== input.defaultValue)
-    .map((input) => [input.getAttribute("aria-label"), input.value]));
+  const fields = () => document.querySelectorAll("#settings input, #settings select");
+  const typed = new Map([...fields()]
+    .filter((field) => (field.tagName === "SELECT" ? field.value !== "" : field.value !== field.defaultValue))
+    .map((field) => [field.getAttribute("aria-label"), field.value]));
   const active = document.activeElement;
   const focused = $("#settings").contains(active) && controlKey(active);
   drawSettings(data);
-  for (const input of document.querySelectorAll("#settings input")) {
-    if (!typed.has(input.getAttribute("aria-label"))) continue;
-    input.value = typed.get(input.getAttribute("aria-label"));
-    input.dispatchEvent(new Event("input", { bubbles: true }));
+  for (const field of fields()) {
+    if (!typed.has(field.getAttribute("aria-label"))) continue;
+    field.value = typed.get(field.getAttribute("aria-label"));
+    field.dispatchEvent(new Event(field.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
   }
   // The redraw replaces every control, so the keyboard goes back to the one it was on.
-  if (focused) [...document.querySelectorAll("#settings button, #settings input")]
+  if (focused) [...document.querySelectorAll("#settings button, #settings input, #settings select")]
     .find((node) => controlKey(node) === focused)?.focus();
 }
 
@@ -481,7 +555,7 @@ function renderSettings(data) {
 // a button by its text and the label of its group or of its form's field.
 function controlKey(node) {
   const group = node.closest("[role=group]")?.getAttribute("aria-label")
-    || node.closest("form")?.querySelector("input")?.getAttribute("aria-label") || "";
+    || node.closest("form")?.querySelector("input, select")?.getAttribute("aria-label") || "";
   return [node.tagName, node.getAttribute("aria-label") || node.textContent, group].join("\n");
 }
 
@@ -944,7 +1018,7 @@ function start() {
 }
 
 if (typeof module === "object") module.exports = {
-  rich, inline, openFor, joinNotice, serverChanged, renameBanner, renderFolders, chipProjects,
+  rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renameBanner, renderFolders, chipProjects,
   noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 };
 else start();
