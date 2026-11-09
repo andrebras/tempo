@@ -104,9 +104,8 @@ decision, it adds a question and links to it in chat. On the page you can:
   or Claude reworded it or added context, since you last opened it.
 - **Adjust Settings** with the gear button: theme, font, text size and line width, whether
   each session starts the page, and project names. Settings also lists the folders each
-  project covers, and merges one project into another, for example after you rename or
-  move a folder. When a folder looks renamed or moved, a banner asks whether to link it to
-  its old project.
+  project covers, and merges one project into another. A renamed or moved folder starts its
+  own project: use "Merge into…" to join its old project into the new one.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/settings-dark.png">

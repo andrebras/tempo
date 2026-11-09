@@ -18,12 +18,15 @@ All notable changes to Tempo are listed here. The format follows
   questions went and their new numbers. Renaming a project to another's name still does the
   same.
 
+### Changed
+
+- Tempo no longer guesses that a new folder is a renamed or moved one. The banner on the
+  page and the note to Claude at the start of a session are gone. A renamed or moved folder
+  now starts its own project. To join its old questions to it, use "Merge into…" in the
+  page's Settings, or Settings (`s`) in `tempo tui`.
+
 ### Fixed
 
-- Tempo no longer says a new git repository may be a missing folder renamed or moved unless
-  it can prove it, by the same first commit or else the same remote. A missing folder with
-  neither recorded is offered to no one, and offers saved earlier without proof stop showing.
-  When there is proof, the banner and Claude's note say what it is.
 - The hook that runs when a reply ends now notices a request to pick between options, such as
   "tell me A, B or C" or "reply with 1a or 1b", and sends Claude back to add it to Tempo. A
   request to do something, such as "run bin/setup", still isn't counted as a question.
