@@ -1011,8 +1011,11 @@ OPTION = re.compile(
 QUESTION = r"(?:[^.!?\n]|\.(?=\S)|(?<=e\.g|i\.e)\.)*\?"
 # A "?" Claude answers at once ("…? No, …", "…? Because …") is not asked of the user.
 UNANSWERED = r"(?![ \t]*(?:yes|no|nope|not|because)\b)"
+# One short choice in a request to pick: "A", "**B**", "1", "1a" or "b2", not a word.
+CHOICE = r"\*{0,2}(?:[a-z]\d*|\d+[a-z]?)(?![\w'-])\*{0,2}"
 # A yes-or-no question, a choice or a request for permission, starting a sentence or a
-# list item, or a request to say which.
+# list item, a request to say which, or a request to pick from two or more choices, as in
+# "tell me A, B or C". "Tell me when it finishes" asks for no choice, so it doesn't count.
 ASK = re.compile(
     r"(?:^|[.!?:]\s+|^\s*[-*]\s+)(?:(?:may|can|could|should|shall) (?:i|we)"
     r"|do you (?:want|prefer)|would you (?:like|prefer)|want me to|ok(?:ay)? to"
@@ -1022,7 +1025,14 @@ ASK = re.compile(
     + r"|\b(?:go ahead|proceed|ok(?:ay)?)\?"
     r"|\b(?:say|tell me|let me know|confirm) (?:whether|if|which)"
     r" (?:(?:i|we) (?:should|can|may)|you(?:'d)? (?:want|like|prefer)|one|option)\b"
-    r"|\byes or no\b|\breply (?:yes|no|ok)\b|\(y(?:es)?/n(?:o)?\)",
+    r"|\byes or no\b|\breply (?:yes|no|ok)\b|\(y(?:es)?/n(?:o)?\)"
+    r"|\b(?:pick|choose|tell me|reply(?: with)?|answer(?: with)?)[:,]?"
+    r" (?:(?:one of|either|between|from|options?) )*"
+    + CHOICE
+    + r"(?:, "
+    + CHOICE
+    + r")*,? or "
+    + CHOICE,
     re.IGNORECASE | re.MULTILINE,
 )
 # What doesn't count as asking: code, quoted lines and quoted phrases.
@@ -1048,15 +1058,15 @@ LINKED_NUMBER = "its number linked to it, as in [Q5](http://127.0.0.1:%d/#/…)"
 def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None:
     """Why the reply that just ended must not stop yet, or None.
 
-    A reply that asks the user something (lettered options, a yes-or-no question or a
-    request for permission) is a question asked only in chat, unless the reply ran
-    `tempo add`, `tempo reword` or `tempo context` with the Bash tool and it worked, or
-    links a Tempo question next to what it asks: in the same paragraph, or for options
-    in the one before (a closing list of open questions doesn't count). Code and quoted
-    text never count as asking. Runs once
-    per reply: when Claude was already sent back (stop_hook_active), it lets the reply
-    end. Any problem reading the transcript lets it end too, so the check can never trap
-    a session. With the page off, naming the question's number (Q5) counts as its link.
+    A reply that asks the user something (lettered options, a yes-or-no question, a request
+    for permission or a request to pick, as in "tell me A or B") is a question asked only in
+    chat, unless the reply ran `tempo add`, `tempo reword` or `tempo context` with the Bash
+    tool and it worked, or links a Tempo question next to what it asks: in the same
+    paragraph, or for options in the one before (a closing list of open questions doesn't
+    count). Code and quoted text never count as asking. Runs once per reply: when Claude was
+    already sent back (stop_hook_active), it lets the reply end. Any problem reading the
+    transcript lets it end too, so the check can never trap a session. With the page off,
+    naming the question's number (Q5) counts as its link.
     """
     if payload.get("stop_hook_active"):
         return None
@@ -1077,7 +1087,8 @@ def unrecorded_options(payload: dict[str, Any], page: bool = True) -> str | None
     if asks:
         return (
             "This reply asks the user to decide something (lettered options, a yes-or-no"
-            " question or a request for permission), but it is not in Tempo. Add it with"
+            " question, a request for permission or a request to pick), but it is not in"
+            " Tempo. Add it with"
             " `tempo add` (see the tempo skill; a yes-or-no question gets the options Yes"
             " and No), then give the question in full with %s. If it is already in"
             " Tempo, give %s in the body of the reply. Merging, publishing and"

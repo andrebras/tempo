@@ -74,9 +74,10 @@ three, each a call to `tempo hook …`:
   reply, in the first of these cases that applies:
   1. You answered or followed up and Claude hasn't seen it yet. The hook hands it over, so
      an answer sent from the page while Claude worked doesn't wait for your next message.
-  2. The reply asks you something (lettered options, a yes-or-no question or a request for
-     permission) that isn't in Tempo. Claude is asked to add it with `tempo add`. Code and
-     quoted text don't count as asking. Only a `tempo add`, `reword` or `context` that
+  2. The reply asks you something (lettered options, a yes-or-no question, a request for
+     permission or a request to pick, as in "tell me A, B or C") that isn't in Tempo. Claude
+     is asked to add it with `tempo add`. Asking you to do something, such as run a command,
+     doesn't count, and neither do code and quoted text. Only a `tempo add`, `reword` or `context` that
      worked, or a Tempo link in the same paragraph, counts as recording it.
   3. A follow-up of yours reached Claude more than five minutes ago and Claude hasn't
      answered it (no context or reword after it). Claude is asked to answer each in the

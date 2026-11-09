@@ -12,6 +12,9 @@ All notable changes to Tempo are listed here. The format follows
   it can prove it, by the same first commit or else the same remote. A missing folder with
   neither recorded is offered to no one, and offers saved earlier without proof stop showing.
   When there is proof, the banner and Claude's note say what it is.
+- The hook that runs when a reply ends now notices a request to pick between options, such as
+  "tell me A, B or C" or "reply with 1a or 1b", and sends Claude back to add it to Tempo. A
+  request to do something, such as "run bin/setup", still isn't counted as a question.
 
 ## [0.9.0] - 2026-11-08
 
