@@ -171,8 +171,9 @@ keys for the panel you are in.
 | `h` `l`, `←` `→`, `Tab` `Shift-Tab` | Go to the previous or next panel |
 | `Enter` | Go from Projects to Questions, and from Questions to Detail |
 | `a`, `b`, `c`… | Answer the selected question with that option. The bottom line opens for an optional note: `Enter` sends, with or without one, and `Esc` cancels |
-| `A`, `B`, `C`… | The same. Use Shift for options `h`, `j`, `k`, `l`, `q` and `r`, since those letters also move or quit |
+| `A`, `B`, `C`… | The same. Use Shift for options `h`, `j`, `k`, `l`, `q`, `r` and `s`, since those letters also move, quit or open something |
 | `r` | Ask Claude for more (a follow-up): type it on the bottom line, `Enter` sends, `Esc` cancels |
+| `s` | Open Settings (see below); `Esc` goes back to the questions |
 | `PgDn` `PgUp`, `Ctrl-d` `Ctrl-u` | Scroll the detail by a page |
 | `?` | Show the keys |
 | `q`, `Esc` | Quit |
@@ -183,7 +184,15 @@ example, when the question was answered on the page meanwhile). The screen follo
 itself within a second or two: a question Claude adds or rewords, or an answer from the page.
 On a screen narrower than 60 characters or shorter than 10 lines it shows one panel at a time, and `h` and `l` go to
 the others. Set `NO_COLOR` to turn colors off. It never starts the page. For answered and
-archived questions, search and Settings, use the page.
+archived questions, search, renaming a project and the other settings, use the page.
+
+Settings (`s`) lists every project with its number of questions and the folders it covers.
+To merge one project into another, for example after a folder was renamed or moved and its
+new questions went to a new project, select the old project, press `m`, pick the project to
+merge it into with `j` and `k`, press `Enter`, then `y` to confirm (`n` or `Esc` cancels).
+Its questions and folders move over, as when you rename a project to another's name on the
+page: if both have questions, the moved ones get new numbers after the other's, and the bottom
+line says which, such as "Moved 5 questions from tempo to Tempo: now Q28–Q32."
 
 Text you paste goes into the note or follow-up you are writing, line breaks included (shown
 as `↵`). In a terminal with bracketed paste, which marks pasted text and which most have, a
