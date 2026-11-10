@@ -475,12 +475,18 @@ function joinNotice(from, to, moved) {
   return `Moved ${count(moved.length, "question")} from ${from} to ${to}: now ${numbers}.`;
 }
 
-// The folders a project covers, each with its full path (wrapped when long). Only
-// folders still on disk come from the server.
+// The folders a project covers, each with its full path, and "folder gone" for one that
+// no longer exists.
 function renderFolders(project) {
   if (!project.folders.length) return null;
   return el("ul", { class: "folders", "aria-label": "Folders" }, project.folders.map((folder) =>
-    el("li", {}, folder.folder, " ", el("span", { class: "path", title: folder.path }, folder.shown))));
+    el("li", {}, folder.folder, " ", el("span", { class: "path", title: folder.path }, pathParts(folder.shown)),
+      folder.gone && el("span", { class: "gone" }, "folder gone"))));
+}
+
+// A path that wraps only after a /, never inside a folder's name: a <wbr> follows each /.
+function pathParts(path) {
+  return (path || "").split(/(?<=\/)/).flatMap((part, index) => (index ? [el("wbr"), part] : [part]));
 }
 
 // Keep the page on a renamed project, and the way back pointing at the same question.
@@ -979,6 +985,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
+  pathParts, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 };
 else start();

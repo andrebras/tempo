@@ -49,7 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
+  pathParts, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -198,6 +198,18 @@ test("folders are listed read-only, with no menu to move them", () => {
   assert.deepEqual(all(list, "SELECT"), []);
   assert.deepEqual(all(list, "BUTTON"), []);
   assert.equal(renderFolders({ name: "tempo", folders: [] }), null);
+});
+
+test("a folder that no longer exists says so", () => {
+  const list = renderFolders({ name: "tempo", folders: [tempo, { ...tempo, shown: "~/old/tempo", gone: true }] });
+  assert.deepEqual(all(list, "LI").map((item) => item.textContent),
+    ["tempo ~/lab/tempo", "tempo ~/old/tempo" + "folder gone"]);
+});
+
+test("a path can break only after a /", () => {
+  assert.deepEqual(pathParts("~/Lab/tempo").map(shape), ["~/", ["WBR"], "Lab/", ["WBR"], "tempo"]);
+  assert.deepEqual(pathParts("tempo").map(shape), ["tempo"]);
+  assert.deepEqual(pathParts(null), [""]);
 });
 
 test("the page switch shows whether each session starts the page", () => {
