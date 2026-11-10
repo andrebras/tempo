@@ -19,7 +19,7 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`). The option may also be named by its whole text, in any case and without trailing punctuation, such as `tempo answer 61 yes`; a valid letter wins. It answers the current wording; once the question was reworded, the confirmation names it: `Answered Q61 (version 2): (a) Yes` |
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
 | `tempo status` | For you, not Claude: print `? 3` when the current folder's project has 3 open questions, nothing when it has none, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
-| `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `--sidebar` is a compact view for a narrow pane beside Claude's; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
+| `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `--sidebar` is a compact view for a narrow pane beside Claude's; `--question N` shows only that question and closes once it is answered; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
 | `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) |
 | `tempo serve [--background]` | Run the page; works whether or not sessions start it (`--port` picks another port) |
 | `tempo hook <event>` | Run by Claude Code's hooks (`session-start`, `user-prompt-submit`, `stop`); not for direct use (see [Hooks](#hooks)) |
@@ -328,6 +328,12 @@ In the list, `j` and `k` move, `h` and `l` switch project, and Enter opens the q
 over the list. There, `j` and `k` scroll, a letter answers as in the full view, `r` writes
 a follow-up, and `h` or Esc goes back. After an answer the list shows the next question.
 `q` quits; Esc in the list does nothing, so the pane isn't closed by mistake.
+
+Inside tmux, Enter opens the question in a popup over your panes instead, 80% of the
+window, with the same keys. The popup closes once you answer or send a follow-up, and on
+`h` or Esc; it closes by itself too if the question is answered elsewhere meanwhile. The
+sidebar keeps updating while it is open. `tempo tui --project NAME --question N` is what
+the popup runs, and works on its own too.
 
 To open it on the left of the current tmux window, 40 columns wide, keeping the keyboard
 in your pane:
