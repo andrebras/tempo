@@ -195,7 +195,8 @@ def _questions(request: Handler, store: Store, args: list[str], body: dict[str, 
     query = parse_qs(urlparse(request.path).query)
     status = query.get("status", ["open"])[0]
     project = query.get("project", [None])[0]
-    # Projects whose folders have no questions yet are listed too.
+    # Projects whose folders have no questions yet are listed too, while a folder is left.
+    store.forget_gone_folders()
     projects = [summary["name"] for summary in store.project_summaries()]
     request._json(
         200,
@@ -333,7 +334,9 @@ def _commit() -> str | None:
 def _settings(store: Store) -> dict[str, Any]:
     """What the Settings screen shows: projects with their folders, and whether each
     session starts the page. Only folders still on disk are listed; a folder that no
-    longer exists, or whose path isn't known yet, stays in the database but is hidden."""
+    longer exists, or whose path isn't known yet, stays in the database but is hidden.
+    An empty project whose folders are all gone is forgotten (forget_gone_folders)."""
+    store.forget_gone_folders()
     projects = [
         dict(project, folders=[folder for folder in project["folders"] if _on_disk(folder)])
         for project in store.project_summaries()

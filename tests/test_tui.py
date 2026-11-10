@@ -3,9 +3,11 @@ import io
 import os
 import re
 import select
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -107,6 +109,13 @@ class BoardTest(DatabaseTest):
 
     def board(self, home="demo"):
         return Board(self.board_store, home)
+
+    def on_disk(self, name):
+        """A folder that exists, so Settings keeps listing its project with no questions."""
+        path = os.path.join(tempfile.mkdtemp(), name)
+        os.mkdir(path)
+        self.addCleanup(shutil.rmtree, os.path.dirname(path))
+        return path
 
     def keys(self, board, *keys):
         for key in keys:
@@ -312,17 +321,25 @@ class BoardTest(DatabaseTest):
 
     def test_s_opens_settings_with_every_project_and_its_folders(self):
         self.add()
-        self.store.see_folder("shop", "/work/shop")
+        shop = self.on_disk("shop")
+        self.store.see_folder("shop", shop)
         board = self.board()
         board.press("s")
         self.assertEqual(board.mode, "settings")
         self.assertEqual(board.chosen, "demo")
         self.assertEqual([p["name"] for p in board.summaries], ["demo", "shop"])
-        self.assertEqual(board.summaries[1]["folders"][0]["path"], "/work/shop")
+        self.assertEqual(board.summaries[1]["folders"][0]["path"], shop)
         board.press("j")
         self.assertEqual(board.chosen, "shop")
         board.press("esc")
         self.assertEqual(board.mode, "normal")
+
+    def test_settings_forget_an_empty_project_whose_folder_is_gone(self):
+        self.add()
+        self.store.see_folder("fork", "/nowhere/scratchpad/fork")
+        board = self.board()
+        board.press("s")
+        self.assertEqual([p["name"] for p in board.summaries], ["demo"])
 
     def test_merging_moves_the_questions_and_says_where_they_went(self):
         self.add(title="Here")
@@ -349,14 +366,15 @@ class BoardTest(DatabaseTest):
         self.add()
         for title in ("One", "Two"):
             self.add(project="shop", title=title)
-        self.store.see_folder("empty", "/work/empty")
+        empty = self.on_disk("empty")
+        self.store.see_folder("empty", empty)
         board = self.board()
         self.keys(board, "s", "j", "j", "m", "enter", "y")
         self.assertEqual(board.message[0], "Moved 2 questions from shop to demo: now Q2\u2013Q3.")
         # A project with no questions yet only brings its folders.
         self.keys(board, "j", "m", "enter", "y")
         self.assertEqual(board.message, ("Merged empty into demo.", "ok"))
-        self.assertEqual(self.store.project_for("empty", "/work/empty"), "demo")
+        self.assertEqual(self.store.project_for("empty", empty), "demo")
 
     def test_cancelling_a_merge_changes_nothing(self):
         self.add()
