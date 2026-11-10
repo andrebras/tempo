@@ -1048,7 +1048,7 @@ class JumpTest(BoardTest):
 
 
 class FakeTmux:
-    """A tmux server for `tempo tmux`: windows with their panes, server options and hooks."""
+    """A tmux server for `tempo sidebar`: windows with their panes, server options and hooks."""
 
     def __init__(self, windows, on="", hooks=None):
         self.windows = {window: list(panes) for window, panes in windows.items()}
@@ -1111,10 +1111,10 @@ class FakeTmux:
         return [args for args in self.calls if args[0] == "split-window"]
 
 
-class TmuxTest(DatabaseTest):
-    """`tempo tmux` turns the sidebar on or off in every tmux window, as workmux does."""
+class SidebarCommandTest(DatabaseTest):
+    """`tempo sidebar` turns the sidebar on or off in every tmux window, as workmux does."""
 
-    def run_tmux(self, tmux, *args, env=None):
+    def run_sidebar(self, tmux, *args, env=None):
         env = {"TMUX": "/tmp/tmux-501/default,1,0", "TMUX_PANE": "%1", **(env or {})}
         err = io.StringIO()
         with (
@@ -1122,12 +1122,12 @@ class TmuxTest(DatabaseTest):
             mock.patch("subprocess.run", side_effect=tmux),
             redirect_stderr(err),
         ):
-            code = cli.main(["tmux", *args])
+            code = cli.main(["sidebar", *args])
         return code, err.getvalue()
 
     def test_on_every_window_gets_a_full_height_sidebar_on_the_left_with_its_project(self):
         tmux = FakeTmux({"@1": ["%1"], "@2": ["%2", "%3"]})
-        self.assertEqual(self.run_tmux(tmux)[0], 0)
+        self.assertEqual(self.run_sidebar(tmux)[0], 0)
         self.assertEqual(tmux.on, "left")
         self.assertEqual(tmux.sidebars(), {"@1": ["%91"], "@2": ["%92"]})
         split = tmux.splits()[1]
@@ -1139,25 +1139,25 @@ class TmuxTest(DatabaseTest):
         for hook in cli.SIDEBAR_HOOKS:
             (command,) = tmux.hooks[hook].values()
             self.assertTrue(command.startswith("run-shell -b 'env TEMPO_DB="))
-            self.assertTrue(command.endswith(" tmux --window #{window_id}'"))
+            self.assertTrue(command.endswith(" sidebar --window #{window_id}'"))
 
     def test_a_new_window_gets_one_while_it_is_on_and_only_one(self):
         tmux = FakeTmux({"@1": ["%1"]}, on="left")
-        self.assertEqual(self.run_tmux(tmux, "--window", "@1", env={"TMUX": ""})[0], 0)
+        self.assertEqual(self.run_sidebar(tmux, "--window", "@1", env={"TMUX": ""})[0], 0)
         self.assertEqual(tmux.sidebars(), {"@1": ["%91"]})
-        self.run_tmux(tmux, "--window", "@1")
+        self.run_sidebar(tmux, "--window", "@1")
         self.assertEqual(len(tmux.splits()), 1)
         # Off, the hook does nothing.
         off = FakeTmux({"@1": ["%1"]})
-        self.run_tmux(off, "--window", "@1")
+        self.run_sidebar(off, "--window", "@1")
         self.assertEqual(off.splits(), [])
 
     def test_run_again_every_sidebar_and_only_our_hooks_go(self):
         tmux = FakeTmux(
             {"@1": ["%1"], "@2": ["%2"]}, hooks={"after-new-window": {0: "run-shell mine"}}
         )
-        self.run_tmux(tmux)
-        self.run_tmux(tmux)
+        self.run_sidebar(tmux)
+        self.run_sidebar(tmux)
         self.assertEqual(tmux.on, "")
         self.assertEqual(tmux.sidebars(), {"@1": [], "@2": []})
         self.assertEqual(tmux.hooks["after-new-window"], {0: "run-shell mine"})
@@ -1165,13 +1165,13 @@ class TmuxTest(DatabaseTest):
 
     def test_the_side_is_remembered_and_switching_it_moves_every_sidebar(self):
         tmux = FakeTmux({"@1": ["%1"]})
-        self.run_tmux(tmux, "--side", "right")
+        self.run_sidebar(tmux, "--side", "right")
         self.assertEqual(tmux.splits()[0][3], "-hfd")
-        self.run_tmux(tmux, "--side", "left")
+        self.run_sidebar(tmux, "--side", "left")
         self.assertEqual((tmux.on, tmux.sidebars()), ("left", {"@1": ["%92"]}))
-        self.run_tmux(tmux)
-        self.run_tmux(tmux)
-        # Plain `tempo tmux` keeps the side last chosen.
+        self.run_sidebar(tmux)
+        self.run_sidebar(tmux)
+        # Plain `tempo sidebar` keeps the side last chosen.
         self.assertEqual(tmux.splits()[-1][3], "-hbfd")
         with Store(connect()) as store:
             self.assertEqual(store.tmux_side(), "left")
@@ -1181,7 +1181,7 @@ class TmuxTest(DatabaseTest):
             os.environ.pop("TMUX", None)
             err = io.StringIO()
             with redirect_stderr(err):
-                self.assertEqual(cli.main(["tmux"]), 1)
+                self.assertEqual(cli.main(["sidebar"]), 1)
         self.assertIn("only inside tmux", err.getvalue())
 
     def test_a_tmux_failure_is_reported(self):
@@ -1191,5 +1191,5 @@ class TmuxTest(DatabaseTest):
             mock.patch("subprocess.run", side_effect=failure),
             redirect_stderr(io.StringIO()) as err,
         ):
-            self.assertEqual(cli.main(["tmux"]), 1)
+            self.assertEqual(cli.main(["sidebar"]), 1)
         self.assertEqual(err.getvalue(), "tempo: tmux failed: no server running\n")
