@@ -101,6 +101,7 @@ touches your own questions or the real page's port: ttyd and `tempo tui` use por
 .claude-plugin/   plugin and marketplace manifests
 bin/              tempo (the command), oq (its old name), ci, check-version, media and
                   release
+desktop/          the desktop app, an early test (Tauri 2; its README says how to run it)
 docs/             reference, screenshots and the demo GIFs
 hooks/            hook configuration
 tempo/
