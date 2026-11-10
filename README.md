@@ -82,11 +82,17 @@ Your questions stay in `~/.claude/tempo/`. Delete that folder if you want them g
 
 ## Usage
 
-There's nothing to run. When a Claude Code session starts, Tempo starts its page at
-<http://127.0.0.1:2204/>. If a Tempo page is already running there, it is kept, unless it comes
+There's nothing to run. When Claude needs a decision, it adds a question and tells you
+where to answer it. By default you answer from the terminal: in tmux, `tempo sidebar on` puts a
+sidebar with your questions beside every window, and one line in `~/.tmux.conf` brings it
+back after tmux restarts (see
+[A sidebar beside Claude](docs/reference.md#a-sidebar-beside-claude)).
+
+Tempo also has a page, at <http://127.0.0.1:2204/>. Run `tempo config page on` (or use the
+switch under Sessions in Settings) and each Claude Code session starts it; Claude then links
+to each question on it. If a Tempo page is already running there, it is kept, unless it comes
 from an older version of Tempo or no longer works; then Tempo replaces it (details in
-[The page server](docs/reference.md#the-page-server)). When Claude needs a
-decision, it adds a question and links to it in chat. On the page you can:
+[The page server](docs/reference.md#the-page-server)). On the page you can:
 
 - **Answer**: pick an option, add a note if you like, and send it. The page moves on to the
   next open question. If Claude rewords the question while you answer, the page refuses the
@@ -116,11 +122,10 @@ decision, it adds a question and links to it in chat. On the page you can:
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too. Merging two projects renumbers the questions that move.
 
-If you would rather answer from the terminal, run `tempo config page off` (or use the switch
-under Sessions in Settings): sessions then stop
-starting the page, and Claude points you to `tempo show` and `tempo answer` instead of page
-links. `tempo serve --background` still starts the page when you want it, and
-`tempo config page on` brings back the default (`tempo config` shows the current value).
+With the page off, the default, sessions don't start it, and Claude points you to
+`tempo show` and `tempo answer` instead of page links. `tempo serve --background` still starts
+the page when you want it, and `tempo config page off` brings back the default (`tempo config`
+shows the current value).
 
 ## From the terminal
 

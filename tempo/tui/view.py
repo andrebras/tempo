@@ -9,8 +9,10 @@ README's capture see exactly what the terminal shows, without a terminal.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Protocol
 
+from tempo.store import Question
 from tempo.tui.model import SETTINGS, Board, Rect, detail_lines, layout, waiting_on_claude
 from tempo.tui.text import Line, cell_width, clip, plain, wrap
 
@@ -22,6 +24,11 @@ HINTS = {
     "settings": [("j/k", "project"), ("m", "merge into…"), ("Esc", "back to the questions")],
     "merge": [("j/k", "project"), ("Enter", "merge into this one"), ("Esc", "cancel")],
 }
+# The sidebar's keys, in the list and with a question open.
+SIDEBAR = {
+    "questions": [("Enter", "open"), ("h/l", "project"), ("g", "Claude")],
+    "detail": [("h", "back")],
+}
 HELP = [
     ("j k ↑ ↓", "move; in Detail, scroll"),
     ("h l ← →", "previous or next panel"),
@@ -29,6 +36,7 @@ HELP = [
     ("Enter", "open the questions, then the detail"),
     ("a b c …", "answer with that option (asks y/n)"),
     ("A B C …", "the same; Shift is needed for h j k l q r s"),
+    ("g", "sidebar: go to the project's Claude (tmux)"),
     ("r", "ask Claude for more (a follow-up)"),
     ("s", "Settings: the projects, their folders, merging"),
     ("PgUp PgDn", "scroll the detail a page (or Ctrl-u Ctrl-d)"),
@@ -79,6 +87,12 @@ def draw(board: Board, canvas: Canvas) -> tuple[int, int] | None:
     if board.mode in SETTINGS:
         _settings(board, canvas, Rect(0, 0, max(1, height - 1), width))
         return _bottom(board, canvas, height - 1, width)
+    if board.sidebar:
+        _sidebar(board, canvas, Rect(0, 0, max(1, height - 1), width))
+        cursor = _bottom(board, canvas, height - 1, width)
+        if board.mode == "help":
+            _help(canvas, height, width)
+        return cursor
     panels = layout(width, height, board.focus, len(board.projects))
     for name, rect in panels.items():
         title = TITLES[name]
@@ -140,6 +154,9 @@ def _questions(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
     if not rows:
         canvas.put(rect.top, rect.left, clip("Nothing open here.", rect.width), "dim")
         return
+    if board.sidebar:
+        _sidebar_questions(board, canvas, rect)
+        return
     selected = next(
         (
             i
@@ -160,7 +177,73 @@ def _questions(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
         style = ""
         if question["number"] == board.number:
             style = "selected" if focused else "current"
-        _row(canvas, rect.top + y, rect, text, style, "quick" if question["quick"] else "")
+        end = "quick" if question["quick"] else ""
+        _row(canvas, rect.top + y, rect, text, style, end)
+
+
+def _sidebar_questions(board: Board, canvas: Canvas, rect: Rect) -> None:
+    """The sidebar's questions, as the page lists them: each in a block of a line with its
+    state mark, number, "quick" and age, then its title in up to two lines, and a blank
+    line after; a heading before each goal. The selected block is highlighted whole and
+    kept wholly on screen."""
+    lines: list[tuple[Line, str]] = []
+    block = (0, 0)
+    for row in board.rows():
+        question = row.question
+        if question is None:
+            lines.append(([(str(row.goal), "heading")], ""))
+            continue
+        start = len(lines)
+        style = "selected" if question["number"] == board.number else ""
+        mark, mark_style = _state_mark(board, question)
+        age = _age(question["created_at"])
+        head = "%s %s%s" % (mark, question["label"], " quick" if question["quick"] else "")
+        head = clip(head, max(1, rect.width - cell_width(age) - 1))
+        gap = " " * max(1, rect.width - cell_width(head) - cell_width(age))
+        lines.append(
+            ([(mark, mark_style), (head[len(mark) :], ""), (gap, ""), (age, "dim")], style)
+        )
+        title = wrap([(question["title"], "")], rect.width - 2)
+        if len(title) > 2:
+            # The rest of a long title is cut at the end of the second line.
+            title = [title[0], [(" ".join(plain(line) for line in title[1:]), "")]]
+        for line in title:
+            lines.append(([("  " + clip(plain(line), rect.width - 2), "")], style))
+        if style:
+            block = (start, len(lines))
+        lines.append(([], ""))
+    # Scrolled just enough that the selected block is whole.
+    top = max(0, block[1] - rect.height)
+    if block[0] < top:
+        top = block[0]
+    for y, (line, style) in enumerate(lines[top : top + rect.height]):
+        if style:
+            _row(canvas, rect.top + y, rect, plain(line), style)
+        else:
+            _spans(canvas, rect.top + y, rect.left, line, rect.width)
+
+
+def _state_mark(board: Board, question: Question) -> tuple[str, str]:
+    """A question's mark in the sidebar's state column, with the page's meanings. Only one
+    fits: something new wins, as it is what to read next; then waiting on Claude, as
+    nothing can be done meanwhile; then the goal's question to start with."""
+    if board.fresh(question):
+        return "●", "dot"
+    if waiting_on_claude(question):
+        return "…", "accent"
+    if question["start_here"]:
+        return "»", "letter"
+    return " ", ""
+
+
+def _age(created_at: str) -> str:
+    """How long a question has been open, short for a narrow pane: "4d", "3h", "12m"."""
+    created = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    minutes = max(1, int((datetime.now(timezone.utc) - created).total_seconds() // 60))
+    for size, unit in ((24 * 60, "d"), (60, "h"), (1, "m")):
+        if minutes >= size:
+            return "%d%s" % (minutes // size, unit)
+    return "1m"
 
 
 def _detail(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
@@ -182,6 +265,32 @@ def _detail(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
         )
         x = rect.left + rect.width - cell_width(where)
         canvas.put(rect.top + rect.height, x, where, "border-focus" if focused else "border")
+
+
+def _sidebar(board: Board, canvas: Canvas, rect: Rect) -> None:
+    """The compact view: the project with its neighbours on top, then its questions by
+    goal, each with the page's marks; or the question that is open, over the whole pane."""
+    if board.focus == "detail":
+        title = "%s · h back" % (board.question["label"] if board.question else "Detail")
+        _box(canvas, rect, title, True)
+        inner = Rect(rect.top + 1, rect.left + 1, rect.height - 2, rect.width - 2)
+        if inner.height > 0 and inner.width > 0:
+            _detail(board, canvas, inner, True)
+        return
+    count = dict(board.projects).get(board.project, 0)
+    head = "◂ %s · %d open ▸" % (board.project, count)
+    canvas.put(rect.top, rect.left, clip(head, rect.width), "title")
+    # The other projects with something open or new, a dot on those with news.
+    others: Line = []
+    for name, open_count in board.projects:
+        if name == board.project or not (open_count or board.fresh_project(name)):
+            continue
+        others += [(" " if others else "", ""), ("%s %d" % (name, open_count), "dim")]
+        if board.fresh_project(name):
+            others.append(("●", "dot"))
+    _spans(canvas, rect.top + 1, rect.left, others, rect.width)
+    canvas.put(rect.top + 2, rect.left, "─" * rect.width, "border")
+    _questions(board, canvas, Rect(rect.top + 3, rect.left, rect.height - 3, rect.width), True)
 
 
 def _settings(board: Board, canvas: Canvas, rect: Rect) -> None:
@@ -265,8 +374,8 @@ def _bottom(board: Board, canvas: Canvas, y: int, width: int) -> tuple[int, int]
     if board.mode in HINTS:
         _spans(canvas, y, 0, _keys(list(HINTS[board.mode])), width - 1)
         return None
-    keys = list(HINTS[board.focus])
-    if board.question:
+    keys = list((SIDEBAR if board.sidebar else HINTS)[board.focus])
+    if board.question and (board.focus == "detail" or not board.sidebar):
         letters = [option["letter"] for option in board.question["options"]]
         keys.append(("%s-%s" % (letters[0], letters[-1]), "answer"))
         keys.append(("r", "follow up"))

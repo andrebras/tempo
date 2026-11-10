@@ -432,6 +432,116 @@ class BoardTest(DatabaseTest):
         self.assertIn("  (b) Right", lines)
 
 
+class SidebarTest(BoardTest):
+    """The compact view for a pane beside Claude's: `tempo tui --sidebar`."""
+
+    def sidebar(self, home="demo"):
+        return Board(self.board_store, home, sidebar=True)
+
+    def screen(self, board, width=40, height=16):
+        canvas = TextCanvas(height, width)
+        draw(board, canvas)
+        return canvas.text().split("\n")
+
+    def test_the_list_shows_the_project_its_neighbours_and_the_questions_by_goal(self):
+        self.add(title="Left or right?", goal="Release", start_here="unlocks the rest")
+        self.add(title="Which colour?")
+        self.add(project="shop", title="There")
+        lines = self.screen(self.sidebar())
+        self.assertEqual(lines[0], "◂ demo · 2 open ▸")
+        self.assertEqual(lines[1], "shop 1")
+        self.assertEqual(lines[2], "─" * 40)
+        self.assertEqual(lines[3], "Release")
+        # A block per question: the state column, number and age, then the title.
+        self.assertEqual(lines[4], "» Q1" + " " * 34 + "1m")
+        self.assertEqual(lines[5], "  Left or right?")
+        self.assertEqual(lines[6], "")
+        self.assertEqual(lines[7], "Other")
+        self.assertTrue(lines[8].startswith("  Q2 ") and lines[8].endswith("1m"))
+        self.assertEqual(lines[9], "  Which colour?")
+        self.assertTrue(all(cell_width(line) <= 40 for line in lines))
+        self.assertTrue(lines[-1].startswith("Enter open  h/l project"))
+
+    def test_h_and_l_switch_project_and_enter_opens_the_question(self):
+        self.add(title="Here")
+        self.add(project="shop", title="There")
+        board = self.sidebar()
+        self.keys(board, "l")
+        self.assertEqual((board.project, board.question["title"]), ("shop", "There"))
+        self.keys(board, "l")
+        self.assertEqual(board.project, "demo")
+        # Esc in the list must not close the pane.
+        self.assertTrue(board.press("esc"))
+        self.keys(board, "enter")
+        self.assertEqual(board.focus, "detail")
+        lines = self.screen(board)
+        self.assertIn("Q1 · h back", lines[0])
+        self.assertIn("(b) Right", "\n".join(lines))
+        self.keys(board, "esc")
+        self.assertEqual(board.focus, "questions")
+
+    def test_a_letter_in_the_list_answers_nothing(self):
+        self.add(title="One")
+        board = self.sidebar()
+        self.keys(board, "a", "B", "r", "enter")
+        self.assertEqual((board.mode, board.focus), ("normal", "detail"))
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
+    def test_answering_an_open_question_goes_back_to_the_list(self):
+        self.add(title="One")
+        self.add(title="Two")
+        board = self.sidebar()
+        self.keys(board, "enter", "a", "enter")
+        self.assertEqual(self.store.get("demo", 1)["status"], "answered")
+        self.assertEqual((board.focus, board.number), ("questions", 2))
+
+    def test_a_dot_marks_what_claude_changed_until_it_is_opened(self):
+        self.add(title="Old")
+        self.add(project="shop", title="There")
+        board = self.sidebar()
+        # Open when the sidebar started: nothing is new yet.
+        self.assertNotIn("●", "\n".join(self.screen(board)))
+        # Stamped after the start, as a change made later would be.
+        with mock.patch("tempo.store.common.now", return_value="2099-01-01T00:00:00Z"):
+            self.add(title="New")
+            self.store.add_context("shop", 1, "More detail")
+        board.changed()
+        lines = self.screen(board)
+        self.assertEqual(lines[1], "shop 1●")
+        self.assertTrue(lines[6].startswith("● Q2"))
+        self.assertEqual(lines[7], "  New")
+        self.keys(board, "j", "enter", "h")
+        self.assertNotIn("●", self.screen(board)[6])
+
+    def test_a_long_title_takes_two_lines_and_is_cut_after_them(self):
+        self.add(title="A title long enough to need more than two lines in a narrow pane here")
+        lines = self.screen(self.sidebar(), width=30)
+        self.assertEqual(lines[4], "  A title long enough to need")
+        self.assertTrue(lines[5].startswith("  more than two") and lines[5].endswith("…"))
+        self.assertEqual(lines[6], "")
+
+    def test_the_state_column_shows_one_mark_new_first_then_waiting_then_start_here(self):
+        self.add(title="Start", goal="Release", start_here="unlocks the rest")
+        self.store.follow_up("demo", 1, "Why?")
+        board = self.sidebar()
+        # Waiting on Claude outranks start here.
+        self.assertTrue(self.screen(board)[4].startswith("… Q1"))
+        with mock.patch("tempo.store.common.now", return_value="2099-01-01T00:00:00Z"):
+            self.store.add_context("demo", 1, "Because")
+        board.changed()
+        self.assertTrue(self.screen(board)[4].startswith("● Q1"))
+
+    def test_the_selected_question_is_kept_wholly_on_screen(self):
+        for number in range(1, 7):
+            self.add(title="Question %d" % number)
+        board = self.sidebar()
+        self.keys(board, "j", "j", "j", "j", "j")
+        lines = self.screen(board, height=12)
+        # 12 rows: 3 on top, 1 for the keys, 8 for blocks of 3 lines each.
+        self.assertIn("  Question 6", lines)
+        self.assertTrue(lines[lines.index("  Question 6") - 1].startswith("  Q6"))
+
+
 class LayoutTest(unittest.TestCase):
     def test_wide_screens_show_three_panels_like_lazygit(self):
         panels = layout(80, 24, "questions", projects=3)
@@ -788,6 +898,416 @@ class CommandTest(DatabaseTest):
         ):
             self.assertEqual(cli.main(["tui"]), 0)
             self.assertEqual(cli.main(["tui", "--project", "shop"]), 0)
+            self.assertEqual(cli.main(["tui", "--sidebar"]), 0)
+            self.assertEqual(cli.main(["tui", "--question", "3"]), 0)
         # TEMPO_PROJECT is set to demo, as `tempo list` would read it.
-        self.assertEqual([call.args for call in run.call_args_list], [("demo",), ("shop",)])
+        self.assertEqual(
+            [call.args for call in run.call_args_list],
+            [("demo",), ("shop",), ("demo",), ("demo",)],
+        )
+        self.assertEqual(
+            [(call.kwargs["sidebar"], call.kwargs["question"]) for call in run.call_args_list],
+            [(False, None), (False, None), (True, None), (False, 3)],
+        )
         start.assert_not_called()
+
+
+class PopupTest(BoardTest):
+    """Inside tmux, the sidebar opens a question in a popup that shows only it."""
+
+    def test_enter_opens_the_question_elsewhere_and_counts_it_as_seen(self):
+        self.add(title="One")
+        opened = []
+
+        def opener(project, number):
+            opened.append((project, number))
+            return True
+
+        board = Board(self.board_store, "demo", sidebar=True, opener=opener)
+        board.press("enter")
+        self.assertEqual(opened, [("demo", 1)])
+        self.assertEqual(board.focus, "questions")
+
+    def test_outside_tmux_the_question_opens_over_the_list(self):
+        self.add(title="One")
+        board = Board(self.board_store, "demo", sidebar=True)
+        board.press("enter")
+        self.assertEqual(board.focus, "detail")
+        self.assertIn(("demo", 1), board.opened)
+
+    def test_a_popup_that_fails_leaves_the_list_and_says_so(self):
+        self.add(title="One")
+        board = Board(self.board_store, "demo", sidebar=True, opener=lambda *q: False)
+        board.opened.clear()
+        board.press("enter")
+        self.assertEqual(board.focus, "questions")
+        self.assertEqual(board.message, ("Could not open the popup.", "error"))
+        self.assertNotIn(("demo", 1), board.opened)
+
+    def test_one_question_closes_once_answered_or_on_escape(self):
+        self.add(title="One")
+        self.add(title="Two")
+        board = Board(self.board_store, "demo", question=2)
+        self.assertEqual((board.focus, board.question["title"]), ("detail", "Two"))
+        self.assertTrue(board.press("a"))
+        self.assertFalse(board.press("enter"))
+        self.assertEqual(self.store.get("demo", 2)["status"], "answered")
+        board = Board(self.board_store, "demo", question=1)
+        self.assertFalse(board.press("esc"))
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
+    def test_one_question_closes_when_it_is_answered_elsewhere(self):
+        self.add(title="One")
+        board = Board(self.board_store, "demo", question=1)
+        self.assertFalse(board.done)
+        self.store.answer("demo", 1, "a")
+        board.changed()
+        self.assertTrue(board.done)
+        self.assertTrue(Board(self.board_store, "demo", question=7).done)
+
+    @unittest.skipUnless(curses is not None, "needs curses")
+    def test_the_popup_runs_this_tempo_on_this_database(self):
+        from tempo.tui import screen
+
+        command = screen.popup_command("my shop", 4)
+        self.assertEqual(command[:2], ["tmux", "display-popup"])
+        self.assertIn("-E", command)
+        self.assertIn("TEMPO_DB=%s" % os.environ["TEMPO_DB"], command)
+        self.assertEqual(
+            command[-1],
+            "%s tui --project 'my shop' --question 4" % os.path.join(CODE_ROOT, "bin", "tempo"),
+        )
+        popups = screen.Popups()
+        with mock.patch("subprocess.Popen", side_effect=OSError):
+            self.assertFalse(popups.open("demo", 1))
+        with mock.patch("subprocess.Popen") as popen:
+            popen.return_value.poll.return_value = 0
+            self.assertTrue(popups.open("demo", 1))
+            self.assertEqual(popen.call_args.args[0], screen.popup_command("demo", 1))
+            popups.collect()
+        self.assertEqual(popups.running, [])
+
+
+class JumpTest(BoardTest):
+    """g in the sidebar goes to the pane where the shown project's Claude session runs."""
+
+    def test_g_jumps_with_the_projects_folders_and_says_what_went_wrong(self):
+        self.store.see_folder("shop", "/work/shop")
+        self.store.see_folder("demo", "/work/demo")
+        self.add(project="shop", title="There")
+        self.add(title="Here")
+        asked = []
+
+        def jumper(project, paths):
+            asked.append((project, paths))
+            return None if project == "shop" else "No Claude session open for %s." % project
+
+        board = Board(self.board_store, "shop", sidebar=True, jumper=jumper)
+        board.press("g")
+        self.assertEqual((asked, board.message), ([("shop", ["/work/shop"])], None))
+        # h and l only browse; g goes.
+        board.press("l")
+        self.assertEqual(len(asked), 1)
+        board.press("g")
+        self.assertEqual(board.message, ("No Claude session open for demo.", "error"))
+        self.assertEqual(self.store.get("shop", 1)["status"], "open")
+
+    def test_outside_tmux_g_says_so_and_the_open_question_answers_with_g(self):
+        self.add(title="One", options=list("abcdefg"))
+        board = Board(self.board_store, "demo", sidebar=True)
+        board.press("g")
+        self.assertEqual(board.message, ("g works only inside tmux.", "error"))
+        board.press("G")
+        self.assertEqual(board.mode, "normal")
+        self.keys(board, "enter", "g")
+        self.assertEqual((board.mode, board.letter), ("note", "g"))
+
+    @unittest.skipUnless(curses is not None, "needs curses")
+    def test_the_claude_pane_is_found_in_the_projects_folders(self):
+        from tempo.tui import screen
+
+        listing = "\n".join(
+            [
+                "%1\tshop\t@1\t100\t2.1.311\t/work/shop",
+                "%2\tshop\t@1\t100\tzsh\t/work/shop",
+                "%3\tshop\t@2\t300\tclaude\t/work/shop/.claude/worktrees/x",
+                "%4\tother\t@3\t900\t2.1.311\t/work/shopping",
+                "%5\tshop\t@4\t999\t2.1.311\t/work/shop",
+            ]
+        )
+        # The newest Claude pane inside a folder, never the sidebar's own (%5).
+        self.assertEqual(screen.claude_pane(listing, ["/work/shop"], "%5"), ("shop", "@2", "%3"))
+        self.assertIsNone(screen.claude_pane(listing, ["/work/none"], None))
+        self.assertIsNone(screen.claude_pane(listing, [], None))
+
+    @unittest.skipUnless(curses is not None, "needs curses")
+    def test_jump_switches_to_the_pane_or_says_none_is_open(self):
+        from tempo.tui import screen
+
+        calls = []
+
+        def tmux(command, **_):
+            calls.append(command[1:])
+            out = "%3\tshop\t@2\t1\t2.1.311\t/work/shop\n" if command[1] == "list-panes" else ""
+            return subprocess.CompletedProcess(command, 0, out, "")
+
+        with mock.patch("subprocess.run", side_effect=tmux):
+            self.assertIsNone(screen.jump("shop", ["/work/shop"]))
+            self.assertEqual(
+                calls[1:],
+                [["switch-client", "-t", "shop"], ["select-window", "-t", "@2"],
+                 ["select-pane", "-t", "%3"]],
+            )  # fmt: skip
+            self.assertEqual(
+                screen.jump("demo", ["/work/demo"]), "No Claude session open for demo."
+            )
+        failure = subprocess.CalledProcessError(1, ["tmux"], "", "no server running\n")
+        with mock.patch("subprocess.run", side_effect=failure):
+            self.assertEqual(screen.jump("shop", ["/work/shop"]), "tmux failed: no server running")
+
+
+class FakeTmux:
+    """A tmux server for `tempo sidebar`: windows with their panes, server options and hooks."""
+
+    def __init__(self, windows, on="", hooks=None):
+        self.windows = {window: list(panes) for window, panes in windows.items()}
+        self.marked = set()
+        self.on = on
+        self.hooks = hooks or {}
+        self.calls = []
+        self.next = 90
+
+    def __call__(self, command, **_):
+        args = command[1:]
+        self.calls.append(args)
+        return subprocess.CompletedProcess(command, 0, self.answer(args), "")
+
+    def answer(self, args):
+        name = args[0]
+        if name == "show-options":
+            return self.on + "\n" if self.on else ""
+        if name == "set-option" and args[1] == "-g":
+            self.on = args[3]
+        elif name == "set-option" and args[1] == "-gu":
+            self.on = ""
+        elif name == "set-option" and args[1] == "-p":
+            self.marked.add(args[3])
+        elif name == "list-windows":
+            return "".join(window + "\n" for window in self.windows)
+        elif name == "list-panes" and args[1] == "-a":
+            return "".join(
+                args[3]
+                .replace("#{pane_id}", p)
+                .replace("#{window_panes}", str(len(panes)))
+                .replace("#{@tempo-sidebar}", "1" if p in self.marked else "")
+                + "\n"
+                for panes in self.windows.values()
+                for p in panes
+            )
+        elif name == "list-panes":
+            return "".join("1\n" if p in self.marked else "\n" for p in self.windows[args[2]])
+        elif name == "display-message":
+            return "/work/%s\n" % args[3].strip("@")
+        elif name == "split-window":
+            self.next += 1
+            pane = "%%%d" % self.next
+            self.windows[args[2]].append(pane)
+            return pane + "\n"
+        elif name == "kill-pane":
+            self.close(args[2])
+            self.marked.discard(args[2])
+        elif name == "show-hooks":
+            return "".join(
+                "%s[%d] %s\n" % (args[2], i, c) for i, c in self.hooks.get(args[2], {}).items()
+            )
+        elif name == "set-hook" and args[1] == "-ag":
+            hooks = self.hooks.setdefault(args[2], {})
+            hooks[max(hooks, default=-1) + 1] = args[3]
+        elif name == "set-hook" and args[1] == "-gu":
+            hook, index = args[2].rstrip("]").split("[")
+            del self.hooks[hook][int(index)]
+        return ""
+
+    def close(self, pane):
+        """A pane goes, and its window with it once it has none left, as in tmux."""
+        for window, panes in list(self.windows.items()):
+            if pane in panes:
+                panes.remove(pane)
+            if not panes:
+                del self.windows[window]
+
+    def sidebars(self):
+        return {w: [p for p in panes if p in self.marked] for w, panes in self.windows.items()}
+
+    def splits(self):
+        return [args for args in self.calls if args[0] == "split-window"]
+
+
+class SidebarCommandTest(DatabaseTest):
+    """`tempo sidebar` turns the sidebar on or off in every tmux window, as workmux does."""
+
+    def run_sidebar(self, tmux, *args, env=None):
+        env = {"TMUX": "/tmp/tmux-501/default,1,0", "TMUX_PANE": "%1", **(env or {})}
+        err, out = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.dict(os.environ, env),
+            mock.patch("subprocess.run", side_effect=tmux),
+            redirect_stderr(err),
+            redirect_stdout(out),
+        ):
+            code = cli.main(["sidebar", *args])
+        return code, err.getvalue(), out.getvalue()
+
+    def test_on_every_window_gets_a_full_height_sidebar_on_the_left_with_its_project(self):
+        tmux = FakeTmux({"@1": ["%1"], "@2": ["%2", "%3"]})
+        self.assertEqual(self.run_sidebar(tmux)[0], 0)
+        self.assertEqual(tmux.on, "left")
+        self.assertEqual(tmux.sidebars(), {"@1": ["%91"], "@2": ["%92"]})
+        split = tmux.splits()[1]
+        self.assertEqual(split[:7], ["split-window", "-t", "@2", "-hbfd", "-l", "40", "-c"])
+        self.assertIn("TEMPO_DB=%s" % os.environ["TEMPO_DB"], split)
+        tempo = os.path.join(CODE_ROOT, "bin", "tempo")
+        self.assertEqual(split[-1], "%s tui --sidebar --project 2" % tempo)
+        # New windows and sessions get one through tmux's hooks.
+        for hook in cli.SIDEBAR_HOOKS:
+            (command,) = tmux.hooks[hook].values()
+            self.assertTrue(command.startswith("run-shell -b 'env TEMPO_DB="))
+            self.assertTrue(command.endswith(" sidebar --window #{window_id}'"))
+        # And a pane closing tidies up a sidebar left alone.
+        for hook in cli.TIDY_HOOKS:
+            (command,) = tmux.hooks[hook].values()
+            self.assertTrue(command.startswith("run-shell -b 'env TEMPO_DB="))
+            self.assertTrue(command.endswith(" sidebar --tidy'"))
+
+    def test_a_sidebar_left_alone_in_its_window_closes_and_the_others_stay(self):
+        tmux = FakeTmux({"@1": ["%1"], "@2": ["%2", "%3"]})
+        self.run_sidebar(tmux, "on")
+        tmux.close("%1")
+        tmux.close("%2")
+        self.assertEqual(self.run_sidebar(tmux, "--tidy", env={"TMUX": ""})[0], 0)
+        # @1 closes with its sidebar; @2 keeps %3 and the sidebar beside it.
+        self.assertEqual(tmux.windows, {"@2": ["%3", "%92"]})
+
+    def test_tidy_leaves_a_sidebar_run_by_hand_alone(self):
+        # No mark: a `tempo tui --sidebar` the user started in a window of its own.
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.run_sidebar(tmux, "--tidy")
+        self.assertEqual(tmux.windows, {"@1": ["%1"]})
+
+    def test_a_new_window_gets_one_while_it_is_on_and_only_one(self):
+        tmux = FakeTmux({"@1": ["%1"]}, on="left")
+        self.assertEqual(self.run_sidebar(tmux, "--window", "@1", env={"TMUX": ""})[0], 0)
+        self.assertEqual(tmux.sidebars(), {"@1": ["%91"]})
+        self.run_sidebar(tmux, "--window", "@1")
+        self.assertEqual(len(tmux.splits()), 1)
+        # Off, the hook does nothing.
+        off = FakeTmux({"@1": ["%1"]})
+        self.run_sidebar(off, "--window", "@1")
+        self.assertEqual(off.splits(), [])
+
+    def test_run_again_every_sidebar_and_only_our_hooks_go(self):
+        tmux = FakeTmux(
+            {"@1": ["%1"], "@2": ["%2"]}, hooks={"after-new-window": {0: "run-shell mine"}}
+        )
+        self.run_sidebar(tmux)
+        self.run_sidebar(tmux)
+        self.assertEqual(tmux.on, "")
+        self.assertEqual(tmux.sidebars(), {"@1": [], "@2": []})
+        self.assertEqual(tmux.hooks["after-new-window"], {0: "run-shell mine"})
+        for hook in ("after-new-session", *cli.TIDY_HOOKS):
+            self.assertEqual(tmux.hooks[hook], {})
+
+    def test_toggle_says_nothing_so_a_key_binding_shows_no_output(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.assertEqual(self.run_sidebar(tmux, "toggle")[2], "")
+        self.assertEqual(tmux.on, "left")
+        self.assertEqual(self.run_sidebar(tmux, "toggle")[2], "")
+        self.assertEqual(tmux.on, "")
+
+    def test_on_twice_leaves_the_sidebars_as_they_are_and_says_so(self):
+        tmux = FakeTmux({"@1": ["%1"], "@2": ["%2"]})
+        self.assertEqual(self.run_sidebar(tmux, "on")[::2], (0, "Sidebar on, on the left.\n"))
+        self.assertEqual(
+            self.run_sidebar(tmux, "on")[::2], (0, "Sidebar already on, on the left.\n")
+        )
+        self.assertEqual(tmux.sidebars(), {"@1": ["%91"], "@2": ["%92"]})
+        self.assertEqual(len(tmux.splits()), 2)
+        self.assertEqual([len(hooks) for hooks in tmux.hooks.values()], [1, 1, 1, 1])
+
+    def test_on_with_the_other_side_moves_every_sidebar(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.run_sidebar(tmux, "on")
+        code, _, out = self.run_sidebar(tmux, "on", "--side", "right")
+        self.assertEqual((code, out), (0, "Sidebar moved to the right.\n"))
+        self.assertEqual((tmux.on, tmux.sidebars()), ("right", {"@1": ["%92"]}))
+        self.assertEqual(tmux.splits()[-1][3], "-hfd")
+
+    def test_off_twice_closes_every_sidebar_once_and_says_so(self):
+        tmux = FakeTmux(
+            {"@1": ["%1"], "@2": ["%2"]}, hooks={"after-new-window": {0: "run-shell mine"}}
+        )
+        self.run_sidebar(tmux, "on")
+        self.assertEqual(self.run_sidebar(tmux, "off")[::2], (0, "Sidebar off.\n"))
+        self.assertEqual(self.run_sidebar(tmux, "off")[::2], (0, "Sidebar already off.\n"))
+        self.assertEqual(tmux.on, "")
+        self.assertEqual(tmux.sidebars(), {"@1": [], "@2": []})
+        self.assertEqual(tmux.hooks["after-new-window"], {0: "run-shell mine"})
+        self.assertEqual(len(tmux.splits()), 2)
+
+    def test_the_side_is_remembered_and_switching_it_moves_every_sidebar(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.run_sidebar(tmux, "--side", "right")
+        self.assertEqual(tmux.splits()[0][3], "-hfd")
+        self.run_sidebar(tmux, "--side", "left")
+        self.assertEqual((tmux.on, tmux.sidebars()), ("left", {"@1": ["%92"]}))
+        self.run_sidebar(tmux)
+        self.run_sidebar(tmux)
+        # Plain `tempo sidebar` keeps the side last chosen.
+        self.assertEqual(tmux.splits()[-1][3], "-hbfd")
+        with Store(connect()) as store:
+            self.assertEqual(store.tmux_side(), "left")
+
+    def test_whether_it_is_on_is_saved(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        for args, saved in [(["on"], True), (["off"], False), ([], True), ([], False)]:
+            self.run_sidebar(tmux, *args)
+            with Store(connect()) as store:
+                self.assertEqual(store.tmux_sidebar(), saved)
+
+    def test_restore_turns_it_back_on_quietly_when_it_was_on(self):
+        self.run_sidebar(FakeTmux({"@1": ["%1"]}), "on", "--side", "right")
+        # A fresh tmux server, as after a reboot; ~/.tmux.conf runs --restore outside a pane.
+        tmux = FakeTmux({"@1": ["%1"], "@2": ["%2"]})
+        self.assertEqual(self.run_sidebar(tmux, "--restore", env={"TMUX": ""}), (0, "", ""))
+        self.assertEqual((tmux.on, tmux.sidebars()), ("right", {"@1": ["%91"], "@2": ["%92"]}))
+        self.assertEqual([len(hooks) for hooks in tmux.hooks.values()], [1, 1, 1, 1])
+        # Run again, as when ~/.tmux.conf is reloaded, it leaves them as they are.
+        self.assertEqual(self.run_sidebar(tmux, "--restore"), (0, "", ""))
+        self.assertEqual(len(tmux.splits()), 2)
+
+    def test_restore_does_nothing_when_it_was_off(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.assertEqual(self.run_sidebar(tmux, "--restore"), (0, "", ""))
+        self.run_sidebar(tmux, "on")
+        self.run_sidebar(tmux, "off")
+        self.assertEqual(self.run_sidebar(tmux, "--restore"), (0, "", ""))
+        self.assertEqual((tmux.on, tmux.sidebars()), ("", {"@1": []}))
+        self.assertEqual(len(tmux.splits()), 1)
+
+    def test_outside_tmux_it_says_so(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TMUX", None)
+            err = io.StringIO()
+            with redirect_stderr(err):
+                self.assertEqual(cli.main(["sidebar"]), 1)
+        self.assertIn("only inside tmux", err.getvalue())
+
+    def test_a_tmux_failure_is_reported(self):
+        failure = subprocess.CalledProcessError(1, ["tmux"], "", "no server running\n")
+        with (
+            mock.patch.dict(os.environ, {"TMUX": "x", "TMUX_PANE": "%1"}),
+            mock.patch("subprocess.run", side_effect=failure),
+            redirect_stderr(io.StringIO()) as err,
+        ):
+            self.assertEqual(cli.main(["sidebar"]), 1)
+        self.assertEqual(err.getvalue(), "tempo: tmux failed: no server running\n")

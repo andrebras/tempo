@@ -4,6 +4,41 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `tempo tui --sidebar` is a compact view for a narrow pane beside Claude's, such as a tmux
+  split about 40 columns wide. It shows the project on top, with the other projects that
+  have something open, then its questions by goal with the page's marks: `»` start here,
+  `…` waiting on Claude, and a dot on what Claude changed since you last opened it. `h`
+  and `l` switch project, Enter opens a question over the list, and `h` or Esc goes back.
+  The list only browses: you answer once the question is open, where all of it shows.
+- Inside tmux, the sidebar opens a question in a popup over the panes, which closes once
+  you answer or follow up. If the popup can't open, the sidebar stays on its list and says
+  so. `tempo tui --question N` shows one question that way anywhere.
+- `tempo sidebar on` turns the sidebar on in every tmux window, as workmux does with its
+  own: a full-height column 40 columns wide, showing each window's project. New windows and
+  sessions get one too. `tempo sidebar off` turns them all off; both do nothing when it
+  already is so. A plain `tempo sidebar` toggles it, for a tmux key binding. `--side right`
+  puts them on the right; the side is remembered.
+- A sidebar left alone in its window, once you quit Claude there for one, closes too, and
+  the window with it.
+- `tempo sidebar` remembers whether the sidebar is on. `run-shell -b "tempo sidebar
+  --restore"` in `~/.tmux.conf` (with the full path of `bin/tempo`) brings it back after
+  tmux restarts or the computer reboots.
+- The sidebar lists each question as the page does: a line with its state mark in a column
+  on the left, its number, "quick" and its age, then its title in up to two lines.
+- In the sidebar, `g` goes to the pane where the shown project's Claude session runs, in
+  whichever tmux session it is, and says so when none is open.
+
+### Changed
+
+- Sessions no longer start the page by default: you answer from the terminal, with the tmux
+  sidebar, `tempo tui` or `tempo show`. `tempo config page on`, or the switch under Sessions
+  in Settings, makes each session start the page again. If you had never changed the
+  setting, it is now off.
+
 ## [0.11.0] - 2026-11-10
 
 ### Changed

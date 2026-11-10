@@ -19,8 +19,9 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo answer <n> <letter>` | For you, not Claude: answer a question from the terminal, as the page does (`--note "…"`). The option may also be named by its whole text, in any case and without trailing punctuation, such as `tempo answer 61 yes`; a valid letter wins. It answers the current wording; once the question was reworded, the confirmation names it: `Answered Q61 (version 2): (a) Yes` |
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
 | `tempo status` | For you, not Claude: print `? 3` when the current folder's project has 3 open questions, nothing when it has none, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
-| `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
-| `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) |
+| `tempo sidebar` | For you, not Claude: inside tmux, turn the questions' sidebar (`tempo tui --sidebar`) on in every window, 40 columns wide, or off again (`on` or `off` sets it, toggling is the default; `--side left` or `--side right` picks the side and is remembered; whether it is on is remembered too, and `--restore` in `~/.tmux.conf` brings it back after tmux restarts) |
+| `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `--sidebar` is a compact view for a narrow pane beside Claude's; `--question N` shows only that question and closes once it is answered; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
+| `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Starting the page with each session](#starting-the-page-with-each-session)) |
 | `tempo serve [--background]` | Run the page; works whether or not sessions start it (`--port` picks another port) |
 | `tempo hook <event>` | Run by Claude Code's hooks (`session-start`, `user-prompt-submit`, `stop`); not for direct use (see [Hooks](#hooks)) |
 | `tempo slash <name>` | Run by the slash commands below, with the typed text on stdin; not for direct use |
@@ -63,8 +64,8 @@ Hooks are small commands that Claude Code runs at fixed moments of a session. Te
 three, each a call to `tempo hook …`:
 
 - **SessionStart**, when a session starts: starts the page (see
-  [The page server](#the-page-server)), unless you turned that off (see
-  [Turning the page off](#turning-the-page-off)), and tells Claude how to use Tempo: every decision
+  [The page server](#the-page-server)) if you turned that on (it is off by default, see
+  [Starting the page with each session](#starting-the-page-with-each-session)), and tells Claude how to use Tempo: every decision
   goes in Tempo, each question gets a goal, and every update ends with the project's open
   questions. It then lists those open questions.
 - **UserPromptSubmit**, when you send a message: adds the answers and follow-ups Claude
@@ -150,14 +151,15 @@ been replaced (its `pid` or `started` changed), usually after an update, the pag
 itself, so its code always matches the server's. A note you were typing and the option you
 picked are kept through the reload.
 
-### Turning the page off
+### Starting the page with each session
 
-If you answer from the terminal, you can stop sessions from starting the page, with the
-switch under Sessions in the page's Settings or from the terminal:
+By default, sessions don't start the page: you answer from the terminal, with the tmux
+sidebar (`tempo sidebar`), `tempo tui`, or `tempo show` and `tempo answer`. To have each session
+start the page, use the switch under Sessions in the page's Settings, or the terminal:
 
 ```bash
-tempo config page off   # sessions no longer start the page
-tempo config page on    # back to the default
+tempo config page on    # each session starts the page
+tempo config page off   # back to the default
 tempo config            # show the current value
 ```
 
@@ -250,7 +252,7 @@ The gear button at the top right of the page opens Settings.
   size, and width: how many characters fit on a line of a question (Narrow 68, Medium 80 or
   Wide 100). These are kept in your browser, not in the database.
 - **Sessions**: "Start the page with each session", On or Off. It is the same setting as
-  `tempo config page on|off` (see [Turning the page off](#turning-the-page-off)) and is kept
+  `tempo config page on|off` (see [Starting the page with each session](#starting-the-page-with-each-session)) and is kept
   in the database.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
@@ -314,6 +316,81 @@ bind -n M-t display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.claude/
 ```
 
 Then reload the file with `tmux source-file ~/.tmux.conf`.
+
+### A sidebar beside Claude
+
+`tempo tui --sidebar` is a compact view for a narrow pane, such as a tmux split beside
+Claude's session. Its top line names the project and how many questions are open there;
+the next lists the other projects with something open, with a dot on those with something
+new. Below are the project's questions by goal, as on the page: each takes a line with
+its number, "quick" when it applies and how long it has been open (`4d`, `3h`, `12m`),
+then its title in up to two lines, and a blank line. A column on the left shows the page's
+marks, one per question: a dot when Claude asked, reworded or added to it since you last
+opened it here, `…` while it waits on Claude, and `»` for the question to start with; when
+several apply, the dot comes first, then `…`. What is open when the sidebar starts counts
+as opened. The selected question is highlighted whole and always shown whole.
+
+In the list, `j` and `k` move, `h` and `l` switch project, and Enter opens the question
+over the list. The list only browses: no other letter answers there, so you answer only
+where the whole question shows. Once it is open, `j` and `k` scroll, a letter answers as in
+the full view, `r` writes a follow-up, and `h` or Esc goes back. After an answer the list shows the next question.
+`q` quits; Esc in the list does nothing, so the pane isn't closed by mistake.
+
+Inside tmux, Enter opens the question in a popup over your panes instead, 80% of the
+window, with the same keys. The question never opens over the list there: if the popup
+can't open, the sidebar stays on the list and says so. The popup closes once you answer or send a follow-up, and on
+`h` or Esc; it closes by itself too if the question is answered elsewhere meanwhile. The
+sidebar keeps updating while it is open. `tempo tui --project NAME --question N` is what
+the popup runs, and works on its own too.
+
+Inside tmux, `g` in the list goes to the shown project's Claude session: tmux switches to
+the pane running Claude in one of the project's folders, or a folder inside one such as a
+worktree, in whichever tmux session it is. With several, the most recently used window
+wins. A pane counts as Claude's when its command is `claude` or a version number such as
+`2.1.311`, which is what Claude Code shows; plain `node` doesn't count, since any Node
+program shows it. When none is open the sidebar says so; it never starts one. `h` and `l`
+only browse, so switching project never moves you.
+
+`tempo sidebar on`, run in any tmux pane, turns the sidebar on in every tmux window, as
+workmux does with its own: each window gets a column of its own, the full height and 40
+columns wide, showing the project of the folder the window is in. Windows and sessions
+made while it is on get one too, through tmux's hooks, so switching session (in workmux,
+say) lands on a sidebar already there. The keyboard stays in your pane. `tempo sidebar
+off` turns it off: every sidebar closes and Tempo's hooks go, while your own hooks stay.
+Both say what they did, and do nothing when the sidebar already is on or off. A plain
+`tempo sidebar` (or `tempo sidebar toggle`) turns it on when it is off and off when it is
+on, and prints nothing. `q` in one sidebar closes just that one. It works only inside tmux.
+
+A sidebar never keeps a window open by itself: when every other pane in a window closes
+(you quit Claude, say), its sidebar closes too, and so does the window, as it would have
+without one. Tempo does this with two more tmux hooks, `pane-exited` and
+`after-kill-pane`, which `tempo sidebar off` removes with the others.
+
+The sidebar goes on the left unless you choose the right with `tempo sidebar --side
+right`. The side is remembered, so a plain `tempo sidebar` keeps it; giving the other side
+while the sidebar is on moves every sidebar there.
+
+Whether the sidebar is on is remembered too, in Tempo's database. tmux forgets its
+sidebars when its server stops, after a reboot for one. To have them come back by
+themselves, add this line to `~/.tmux.conf`:
+
+```tmux
+run-shell -b "~/.claude/plugins/marketplaces/tempo/bin/tempo sidebar --restore"
+```
+
+`tempo sidebar --restore` turns the sidebar on, with the side you chose, when it was on
+last and is not on yet, and does nothing otherwise. It prints nothing, so reloading
+`~/.tmux.conf` is safe. If you set `TEMPO_DB` to use another database, set it on that
+line too.
+
+- **Jump between the sidebar and Claude:** tmux's own keys, `prefix` then `o` (the next
+  pane) or `prefix` then an arrow key.
+- **Show or hide the sidebar with one key:** add this to `~/.tmux.conf`, then reload it
+  with `tmux source-file ~/.tmux.conf`. `prefix` then `S` shows or hides it:
+
+```tmux
+bind S run-shell -c "#{pane_current_path}" "~/.claude/plugins/marketplaces/tempo/bin/tempo sidebar"
+```
 
 ### A badge in the tmux status bar
 
