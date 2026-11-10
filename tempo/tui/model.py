@@ -57,11 +57,27 @@ class Board:
     (moving, typing a note or a follow-up, showing help, or Settings).
 
     With sidebar set, it is the compact view for a narrow pane beside Claude's (`tempo tui
-    --sidebar`): the list of questions, or one question opened over it."""
+    --sidebar`): the list of questions, or one question opened over it. With question set,
+    it shows only that question, and closes once it is answered or followed up, or on h or
+    Esc: the view a tmux popup opens.
 
-    def __init__(self, store: Store, home: str, sidebar: bool = False) -> None:
+    opener, when set, opens a question somewhere else, such as a tmux popup; it returns
+    False when it couldn't, and the sidebar then opens the question over its list."""
+
+    def __init__(
+        self,
+        store: Store,
+        home: str,
+        sidebar: bool = False,
+        question: int | None = None,
+        opener: Callable[[str, int], bool] | None = None,
+    ) -> None:
         self.store = store
-        self.sidebar = sidebar
+        self.sidebar = sidebar or question is not None
+        self.single = question is not None
+        self.opener = opener
+        # Set when the single question's view is done, so the screen closes.
+        self.done = False
         # Every open question, of every project, as last loaded.
         self.everything: Questions = []
         # When each open question was last opened here: its activity then, by project and
@@ -99,6 +115,8 @@ class Board:
         self.chosen = home
         self.into: str | None = None
         self._seen: int | None = None
+        if question is not None:
+            self.number, self.focus = question, "detail"
         self.reload()
         self.opened = {(q["project"], q["number"]): q["activity"] for q in self.everything}
 
@@ -119,6 +137,10 @@ class Board:
         # list() gives each project's questions grouped by goal, as the page shows them.
         self.questions = [q for q in everything if q["project"] == self.project]
         numbers = [question["number"] for question in self.questions]
+        if self.single and self.number not in numbers:
+            # The one question is no longer open, answered here or elsewhere: nothing to show.
+            self.done, self.question = True, None
+            return
         if self.number not in numbers:
             self.number = numbers[min(place, len(numbers) - 1)] if numbers else None
             self.scroll = 0
@@ -155,11 +177,14 @@ class Board:
 
     def _mark_opened(self) -> None:
         """The question on screen counts as opened: in the sidebar, only once it is open."""
-        if self.question is None or (self.sidebar and self.focus != "detail"):
+        if self.question is None or self.number is None:
             return
-        for question in self.questions:
-            if question["number"] == self.number:
-                self.opened[(self.project, self.number)] = question["activity"]
+        if not (self.sidebar and self.focus != "detail"):
+            self.opened[(self.project, self.number)] = self._activity()
+
+    def _activity(self) -> str:
+        """The selected question's latest news, as listed."""
+        return next((q["activity"] for q in self.questions if q["number"] == self.number), "")
 
     def _data_version(self) -> int:
         return int(self.store.db.execute("PRAGMA data_version").fetchone()[0])
@@ -183,6 +208,9 @@ class Board:
     def press(self, key: str) -> bool:
         """Act on one key, named as the screen names them ("j", "B", "enter", "esc", "tab",
         "btab", "up", "pgdn", "ctrl-d", "backspace", …). False means quit."""
+        return self._press(key) and not self.done
+
+    def _press(self, key: str) -> bool:
         if key == "ctrl-c":
             # Usually a terminal turns Ctrl-C into an interrupt; without one, it still quits.
             return False
@@ -234,10 +262,13 @@ class Board:
             if key not in ("h", "left", "esc"):
                 return False
             self.focus = "questions"
+            self.done = self.single
         elif key in ("enter", "right", "left", "l", "h"):
-            if key == "enter" and self._selected():
-                self.focus, self.scroll = "detail", 0
-                self._mark_opened()
+            if key == "enter" and self._selected() and self.number is not None:
+                if not (self.opener and self.opener(self.project, self.number)):
+                    self.focus, self.scroll = "detail", 0
+                # Opened here or in the popup, it is seen either way.
+                self.opened[(self.project, self.number)] = self._activity()
             elif key != "enter":
                 self.switch(1 if key in ("l", "right") else -1)
         elif key in ("esc", "tab", "btab"):
@@ -409,8 +440,8 @@ class Board:
         try:
             self.message = (save(), "ok")
             if self.sidebar:
-                # Back to the list, where the next question is selected.
-                self.focus = "questions"
+                # Back to the list, where the next question is selected; a popup closes.
+                self.focus, self.done = "questions", self.single
         except (QuestionError, sqlite3.Error) as error:
             self.message = (str(error), "error")
         self.reload()

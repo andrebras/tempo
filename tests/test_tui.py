@@ -859,12 +859,80 @@ class CommandTest(DatabaseTest):
             self.assertEqual(cli.main(["tui"]), 0)
             self.assertEqual(cli.main(["tui", "--project", "shop"]), 0)
             self.assertEqual(cli.main(["tui", "--sidebar"]), 0)
+            self.assertEqual(cli.main(["tui", "--question", "3"]), 0)
         # TEMPO_PROJECT is set to demo, as `tempo list` would read it.
         self.assertEqual(
-            [call.args for call in run.call_args_list], [("demo",), ("shop",), ("demo",)]
+            [call.args for call in run.call_args_list],
+            [("demo",), ("shop",), ("demo",), ("demo",)],
         )
         self.assertEqual(
-            [call.kwargs for call in run.call_args_list],
-            [{"sidebar": False}, {"sidebar": False}, {"sidebar": True}],
+            [(call.kwargs["sidebar"], call.kwargs["question"]) for call in run.call_args_list],
+            [(False, None), (False, None), (True, None), (False, 3)],
         )
         start.assert_not_called()
+
+
+class PopupTest(BoardTest):
+    """Inside tmux, the sidebar opens a question in a popup that shows only it."""
+
+    def test_enter_opens_the_question_elsewhere_and_counts_it_as_seen(self):
+        self.add(title="One")
+        opened = []
+
+        def opener(project, number):
+            opened.append((project, number))
+            return True
+
+        board = Board(self.board_store, "demo", sidebar=True, opener=opener)
+        board.press("enter")
+        self.assertEqual(opened, [("demo", 1)])
+        self.assertEqual(board.focus, "questions")
+
+    def test_without_a_popup_the_question_opens_over_the_list(self):
+        self.add(title="One")
+        board = Board(self.board_store, "demo", sidebar=True, opener=lambda *q: False)
+        board.press("enter")
+        self.assertEqual(board.focus, "detail")
+
+    def test_one_question_closes_once_answered_or_on_escape(self):
+        self.add(title="One")
+        self.add(title="Two")
+        board = Board(self.board_store, "demo", question=2)
+        self.assertEqual((board.focus, board.question["title"]), ("detail", "Two"))
+        self.assertTrue(board.press("a"))
+        self.assertFalse(board.press("enter"))
+        self.assertEqual(self.store.get("demo", 2)["status"], "answered")
+        board = Board(self.board_store, "demo", question=1)
+        self.assertFalse(board.press("esc"))
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
+    def test_one_question_closes_when_it_is_answered_elsewhere(self):
+        self.add(title="One")
+        board = Board(self.board_store, "demo", question=1)
+        self.assertFalse(board.done)
+        self.store.answer("demo", 1, "a")
+        board.changed()
+        self.assertTrue(board.done)
+        self.assertTrue(Board(self.board_store, "demo", question=7).done)
+
+    @unittest.skipUnless(curses is not None, "needs curses")
+    def test_the_popup_runs_this_tempo_on_this_database(self):
+        from tempo.tui import screen
+
+        command = screen.popup_command("my shop", 4)
+        self.assertEqual(command[:2], ["tmux", "display-popup"])
+        self.assertIn("-E", command)
+        self.assertIn("TEMPO_DB=%s" % os.environ["TEMPO_DB"], command)
+        self.assertEqual(
+            command[-1],
+            "%s tui --project 'my shop' --question 4" % os.path.join(CODE_ROOT, "bin", "tempo"),
+        )
+        popups = screen.Popups()
+        with mock.patch("subprocess.Popen", side_effect=OSError):
+            self.assertFalse(popups.open("demo", 1))
+        with mock.patch("subprocess.Popen") as popen:
+            popen.return_value.poll.return_value = 0
+            self.assertTrue(popups.open("demo", 1))
+            self.assertEqual(popen.call_args.args[0], screen.popup_command("demo", 1))
+            popups.collect()
+        self.assertEqual(popups.running, [])

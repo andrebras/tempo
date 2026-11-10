@@ -227,6 +227,12 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
         action="store_true",
         help="A compact view for a narrow pane beside Claude's, such as a tmux split",
     )
+    tui.add_argument(
+        "--question",
+        type=int,
+        metavar="N",
+        help="Only this question, closing once it is answered (what the sidebar's popup shows)",
+    )
     tui.set_defaults(run=run_tui)
 
 
@@ -483,7 +489,7 @@ def run_tui(args: argparse.Namespace) -> int:
     # Imported here, so the hooks and other commands never load curses.
     from tempo.tui import screen
 
-    return screen.run(_project(args.project), sidebar=args.sidebar)
+    return screen.run(_project(args.project), sidebar=args.sidebar, question=args.question)
 
 
 def open_count(path: str, project: str | None = None, folder: str | None = None) -> int:
