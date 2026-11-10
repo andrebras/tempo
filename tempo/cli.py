@@ -234,10 +234,13 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
     config.add_argument(
         "name",
         nargs="?",
-        choices=["page", "terminal"],
-        help="page: start the page with each session; terminal: let the page open a shell",
+        choices=["page", "terminal", "terminal-font", "terminal-size"],
+        help="page: start the page with each session; terminal: let the page open a shell;"
+        " terminal-font and terminal-size: the terminal's font and its size in pixels",
     )
-    config.add_argument("value", nargs="?", choices=["on", "off"])
+    config.add_argument(
+        "value", nargs="?", help="on or off; a font list, or default; a size from 8 to 32"
+    )
     config.set_defaults(run=run_config)
 
 
@@ -462,24 +465,43 @@ def run_status(args: argparse.Namespace) -> None:
 def run_config(args: argparse.Namespace) -> None:
     """Print the settings, or change the one named and print it."""
     store = _store()
-    if args.value is not None and args.name == "terminal":
-        store.set_terminal(args.value == "on")
-    elif args.value is not None:
-        store.set_start_page(args.value == "on")
-    if args.name in (None, "page") and store.start_page():
-        print("page on: each session starts the page at http://127.0.0.1:%d/" % _port())
-    elif args.name in (None, "page"):
-        print(
-            "page off: sessions don't start the page; `tempo serve --background` starts it."
-            " Claude points you to the terminal (`tempo show`, `tempo answer`)."
-        )
-    if args.name in (None, "terminal") and store.terminal():
-        print(
+    if args.value is not None:
+        _change_setting(store, args.name, args.value)
+    font = store.terminal_font() or "default, the system's monospace font"
+    lines = {
+        "page": (
+            "page on: each session starts the page at http://127.0.0.1:%d/" % _port()
+            if store.start_page()
+            else "page off: sessions don't start the page; `tempo serve --background` starts"
+            " it. Claude points you to the terminal (`tempo show`, `tempo answer`)."
+        ),
+        "terminal": (
             "terminal on: the page has a Terminal button that opens a shell in the project's"
             " folder. The page can then run any command as you."
-        )
-    elif args.name in (None, "terminal"):
-        print("terminal off: the page opens no shell; `tempo config terminal on` allows it.")
+            if store.terminal()
+            else "terminal off: the page opens no shell; `tempo config terminal on` allows it."
+        ),
+        "terminal-font": "terminal-font: %s" % font,
+        "terminal-size": "terminal-size: %d" % store.terminal_size(),
+    }
+    for name, line in lines.items():
+        if args.name in (None, name):
+            print(line)
+
+
+def _change_setting(store: Store, name: str, value: str) -> None:
+    if name == "terminal-font":
+        store.set_terminal_font("" if value == "default" else value)
+    elif name == "terminal-size":
+        if not value.isdigit():
+            raise QuestionError("The font size must be a whole number, such as 14")
+        store.set_terminal_size(int(value))
+    elif value not in ("on", "off"):
+        raise QuestionError("%s is on or off" % name)
+    elif name == "terminal":
+        store.set_terminal(value == "on")
+    else:
+        store.set_start_page(value == "on")
 
 
 def run_tui(args: argparse.Namespace) -> int:

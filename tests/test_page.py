@@ -22,6 +22,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import TestCase, mock, skipUnless
 
+from tempo import terminal
 from tempo.server import make_handler
 from tests.helpers import DatabaseTest
 
@@ -328,6 +329,76 @@ class PageTest(DatabaseTest):
         self.assertFalse(self.store.start_page())
         self.assertEqual(self.run_js("document.activeElement.textContent"), "Off")
         self.assertTrue(self.run_js("$('#settings').contains(document.activeElement)"))
+
+    # The terminal under the question
+
+    def start_terminal(self):
+        """Turn the terminal on for demo, in a throwaway folder, with a plain /bin/sh."""
+        folder = tempfile.mkdtemp()
+        self.addCleanup(os.rmdir, folder)
+        self.store.see_folder("demo", folder)
+        self.store.set_terminal(True)
+        shell = mock.patch.dict(os.environ, {"SHELL": "/bin/sh", "PS1": "$ "})
+        shell.start()
+        self.addCleanup(shell.stop)
+        self.addCleanup(terminal.SHELLS.close_all)
+        return folder
+
+    def press_enter(self):
+        for kind in ("keyDown", "keyUp"):
+            self.browser.send(
+                "Input.dispatchKeyEvent",
+                type=kind,
+                key="Enter",
+                code="Enter",
+                windowsVirtualKeyCode=13,
+                text="\r" if kind == "keyDown" else "",
+            )
+
+    def test_the_terminal_runs_a_command_in_the_projects_folder(self):
+        folder = self.start_terminal()
+        self.open("#/demo/1", ready=LOADED + " && !$('#terminal-toggle').hidden")
+        self.click("#terminal-toggle")
+        self.wait("$('#terminal .where').textContent === %s" % json.dumps(folder))
+        self.assertEqual(self.text("#terminal .name"), "demo")
+        self.wait("document.activeElement.classList.contains('xterm-helper-textarea')")
+        self.type("echo hi$((1+1))")
+        self.press_enter()
+        # The sum shows the shell ran the line, not only echoed what was typed.
+        self.wait("$('#terminal .xterm-rows').textContent.includes('hi2')")
+        [key] = terminal.SHELLS.shells
+        shell = terminal.SHELLS.get(key)
+        self.click("#terminal .end")
+        self.wait("$('#terminal').hidden && !$('#terminal .term')")
+        self.assertEqual(shell.process.wait(timeout=5), shell.process.returncode)
+        self.assertEqual(terminal.SHELLS.shells, {})
+
+    def test_the_terminal_takes_the_pages_colours_and_font(self):
+        self.start_terminal()
+        self.store.set_terminal_size(17)
+        self.open("#/demo/1", ready=LOADED + " && !$('#terminal-toggle').hidden")
+        self.click("#terminal-toggle")
+        self.wait("$('#terminal .xterm-rows')")
+        panel = "getComputedStyle(document.documentElement).getPropertyValue('--panel').trim()"
+        theme = "terminals.demo.term.options.theme.background"
+        self.assertEqual(self.run_js(theme), self.run_js(panel))
+        self.assertEqual(self.run_js("terminals.demo.term.options.fontSize"), 17)
+        self.assertIn("ui-monospace", self.run_js("terminals.demo.term.options.fontFamily"))
+        self.run_js("setDisplay('theme', 'dark', false)")
+        self.assertEqual(self.run_js(theme), self.run_js(panel))
+        self.assertEqual(self.run_js(theme), "#1d1c24")
+
+    def test_without_the_setting_there_is_no_terminal(self):
+        self.open("#/demo/1")
+        self.assertTrue(self.run_js("$('#terminal-toggle').hidden"))
+        self.assertFalse(self.run_js("typeof Terminal !== 'undefined'"))
+
+    def test_turns_the_terminal_on_in_settings(self):
+        self.open("#/settings", ready="$('#settings .segmented button')")
+        on = '[aria-label="Terminal in the project\'s folder"] button:first-child'
+        self.click("#settings " + on)
+        self.wait("!$('#terminal-toggle').hidden")
+        self.assertTrue(self.store.terminal())
 
     def test_merges_one_project_into_another_from_settings(self):
         # A folder renamed by hand: its old project keeps its question until it is merged.

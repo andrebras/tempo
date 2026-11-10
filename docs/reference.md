@@ -20,7 +20,7 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
 | `tempo status` | For you, not Claude: print `? 3` when the current folder's project has 3 open questions, nothing when it has none, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
 | `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
-| `tempo config`, `tempo config page on\|off`, `tempo config terminal on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) or whether the page may open a shell in a project's folder (off by default; see [The terminal](#the-terminal)) |
+| `tempo config`, `tempo config page on\|off`, `tempo config terminal on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) or whether the page may open a shell in a project's folder (off by default). `terminal-font` and `terminal-size` set that terminal's font and size (see [The terminal](#the-terminal)) |
 | `tempo serve [--background]` | Run the page; works whether or not sessions start it (`--port` picks another port) |
 | `tempo hook <event>` | Run by Claude Code's hooks (`session-start`, `user-prompt-submit`, `stop`); not for direct use (see [Hooks](#hooks)) |
 | `tempo slash <name>` | Run by the slash commands below, with the typed text on stdin; not for direct use |
@@ -172,13 +172,26 @@ The setting is kept in the database, so every session and project sees it. With 
 
 ### The terminal
 
-The page server can open a shell in a project's folder, so you don't have to switch to your
-terminal app. It is off unless you turn it on:
+The page can show a terminal in a project's folder, so you don't have to switch to your
+terminal app. It is off unless you turn it on, under Terminal in the page's Settings or from
+the terminal:
 
 ```bash
-tempo config terminal on    # the page may open a shell
-tempo config terminal off   # back to the default
+tempo config terminal on                          # the page may open a shell
+tempo config terminal off                         # back to the default
+tempo config terminal-font '"JetBrains Mono", monospace'
+tempo config terminal-font default                # the system's monospace font
+tempo config terminal-size 14                     # in pixels, 8 to 32; 13 by default
 ```
+
+With it on, a Terminal button appears beside the gear. It opens a shell for the project
+shown, at the bottom of the question's pane. Each project keeps its own shell while the page
+is open, and the panel follows the project you pick in the header. **Hide** keeps the shell
+running; **End shell** stops it. The terminal uses the page's colours, light or dark, and
+the font and size from Settings. If the font you name isn't installed, the terminal falls
+back to the system's monospace font, so the columns still line up. It is drawn by [xterm.js](https://xtermjs.org) 6.0.0 and its
+fit addon 0.11.0, which ship with Tempo in `tempo/vendor/xterm` (MIT licence), so the page
+loads nothing from the internet.
 
 **Security: with the terminal on, the page can run any command as you.** Only turn it on if
 you are happy for anything that can use the page to do so. The server answers only on
@@ -193,8 +206,8 @@ you use.
 Each shell is your `$SHELL` started as a login shell (`-l`), so your prompt, aliases and
 `PATH` load, with `TERM=xterm-256color`, in the first of the project's folders that is still
 on disk. `CLAUDECODE` is left out of its environment: a Claude session that started the
-page sets it, and `claude` would then refuse to start in the terminal. It runs in a pseudo-terminal (PTY), so full-screen programs such as `claude` work.
-The page reads the shell's output as Server-Sent Events (SSE: one long response that the
+page sets it, and `claude` would then refuse to start in the terminal. The shell runs in a
+pseudo-terminal (PTY), so full-screen programs such as `claude` work. The page reads the shell's output as Server-Sent Events (SSE: one long response that the
 server writes to as output comes) and sends keys and the terminal's size as separate
 requests. None of this uses the database.
 
@@ -285,6 +298,10 @@ The gear button at the top right of the page opens Settings.
 - **Sessions**: "Start the page with each session", On or Off. It is the same setting as
   `tempo config page on|off` (see [Turning the page off](#turning-the-page-off)) and is kept
   in the database.
+- **Terminal**: "Terminal in the project's folder", On or Off (off by default), the terminal's
+  font and its size. They are the same settings as `tempo config terminal`,
+  `terminal-font` and `terminal-size` (see [The terminal](#the-terminal)), kept in the
+  database. Turning it off here also stops every open shell.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
   its questions, their numbers and its folders along.

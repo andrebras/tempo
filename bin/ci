@@ -52,7 +52,7 @@ done
 step "Shell scripts (shellcheck)" sh -c 'grep -l "^#!/bin/sh" bin/* 2>/dev/null | xargs shellcheck'
 step "Compile" python3 -m compileall -q tempo tests
 step "Lint page script (biome)" npx --yes "@biomejs/biome@$biome_version" lint --error-on-warnings
-step "Page tests (node --test)" node --test tests/page.test.js
+step "Page tests (node --test)" node --test tests/page.test.js tests/terminal.test.js
 # The tests run under coverage.py, which only reports: no minimum, no failing on a number.
 # The .venv Python goes first on PATH so that the bin/tempo processes some tests start are
 # measured too (pyproject.toml has the settings).
