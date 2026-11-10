@@ -121,6 +121,9 @@
   #terminal { grid-column: 2; display: flex; flex-direction: column; height: 40vh;
               border-top: 1px solid var(--line); background: var(--panel); }
   #terminal[hidden] { display: none; }
+  /* Its top edge: drag it, or use the arrow keys on it, to change the terminal's height. */
+  #terminal .grip { flex: none; height: 6px; margin-top: -3px; cursor: ns-resize; touch-action: none; }
+  #terminal .grip:hover, #terminal .grip:focus-visible { background: var(--accent); outline: none; }
   #terminal .bar { display: flex; gap: 8px; align-items: center; padding: 6px 12px; font-size: .8125rem;
                    background: var(--sunken); border-bottom: 1px solid var(--line); }
   #terminal .where { color: var(--muted); font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
@@ -377,6 +380,8 @@
   </div>
   <section id="detail"><p class="empty">Pick a question on the left.</p></section>
   <section id="terminal" hidden aria-label="Terminal">
+    <div class="grip" role="separator" aria-orientation="horizontal" aria-label="Terminal height"
+         tabindex="0" title="Drag to change the terminal's height"></div>
     <div class="bar"><strong class="name"></strong> <span class="where"></span>
       <span class="actions"><button class="hide" type="button">Hide</button>
       <button class="end" type="button">End shell</button></span></div>
