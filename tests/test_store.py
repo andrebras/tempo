@@ -906,15 +906,6 @@ class SettingsTest(DatabaseTest):
             store.set_start_page(True)
         self.assertTrue(self.store.start_page())
 
-    def test_the_terminal_is_off_by_default_and_turning_it_on_is_kept(self):
-        self.assertFalse(self.store.terminal())
-        self.store.set_terminal(True)
-        with Store(connect(os.environ["TEMPO_DB"])) as store:
-            self.assertTrue(store.terminal())
-            store.set_terminal(False)
-        self.assertFalse(self.store.terminal())
-        self.assertTrue(self.store.start_page())
-
     def test_an_existing_database_gets_the_table_without_a_new_version(self):
         self.store.db.execute("DROP TABLE settings")
         with Store(connect(os.environ["TEMPO_DB"])) as store:

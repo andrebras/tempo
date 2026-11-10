@@ -1117,7 +1117,7 @@ class CliTest(DatabaseTest):
 
     def test_config_shows_and_changes_the_page_setting(self):
         self.assertEqual(
-            run("config", "page"),
+            run("config"),
             (0, "page on: each session starts the page at http://127.0.0.1:%d/\n" % TEST_PORT, ""),
         )
         code, out, _ = run("config", "page", "off")
@@ -1130,21 +1130,6 @@ class CliTest(DatabaseTest):
         self.assertTrue(self.store.start_page())
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cli.main(["config", "page", "maybe"])
-
-    def test_config_shows_and_changes_the_terminal_setting(self):
-        code, out, _ = run("config")
-        self.assertEqual(code, 0)
-        self.assertEqual(
-            [line.split(":")[0] for line in out.splitlines()], ["page on", "terminal off"]
-        )
-        out = run("config", "terminal", "on")[1]
-        self.assertTrue(out.startswith("terminal on:"))
-        self.assertIn("any command as you", out)
-        self.assertTrue(self.store.terminal())
-        self.assertNotIn("page", run("config", "terminal")[1].split(":")[0])
-        run("config", "terminal", "off")
-        self.assertFalse(self.store.terminal())
-        self.assertTrue(self.store.start_page())
 
     def test_with_the_page_off_the_session_start_hook_leaves_it_alone(self):
         self.add()

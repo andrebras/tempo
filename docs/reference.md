@@ -20,7 +20,7 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
 | `tempo status` | For you, not Claude: print `? 3` when the current folder's project has 3 open questions, nothing when it has none, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
 | `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
-| `tempo config`, `tempo config page on\|off`, `tempo config terminal on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) or whether the page may open a shell in a project's folder (off by default; see [The terminal](#the-terminal)) |
+| `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) |
 | `tempo serve [--background]` | Run the page; works whether or not sessions start it (`--port` picks another port) |
 | `tempo hook <event>` | Run by Claude Code's hooks (`session-start`, `user-prompt-submit`, `stop`); not for direct use (see [Hooks](#hooks)) |
 | `tempo slash <name>` | Run by the slash commands below, with the typed text on stdin; not for direct use |
@@ -169,40 +169,6 @@ The setting is kept in the database, so every session and project sees it. With 
   and the hooks name `tempo show N` and `tempo answer N <letter>` and give no page links.
   The Stop hook counts a question's number (such as Q5) in a sentence as pointing at it,
   where it would otherwise want the question's link.
-
-### The terminal
-
-The page server can open a shell in a project's folder, so you don't have to switch to your
-terminal app. It is off unless you turn it on:
-
-```bash
-tempo config terminal on    # the page may open a shell
-tempo config terminal off   # back to the default
-```
-
-**Security: with the terminal on, the page can run any command as you.** Only turn it on if
-you are happy for anything that can use the page to do so. The server answers only on
-`127.0.0.1`, refuses requests that name another host, and takes writes only from its own
-page. On top of that, each terminal request must carry a secret the server makes when it
-starts and puts only in the page it serves. A website open in your browser can't read it.
-A program running on your computer can, by asking the server for the page. Programs running
-as you could already run commands as you, but on a computer shared with other user accounts,
-their programs can reach the page too. So turn the terminal on only on a computer that only
-you use.
-
-Each shell is your `$SHELL` started as a login shell (`-l`), so your prompt, aliases and
-`PATH` load, with `TERM=xterm-256color`, in the first of the project's folders that is still
-on disk. `CLAUDECODE` is left out of its environment: a Claude session that started the
-page sets it, and `claude` would then refuse to start in the terminal. It runs in a pseudo-terminal (PTY), so full-screen programs such as `claude` work.
-The page reads the shell's output as Server-Sent Events (SSE: one long response that the
-server writes to as output comes) and sends keys and the terminal's size as separate
-requests. None of this uses the database.
-
-A shell stops when the page stops reading its output (the tab closed or reloaded), when
-nothing starts reading it within 30 seconds of opening, when you end it, when the terminal
-is turned off in the page's Settings, and when the server stops. Turning it off with
-`tempo config terminal off` only refuses new shells; the open ones stop with their page or
-the server.
 
 ## Projects in the header
 

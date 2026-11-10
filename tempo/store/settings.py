@@ -8,9 +8,6 @@ from tempo.store.common import StoreBase
 
 # Whether the SessionStart hook starts the page. On unless the user turned it off.
 START_PAGE = "start_page"
-# Whether the page may open a shell in a project's folder. Off unless the user turned it on,
-# because it lets the page run any command as the user.
-TERMINAL = "terminal"
 
 
 class SettingsStore(StoreBase):
@@ -23,19 +20,8 @@ class SettingsStore(StoreBase):
         return found is None or found["value"] != "off"
 
     def set_start_page(self, on: bool) -> None:
-        self._set(START_PAGE, "on" if on else "off")
-
-    def terminal(self) -> bool:
-        """Whether the page may open a terminal; off by default."""
-        row = self.db.execute("SELECT value FROM settings WHERE name = ?", (TERMINAL,))
-        found = row.fetchone()
-        return found is not None and found["value"] == "on"
-
-    def set_terminal(self, on: bool) -> None:
-        self._set(TERMINAL, "on" if on else "off")
-
-    def _set(self, name: str, value: str) -> None:
         with self._transaction():
             self.db.execute(
-                "INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)", (name, value)
+                "INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)",
+                (START_PAGE, "on" if on else "off"),
             )
