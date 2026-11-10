@@ -44,6 +44,11 @@ def _no_real_server(port: int) -> bool:
 
 cli.start_server = _no_real_server
 
+# Whether ~/.local/bin/tempo links to Tempo depends on the real home folder, so tests see
+# it as linked, and sessions don't offer /tempo:install, unless they patch it.
+REAL_TEMPO_LINKED = cli.tempo_linked
+cli.tempo_linked = lambda: True
+
 # Most of the suite's time went on SQLite waiting for the disk after each write (an
 # fsync), which only matters if the computer loses power. Test databases are thrown
 # away, so they skip that wait; everything else about them is as in use.

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from tempo import cli
-from tests import REAL_START_SERVER, TEST_PORT, RealServerStart
+from tests import REAL_START_SERVER, REAL_TEMPO_LINKED, TEST_PORT, RealServerStart
 from tests.helpers import DatabaseTest
 
 
@@ -1122,7 +1122,13 @@ class CliTest(DatabaseTest):
     def test_config_shows_and_changes_the_page_setting(self):
         self.assertEqual(
             run("config"),
-            (0, "page on: each session starts the page at http://127.0.0.1:%d/\n" % TEST_PORT, ""),
+            (
+                0,
+                "page on: each session starts the page at http://127.0.0.1:%d/\n"
+                "install-hint on: sessions offer /tempo:install while tempo isn't installed\n"
+                % TEST_PORT,
+                "",
+            ),
         )
         code, out, _ = run("config", "page", "off")
         self.assertEqual(code, 0)
@@ -1730,6 +1736,7 @@ class HomeTest(unittest.TestCase):
     """A temporary HOME with Claude Code's plugin folders, so nothing touches the real one."""
 
     def setUp(self):
+        super().setUp()
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.home = os.path.realpath(tmp.name)
@@ -1773,8 +1780,9 @@ class StableTempoTest(HomeTest):
         self.assertEqual(cli.stable_tempo(), os.path.join(self.cache, "bin", "tempo"))
 
 
-class InstallTest(HomeTest):
-    """`tempo install` links ~/.local/bin/tempo to the stable bin/tempo; uninstall undoes it."""
+class InstallTest(HomeTest, DatabaseTest):
+    """`tempo install` links ~/.local/bin/tempo to the stable bin/tempo; uninstall undoes it.
+    Outside tmux, with a temporary HOME and database, so nothing touches the real ones."""
 
     def setUp(self):
         super().setUp()
@@ -1783,6 +1791,12 @@ class InstallTest(HomeTest):
         self.link = os.path.join(self.bin, "tempo")
         self.target = os.path.join(self.marketplace, "bin", "tempo")
         self.on_path(True)
+        self.conf = os.path.join(self.home, ".tmux.conf")
+        patch = mock.patch.dict(os.environ)
+        patch.start()
+        self.addCleanup(patch.stop)
+        for name in ("TMUX", "XDG_CONFIG_HOME"):
+            os.environ.pop(name, None)
 
     def on_path(self, on):
         path = (self.bin + os.pathsep if on else "") + "/usr/bin:/bin"
@@ -1871,3 +1885,129 @@ class InstallTest(HomeTest):
         os.symlink("/usr/bin/true", self.link)
         self.assertEqual(run("uninstall")[0], 1)
         self.assertEqual(os.readlink(self.link), "/usr/bin/true")
+
+    def write_conf(self, text, path=None):
+        with open(path or self.conf, "w") as file:
+            file.write(text)
+
+    def read_conf(self, path=None):
+        with open(path or self.conf) as file:
+            return file.read()
+
+    def session_note(self):
+        with mock.patch.object(cli, "tempo_linked", REAL_TEMPO_LINKED):
+            return cli.session_note("demo", TEST_PORT)
+
+    def test_sessions_offer_the_slash_command_until_tempo_is_installed(self):
+        self.assertIn(cli.INSTALL_HINT, self.session_note())
+        run("install")
+        self.assertNotIn(cli.INSTALL_HINT, self.session_note())
+        self.assertFalse(self.store.install_hint())
+
+    def test_sessions_stop_offering_it_once_the_user_says_no(self):
+        code, out, _ = run("config", "install-hint", "off")
+        self.assertEqual(
+            (code, out), (0, "install-hint off: sessions don't offer /tempo:install\n")
+        )
+        self.assertNotIn(cli.INSTALL_HINT, self.session_note())
+        run("config", "install-hint", "on")
+        self.assertIn(cli.INSTALL_HINT, self.session_note())
+
+    def test_a_link_to_something_else_still_gets_the_offer(self):
+        os.makedirs(self.bin)
+        os.symlink("/usr/bin/true", self.link)
+        self.assertIn(cli.INSTALL_HINT, self.session_note())
+
+    def test_the_session_start_hook_offers_it_second(self):
+        with (
+            mock.patch.object(cli, "tempo_linked", REAL_TEMPO_LINKED),
+            mock.patch.object(cli, "page_on", return_value=False),
+        ):
+            out = run("hook", "session-start", stdin="{}")[1]
+        lines = json.loads(out)["hookSpecificOutput"]["additionalContext"].splitlines()
+        self.assertEqual(lines[1], cli.INSTALL_HINT)
+
+    def test_tmux_adds_the_block_once_and_saves_the_sidebar_as_on(self):
+        code, out, _ = run("install", "--tmux")
+        self.assertEqual(code, 0)
+        self.assertIn("Added to %s the lines" % self.conf, out)
+        self.assertIn("comes on when tmux next starts", out)
+        self.assertEqual(self.read_conf(), "".join(line + "\n" for line in cli.TMUX_BLOCK))
+        self.assertTrue(self.store.tmux_sidebar())
+        code, out, _ = run("install", "--tmux")
+        self.assertIn("already brings the sidebar back", out)
+        self.assertEqual(self.read_conf().count(cli.TMUX_BLOCK[0]), 1)
+
+    def test_tmux_keeps_the_users_lines_and_their_own_restore_line(self):
+        self.write_conf("set -g mouse on")
+        run("install", "--tmux")
+        self.assertEqual(self.read_conf(), "set -g mouse on\n" + cli._block_text())
+        self.write_conf('run-shell -b "tempo sidebar --restore"\n')
+        self.assertIn("already brings the sidebar back", run("install", "--tmux")[1])
+        self.assertEqual(self.read_conf(), 'run-shell -b "tempo sidebar --restore"\n')
+
+    def test_uninstall_removes_only_the_block(self):
+        self.write_conf("set -g mouse on\n")
+        run("install", "--tmux")
+        with open(self.conf, "a") as file:
+            file.write("bind T display-popup\n")
+        code, out, _ = run("uninstall")
+        self.assertEqual(code, 0)
+        self.assertIn("Removed Tempo's lines from %s." % self.conf, out)
+        self.assertEqual(self.read_conf(), "set -g mouse on\nbind T display-popup\n")
+        self.assertFalse(os.path.lexists(self.link))
+
+    def test_uninstall_leaves_a_block_with_no_end(self):
+        self.write_conf("%s\n%s\nset -g mouse on\n" % cli.TMUX_BLOCK[:2])
+        before = self.read_conf()
+        _, _, err = run("uninstall")
+        self.assertIn("but not its last", err)
+        self.assertEqual(self.read_conf(), before)
+
+    def test_a_symlinked_conf_has_its_target_edited(self):
+        dotfiles = os.path.join(self.home, "dotfiles")
+        os.mkdir(dotfiles)
+        real = os.path.join(dotfiles, "tmux.conf")
+        self.write_conf("set -g mouse on\n", real)
+        os.symlink(real, self.conf)
+        out = run("install", "--tmux")[1]
+        self.assertIn("Added to %s (%s links to it)" % (real, self.conf), out)
+        self.assertTrue(os.path.islink(self.conf))
+        self.assertIn(cli.TMUX_BLOCK[1], self.read_conf(real))
+        run("uninstall")
+        self.assertEqual(self.read_conf(real), "set -g mouse on\n")
+
+    def test_a_symlinked_conf_to_no_regular_file_is_left_alone(self):
+        os.symlink(os.path.join(self.home, "gone.conf"), self.conf)
+        code, out, err = run("install", "--tmux")
+        self.assertEqual(code, 1)
+        self.assertIn("which is missing, so it was left as it is", err)
+        self.assertIn(cli.TMUX_BLOCK[1], err)
+        self.assertFalse(os.path.exists(os.path.join(self.home, "gone.conf")))
+        os.remove(self.conf)
+        os.symlink(self.home, self.conf)
+        code, out, _ = run("install", "--tmux", "--slash")
+        self.assertEqual(code, 0)
+        self.assertIn("which is not a regular file", out)
+
+    def test_the_xdg_conf_is_used_when_it_is_the_only_one(self):
+        xdg = os.path.join(self.home, ".config", "tmux", "tmux.conf")
+        os.makedirs(os.path.dirname(xdg))
+        self.write_conf("set -g mouse on\n", xdg)
+        run("install", "--tmux")
+        self.assertFalse(os.path.lexists(self.conf))
+        self.assertIn(cli.TMUX_BLOCK[1], self.read_conf(xdg))
+
+    def test_inside_tmux_it_turns_the_sidebar_on(self):
+        with (
+            mock.patch.dict(os.environ, {"TMUX": "/tmp/fake,1,0"}),
+            mock.patch.object(cli, "run_sidebar", return_value=0) as sidebar,
+        ):
+            self.assertEqual(run("install", "--tmux")[0], 0)
+        self.assertEqual(sidebar.call_args.args[0].action, "on")
+
+    def test_a_refused_link_stops_before_tmux(self):
+        os.makedirs(self.bin)
+        open(self.link, "w").close()
+        self.assertEqual(run("install", "--tmux")[0], 1)
+        self.assertFalse(os.path.lexists(self.conf))
