@@ -13,6 +13,8 @@ function storedProject() {
 function chooseProject(name) {
   state.project = name;
   try { localStorage.setItem("project", name); } catch { /* private window: just don't remember */ }
+  // terminal.js, when the page loaded it: an open terminal follows the project.
+  if (typeof followTerminal === "function") followTerminal();
 }
 
 // When the user last looked at each project: the project's activity time then, as the
@@ -302,6 +304,7 @@ const display = [
 function setDisplay(key, value, isDefault) {
   if (isDefault) delete document.documentElement.dataset[key];
   else document.documentElement.dataset[key] = value;
+  if (key === "theme" && typeof rethemeTerminals === "function") rethemeTerminals();
   try {
     if (isDefault) localStorage.removeItem(key);
     else localStorage.setItem(key, value);

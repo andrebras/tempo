@@ -39,6 +39,7 @@ MAX_BODY = 1_000_000
 # @xterm/addon-fit) into vendor/xterm, so the page loads no code from the internet.
 JS, CSS = "text/javascript; charset=utf-8", "text/css; charset=utf-8"
 FILES = {
+    "terminal.js": ("terminal.js", JS),
     "vendor/xterm.js": ("vendor/xterm/xterm.js", JS),
     "vendor/xterm.css": ("vendor/xterm/xterm.css", CSS),
     "vendor/addon-fit.js": ("vendor/xterm/addon-fit.js", JS),
@@ -440,6 +441,7 @@ ANY = None
 ROUTES: list[tuple[str, tuple[str | None, ...], Run]] = [
     ("GET", (), _page),
     ("GET", ("page.js",), _script),
+    ("GET", ("terminal.js",), _file),
     ("GET", ("vendor", ANY), _file),
     ("GET", ("api", "questions"), _questions),
     ("GET", ("api", "questions", ANY, ANY), _question),
