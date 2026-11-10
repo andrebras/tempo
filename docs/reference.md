@@ -331,12 +331,14 @@ several apply, the dot comes first, then `…`. What is open when the sidebar st
 as opened. The selected question is highlighted whole and always shown whole.
 
 In the list, `j` and `k` move, `h` and `l` switch project, and Enter opens the question
-over the list. There, `j` and `k` scroll, a letter answers as in the full view, `r` writes
-a follow-up, and `h` or Esc goes back. After an answer the list shows the next question.
+over the list. The list only browses: no other letter answers there, so you answer only
+where the whole question shows. Once it is open, `j` and `k` scroll, a letter answers as in
+the full view, `r` writes a follow-up, and `h` or Esc goes back. After an answer the list shows the next question.
 `q` quits; Esc in the list does nothing, so the pane isn't closed by mistake.
 
 Inside tmux, Enter opens the question in a popup over your panes instead, 80% of the
-window, with the same keys. The popup closes once you answer or send a follow-up, and on
+window, with the same keys. The question never opens over the list there: if the popup
+can't open, the sidebar stays on the list and says so. The popup closes once you answer or send a follow-up, and on
 `h` or Esc; it closes by itself too if the question is answered elsewhere meanwhile. The
 sidebar keeps updating while it is open. `tempo tui --project NAME --question N` is what
 the popup runs, and works on its own too.
@@ -347,7 +349,7 @@ worktree, in whichever tmux session it is. With several, the most recently used 
 wins. A pane counts as Claude's when its command is `claude` or a version number such as
 `2.1.311`, which is what Claude Code shows; plain `node` doesn't count, since any Node
 program shows it. When none is open the sidebar says so; it never starts one. `h` and `l`
-only browse, so switching project never moves you. In the list, option (g) needs Shift.
+only browse, so switching project never moves you.
 
 `tempo sidebar on`, run in any tmux pane, turns the sidebar on in every tmux window, as
 workmux does with its own: each window gets a column of its own, the full height and 40

@@ -62,7 +62,8 @@ class Board:
     Esc: the view a tmux popup opens.
 
     opener, when set, opens a question somewhere else, such as a tmux popup; it returns
-    False when it couldn't, and the sidebar then opens the question over its list.
+    False when it couldn't, and the sidebar then stays on its list and says so. Without
+    it (outside tmux), the sidebar opens the question over its list.
 
     jumper, when set, moves to the pane where a project's Claude session runs, given the
     project and its folders' paths; it returns what went wrong, or None. Without it (outside
@@ -263,8 +264,8 @@ class Board:
     def _sidebar(self, key: str) -> bool:
         """The sidebar's own keys; False for a key it reads as the full view does. In the
         list, h and l switch project, Enter opens the question and g goes to the project's
-        Claude session (so option (g) needs Shift there); once it is open, h or Esc goes
-        back to the list."""
+        Claude session; the list only browses, so no other letter answers or writes there.
+        Once the question is open, h or Esc goes back to the list."""
         if self.focus == "detail":
             if key not in ("h", "left", "esc"):
                 return False
@@ -272,8 +273,12 @@ class Board:
             self.done = self.single
         elif key in ("enter", "right", "left", "l", "h"):
             if key == "enter" and self._selected() and self.number is not None:
-                if not (self.opener and self.opener(self.project, self.number)):
+                if self.opener is None:
                     self.focus, self.scroll = "detail", 0
+                elif not self.opener(self.project, self.number):
+                    # Inside tmux the question shows only in a popup, never over the list.
+                    self.message = ("Could not open the popup.", "error")
+                    return True
                 # Opened here or in the popup, it is seen either way.
                 self.opened[(self.project, self.number)] = self._activity()
             elif key != "enter":
@@ -282,6 +287,9 @@ class Board:
             self._jump()
         elif key in ("esc", "tab", "btab"):
             # The list is the sidebar's only panel, and Esc there must not close it.
+            pass
+        elif len(key) == 1 and key.isalpha() and key not in "jkqs":
+            # Answers and follow-ups are written where the whole question shows.
             pass
         else:
             return False
