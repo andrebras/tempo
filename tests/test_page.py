@@ -335,12 +335,22 @@ class PageTest(DatabaseTest):
     def collapsed(self):
         return self.run_js("$('main').classList.contains('side-collapsed')")
 
+    def arrow(self):
+        """Which of the toggle's two arrows shows: 'close' (left) or 'open' (right)."""
+        return self.run_js(
+            "['close', 'open'].filter((name) => getComputedStyle("
+            "$('#side-toggle .' + name)).display !== 'none').join()"
+        )
+
     def test_the_list_collapses_to_a_strip_and_the_browser_remembers_it(self):
         self.open("#/demo/1", ready=LOADED + " && $('#side-toggle').offsetWidth")
         self.assertEqual(self.run_js("$('#side-toggle').getAttribute('aria-expanded')"), "true")
+        # Its arrow points the way the click moves the list.
+        self.assertEqual(self.arrow(), "close")
         self.click("#side-toggle")
         self.wait("$('main').classList.contains('side-collapsed')")
         self.assertEqual(self.run_js("$('#side-toggle').getAttribute('aria-expanded')"), "false")
+        self.assertEqual(self.arrow(), "open")
         self.assertEqual(self.focused(), "Expand the list")
         # A thin strip with the number of open questions; the list and search step aside.
         self.assertLess(self.run_js("$('#side').offsetWidth"), 80)
