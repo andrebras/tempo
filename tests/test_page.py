@@ -393,6 +393,13 @@ class PageTest(DatabaseTest):
         self.assertTrue(self.run_js("$('#terminal-toggle').hidden"))
         self.assertFalse(self.run_js("typeof Terminal !== 'undefined'"))
 
+    def test_turns_the_terminal_on_in_settings(self):
+        self.open("#/settings", ready="$('#settings .segmented button')")
+        on = '[aria-label="Terminal in the project\'s folder"] button:first-child'
+        self.click("#settings " + on)
+        self.wait("!$('#terminal-toggle').hidden")
+        self.assertTrue(self.store.terminal())
+
     def test_merges_one_project_into_another_from_settings(self):
         # A folder renamed by hand: its old project keeps its question until it is merged.
         self.add(project="old-name", title="Which colour?")
