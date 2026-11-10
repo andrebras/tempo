@@ -273,6 +273,13 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
     config.add_argument("value", nargs="?", choices=["on", "off"])
     config.set_defaults(run=run_config)
 
+    install = commands.add_parser(
+        "install", help="Put tempo on your shell's PATH: a link in ~/.local/bin to bin/tempo"
+    )
+    install.set_defaults(run=run_install)
+    uninstall = commands.add_parser("uninstall", help="Remove the link `tempo install` made")
+    uninstall.set_defaults(run=run_uninstall)
+
 
 def _run_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Run by Claude Code and by Tempo itself: the hooks and the page."""
@@ -504,6 +511,78 @@ def run_config(args: argparse.Namespace) -> None:
             "page off: sessions don't start the page; `tempo serve --background` starts it."
             " Claude points you to the terminal (`tempo show`, `tempo answer`)."
         )
+
+
+# Where `tempo install` puts its link: a folder many shells already have on PATH.
+LOCAL_BIN = "~/.local/bin"
+
+
+def run_install(args: argparse.Namespace) -> int:
+    """Link ~/.local/bin/tempo to the stable bin/tempo, so any shell can run tempo. Never
+    replaces something already there."""
+    folder = os.path.normpath(os.path.expanduser(LOCAL_BIN))
+    link, target = os.path.join(folder, "tempo"), stable_tempo()
+    if os.path.islink(link) and os.readlink(link) == target:
+        print("Already installed: %s links to %s." % (link, target))
+    elif os.path.lexists(link):
+        hint = " (`tempo uninstall` does)" if _tempo_link(link) else ""
+        print(
+            "tempo: %s is already there, %s, so it was left as it is. Remove it%s, then run"
+            " `tempo install` again." % (link, _what_is(link), hint),
+            file=sys.stderr,
+        )
+        return 1
+    else:
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
+            print("Made %s." % folder)
+        os.symlink(target, link)
+        print("Linked %s to %s." % (link, target))
+    path = os.environ.get("PATH", "").split(os.pathsep)
+    if not any(os.path.normpath(os.path.expanduser(p)) == folder for p in path if p):
+        print(
+            "%s is not on your PATH, so your shell won't find tempo yet. Add this line to"
+            " your shell's config, such as ~/.zshrc, then open a new terminal:\n\n"
+            '    export PATH="$HOME/.local/bin:$PATH"' % folder
+        )
+    return 0
+
+
+def run_uninstall(args: argparse.Namespace) -> int:
+    """Remove ~/.local/bin/tempo, but only when it is a link to a Tempo bin/tempo."""
+    link = os.path.join(os.path.expanduser(LOCAL_BIN), "tempo")
+    if not os.path.lexists(link):
+        print("Nothing to remove: %s isn't there." % link)
+        return 0
+    target = _tempo_link(link)
+    if not target:
+        print(
+            "tempo: %s is %s, not a link to Tempo's bin/tempo, so it was left as it is."
+            % (link, _what_is(link)),
+            file=sys.stderr,
+        )
+        return 1
+    os.remove(link)
+    print("Removed %s, which linked to %s." % (link, target))
+    return 0
+
+
+def _tempo_link(link: str) -> str | None:
+    """Where link points, when it is a symlink to the bin/tempo of a Tempo that is still
+    there; None otherwise."""
+    if not os.path.islink(link):
+        return None
+    target = os.path.normpath(os.path.join(os.path.dirname(link), os.readlink(link)))
+    root = os.path.dirname(os.path.dirname(target))
+    if not target.endswith(os.sep + os.path.join("bin", "tempo")):
+        return None
+    return target if os.path.exists(os.path.join(root, "tempo", "__main__.py")) else None
+
+
+def _what_is(path: str) -> str:
+    if os.path.islink(path):
+        return "a link to %s" % os.readlink(path)
+    return "a folder" if os.path.isdir(path) else "a file"
 
 
 def run_tui(args: argparse.Namespace) -> int:
