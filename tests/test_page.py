@@ -340,21 +340,22 @@ class PageTest(DatabaseTest):
             "%s.dispatchEvent(new KeyboardEvent('keydown', {key: '[', bubbles: true}))" % target
         )
 
-    def test_the_list_hides_from_a_button_in_the_header_and_the_browser_remembers_it(self):
+    def test_the_list_hides_from_a_button_beside_its_search_and_the_browser_remembers_it(self):
         self.open("#/demo/1", ready=LOADED + " && $('#side-toggle').offsetWidth")
-        # The button sits with the header's tools, next to the terminal and Settings, not by
-        # the name, whether the list shows or not.
-        self.assertTrue(self.run_js("$('.tools').contains($('#side-toggle'))"))
-        self.assertFalse(self.run_js("$('.brand').contains($('#side-toggle'))"))
+        # The button sits in the list, beside the search, not in the header.
+        self.assertTrue(self.run_js("$('.side-top').contains($('#side-toggle'))"))
+        self.assertFalse(self.run_js("$('header').contains($('#side-toggle'))"))
         self.assertEqual(self.run_js("$('#side-toggle').getAttribute('aria-expanded')"), "true")
         before = self.run_js("$('#detail').offsetWidth")
         self.click("#side-toggle")
-        self.wait("$('main').classList.contains('side-collapsed') && $('#side').offsetWidth === 0")
+        # Folded to a narrow rail that keeps only the button.
+        self.wait("$('main').classList.contains('side-collapsed') && $('#side').offsetWidth < 60")
         self.assertEqual(self.run_js("$('#side-toggle').getAttribute('aria-expanded')"), "false")
         self.assertEqual(self.focused(), "Show the list")
-        # The question gets the room, and the hidden list can't be tabbed into.
+        # The question gets the room, and the hidden list and search can't be tabbed into.
         self.wait("$('#detail').offsetWidth > %d" % before)
-        self.assertEqual(self.run_js("getComputedStyle($('#side')).visibility"), "hidden")
+        self.assertEqual(self.run_js("$('#list').offsetHeight + $('#search').offsetHeight"), 0)
+        self.assertTrue(self.run_js("$('#side-toggle').offsetWidth > 0"))
         # A question Claude changes since it was opened shows its dot on the button.
         # Times are kept to the second, so the context is dated a little later.
         self.assertFalse(self.run_js("Boolean($('#side-toggle .dot'))"))
