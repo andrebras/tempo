@@ -49,7 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, rewordNotice, state,
+  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, terminalOffQuestion, terminalOffNotice, rewordNotice, state,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -249,6 +249,16 @@ test("the terminal card shows the switch, the font and its size", () => {
     ["number", "13", "8", "32"]);
   assert.match(card.textContent, /any command as you/);
   assert.match(card.textContent, /tempo config terminal/);
+});
+
+test("turning the terminal off says what it ends, before and after", () => {
+  assert.equal(terminalOffQuestion(1),
+    "Turning the terminal off ends 1 running terminal; anything running in it stops.");
+  assert.equal(terminalOffQuestion(3),
+    "Turning the terminal off ends 3 running terminals; anything running in them stops.");
+  assert.equal(terminalOffNotice(1), "Terminal is off. Ended 1 terminal.");
+  assert.equal(terminalOffNotice(2), "Terminal is off. Ended 2 terminals.");
+  assert.equal(terminalOffNotice(0), null);
 });
 
 test("chips show projects with open questions or news, and always the current one", () => {
