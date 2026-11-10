@@ -22,6 +22,8 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo sidebar` | For you, not Claude: inside tmux, turn the questions' sidebar (`tempo tui --sidebar`) on in every window, 40 columns wide, or off again (`on` or `off` sets it, toggling is the default; `--side left` or `--side right` picks the side and is remembered; whether it is on is remembered too, and `--restore` in `~/.tmux.conf` brings it back after tmux restarts) |
 | `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `--sidebar` is a compact view for a narrow pane beside Claude's; `--question N` shows only that question and closes once it is answered; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
 | `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Starting the page with each session](#starting-the-page-with-each-session)) |
+| `tempo install` | For you, not Claude: put `tempo` on your own shell's `PATH` with a symlink (a small file that points at another), `~/.local/bin/tempo`, to Tempo's marketplace copy of `bin/tempo`, which stays put across updates, or to your clone's when run from a clone. It makes `~/.local/bin` when it is missing, does nothing when the link is already there, never replaces anything else at that path, and prints the line to add to your shell's config when `~/.local/bin` is not on your `PATH`. `/tempo:install` runs it from a session |
+| `tempo uninstall` | For you, not Claude: remove `~/.local/bin/tempo`, but only when it is a link to a Tempo `bin/tempo` |
 | `tempo serve [--background]` | Run the page; works whether or not sessions start it (`--port` picks another port) |
 | `tempo hook <event>` | Run by Claude Code's hooks (`session-start`, `user-prompt-submit`, `stop`); not for direct use (see [Hooks](#hooks)) |
 | `tempo slash <name>` | Run by the slash commands below, with the typed text on stdin; not for direct use |
@@ -57,6 +59,10 @@ second time. The page shows it as seen. When the question or option doesn't exis
 saved: the output says "Nothing was recorded:" with Tempo's error, and Claude passes it on.
 The project is the one of the session's project folder (`TEMPO_PROJECT` still wins). With
 `disableSkillShellExecution` on in your Claude Code settings, the commands can't run.
+
+One more, `/tempo:install`, runs `tempo install` the same way, so `tempo` works in your own
+shell (see [`tempo install`](#commands)), and Claude tells you what it did and any line to
+add to your shell's config. It takes no text.
 
 ## Hooks
 
@@ -294,8 +300,11 @@ them.
 
 ## tmux and the status line
 
-These recipes use the path of Tempo's marketplace copy; if you cloned Tempo yourself, use your
-clone's `bin/tempo` instead.
+These recipes use `~/.local/bin/tempo`, the link that `tempo install` (or `/tempo:install`)
+makes. tmux and Claude Code run these commands without your shell's settings, so they may
+not find a plain `tempo` on your `PATH`, and the recipes give the full path. Without the
+link, use Tempo's marketplace copy, `~/.claude/plugins/marketplaces/tempo/bin/tempo`, or
+your clone's `bin/tempo` if you cloned Tempo yourself.
 
 ### `tempo tui` in a tmux popup
 
@@ -304,7 +313,7 @@ Add this to `~/.tmux.conf` to open it with `prefix` then `T` (`display-popup` ne
 or later):
 
 ```tmux
-bind T display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.claude/plugins/marketplaces/tempo/bin/tempo tui"
+bind T display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.local/bin/tempo tui"
 ```
 
 `-E` closes the popup when `tempo tui` ends, `-w` and `-h` set its size, and `-d` starts it in
@@ -312,7 +321,7 @@ the current pane's folder, so it opens on that folder's project. To open it with
 alone, without the prefix, add this line too (`-n` means no prefix):
 
 ```tmux
-bind -n M-t display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.claude/plugins/marketplaces/tempo/bin/tempo tui"
+bind -n M-t display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.local/bin/tempo tui"
 ```
 
 Then reload the file with `tmux source-file ~/.tmux.conf`.
@@ -375,8 +384,11 @@ sidebars when its server stops, after a reboot for one. To have them come back b
 themselves, add this line to `~/.tmux.conf`:
 
 ```tmux
-run-shell -b "~/.claude/plugins/marketplaces/tempo/bin/tempo sidebar --restore"
+run-shell -b "~/.local/bin/tempo sidebar --restore"
 ```
+
+A plain `run-shell -b "tempo sidebar --restore"` works only when tmux's `run-shell` sees
+the `PATH` your shell sets, which it often doesn't, so copy the line with the full path.
 
 `tempo sidebar --restore` turns the sidebar on, with the side you chose, when it was on
 last and is not on yet, and does nothing otherwise. It prints nothing, so reloading
@@ -389,7 +401,7 @@ line too.
   with `tmux source-file ~/.tmux.conf`. `prefix` then `S` shows or hides it:
 
 ```tmux
-bind S run-shell -c "#{pane_current_path}" "~/.claude/plugins/marketplaces/tempo/bin/tempo sidebar"
+bind S run-shell -c "#{pane_current_path}" "~/.local/bin/tempo sidebar"
 ```
 
 ### A badge in the tmux status bar
@@ -404,7 +416,7 @@ your shell and its aliases):
 
 ```tmux
 set -g status-interval 5
-set -g status-right '#(cd "#{pane_current_path}" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status) %H:%M'
+set -g status-right '#(cd "#{pane_current_path}" && ~/.local/bin/tempo status) %H:%M'
 ```
 
 tmux fills in `#{pane_current_path}`, the folder of the pane you are in, so the badge follows
@@ -414,7 +426,7 @@ To see a badge on every pane instead, each for its own folder, show it in the pa
 
 ```tmux
 set -g pane-border-status top
-set -g pane-border-format ' #(cd "#{pane_current_path}" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status) #{pane_current_command} '
+set -g pane-border-format ' #(cd "#{pane_current_path}" && ~/.local/bin/tempo status) #{pane_current_command} '
 ```
 
 Then reload it with `tmux source-file ~/.tmux.conf`.
@@ -431,7 +443,7 @@ the end of its output (they use [jq](https://jqlang.org) to read the JSON):
 
 ```sh
 dir=$(printf '%s' "$input" | jq -r '.workspace.current_dir')
-tempo=$(cd "$dir" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status 2>/dev/null)
+tempo=$(cd "$dir" && ~/.local/bin/tempo status 2>/dev/null)
 ```
 
 Here `$input` holds the JSON the script read with `input=$(cat)`. A whole script that shows
@@ -442,7 +454,7 @@ and made runnable with `chmod +x ~/.claude/statusline.sh`:
 #!/bin/sh
 input=$(cat)
 dir=$(printf '%s' "$input" | jq -r '.workspace.current_dir')
-tempo=$(cd "$dir" && ~/.claude/plugins/marketplaces/tempo/bin/tempo status 2>/dev/null)
+tempo=$(cd "$dir" && ~/.local/bin/tempo status 2>/dev/null)
 printf '%s %s\n' "$(basename "$dir")" "$tempo"
 ```
 

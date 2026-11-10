@@ -24,13 +24,21 @@ All notable changes to Tempo are listed here. The format follows
   puts them on the right; the side is remembered.
 - A sidebar left alone in its window, once you quit Claude there for one, closes too, and
   the window with it.
-- `tempo sidebar` remembers whether the sidebar is on. `run-shell -b "tempo sidebar
-  --restore"` in `~/.tmux.conf` (with the full path of `bin/tempo`) brings it back after
-  tmux restarts or the computer reboots.
+- `tempo sidebar` remembers whether the sidebar is on. `run-shell -b "~/.local/bin/tempo
+  sidebar --restore"` in `~/.tmux.conf` brings it back after tmux restarts or the computer
+  reboots.
+- The tmux hooks and sidebar panes that `tempo sidebar on` sets up run Tempo's marketplace
+  copy, or your clone's `bin/tempo`, so they keep working after Tempo updates. Run from a
+  session, they used to name the session's copy, whose folder has the version in it.
 - The sidebar lists each question as the page does: a line with its state mark in a column
   on the left, its number, "quick" and its age, then its title in up to two lines.
 - In the sidebar, `g` goes to the pane where the shown project's Claude session runs, in
   whichever tmux session it is, and says so when none is open.
+- `tempo install`, or `/tempo:install` in a session, puts `tempo` on your own shell's
+  `PATH`: it makes `~/.local/bin/tempo`, a symlink to Tempo's marketplace copy of
+  `bin/tempo` (or to your clone's), so you no longer need an alias. It never replaces
+  anything already there, and prints the line to add to your shell's config when
+  `~/.local/bin` is not on your `PATH`. `tempo uninstall` removes the link.
 
 ### Changed
 
