@@ -143,10 +143,13 @@
   main.terminal-max #terminal { grid-row: 1 / 3; height: auto !important; }
   main.terminal-max #terminal .grip { visibility: hidden; }
   #side { position: relative; border-right: 1px solid var(--line); display: flex; flex-direction: column; background: var(--sunken); }
-  .side-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 16px 16px 8px; }
-  #side-toggle { display: grid; place-items: center; width: 38px; padding: 0; border-radius: 10px; color: var(--muted); }
-  #side-toggle svg { width: 17px; height: 17px; }
-  #side-toggle:hover { color: var(--text); }
+  /* The same side margins as the list, so the search lines up with the cards below it. */
+  .side-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 16px 12px 8px; }
+  /* A quiet icon: no box until the pointer is on it, so it doesn't compete with the search. */
+  #side-toggle { display: grid; place-items: center; width: 38px; padding: 0; border-radius: 10px;
+                 border: 1px solid transparent; background: transparent; color: var(--muted); }
+  #side-toggle svg { width: 18px; height: 18px; }
+  #side-toggle:hover { color: var(--text); background: var(--panel); border-color: var(--line); }
   /* A window with the list as its left pane, and an arrow saying which way the click moves
      it: left to fold the list away, right to bring it back. */
   #side-toggle .pane { opacity: .35; }
