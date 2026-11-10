@@ -326,13 +326,13 @@ def _terminal_setting(
     request: Handler, store: Store, args: list[str], body: dict[str, Any]
 ) -> None:
     """Settings' Terminal card: the switch, the same as `tempo config terminal`, and the
-    font and its size. Turning it off here also stops the open shells; off from the
-    command, it only refuses new ones."""
+    font and its size. Turning it off here also ends the open shells and Tempo's tmux
+    sessions; off from the command, it only refuses new ones."""
 
     def change(on: bool) -> None:
         store.set_terminal(on)
         if not on:
-            terminal.SHELLS.close_all()
+            terminal.SHELLS.end_all()
 
     def run() -> dict[str, Any]:
         if "font" in body:
@@ -345,8 +345,9 @@ def _terminal_setting(
 
 
 def _terminal_open(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
-    """Start a shell in the project's first folder still on disk. The page then reads its
-    output and sends it keys with the id this answers."""
+    """The shell in the project's first folder still on disk: the one running there, or a
+    new one. The page then reads its output and sends it keys with the id this answers, and
+    shows the tmux session the shell runs in, if any."""
 
     def run() -> dict[str, Any]:
         if not store.terminal():
@@ -361,7 +362,8 @@ def _terminal_open(request: Handler, store: Store, args: list[str], body: dict[s
         ]
         if not folders:
             raise QuestionError("No folder of %s is on this computer" % project)
-        return {"id": terminal.SHELLS.open(folders[0]), "folder": folders[0]}
+        key, shell = terminal.SHELLS.open(folders[0])
+        return {"id": key, "folder": folders[0], "session": shell.session}
 
     request._handle(run)
 
@@ -374,13 +376,11 @@ TerminalRun = Callable[[Handler, str, terminal.Shell, dict[str, Any]], None]
 def _terminal_output(
     request: Handler, key: str, shell: terminal.Shell, body: dict[str, Any]
 ) -> None:
-    """The shell's output as Server-Sent Events, one base64 chunk in each, until the shell
-    ends or the page stops reading. Either way the shell is stopped."""
-    try:
-        output = shell.output()
-    except QuestionError as error:
-        request._json(409, {"error": str(error)})
-        return
+    """The shell's output as Server-Sent Events, one base64 chunk in each, after the first
+    `since` bytes the page already has, until the shell ends, the page stops reading, or a
+    newer page reads it ("moved"). Shells.left then decides whether the shell goes."""
+    since = parse_qs(urlparse(request.path).query).get("since", ["0"])[0]
+    reader, output = shell.output(int(since) if since.isdigit() else 0)
     try:
         request.send_response(200)
         request.send_header("Content-Type", "text/event-stream")
@@ -391,11 +391,11 @@ def _terminal_output(
                 request.wfile.write(b": still here\n\n")
             else:
                 request.wfile.write(b"data: " + base64.b64encode(data) + b"\n\n")
-        request.wfile.write(b"event: end\ndata:\n\n")
+        request.wfile.write(b"event: %s\ndata:\n\n" % (b"end" if shell.ended else b"moved"))
     except OSError:  # the page went away
         pass
     finally:
-        terminal.SHELLS.close(key)
+        terminal.SHELLS.left(key, shell, reader)
 
 
 def _terminal_input(
@@ -428,8 +428,8 @@ def _terminal_resize(
 def _terminal_close(
     request: Handler, key: str, shell: terminal.Shell, body: dict[str, Any]
 ) -> None:
-    """End shell: stop it now rather than when the page goes away."""
-    terminal.SHELLS.close(key)
+    """End shell: stop it, and end its tmux session."""
+    terminal.SHELLS.end(key)
     request._json(200, {})
 
 
@@ -477,7 +477,8 @@ def _match(pattern: tuple[str | None, ...], parts: list[str]) -> list[str] | Non
 def serve(port: int) -> None:
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(port))
     print("Tempo on http://127.0.0.1:%d/" % port, flush=True)
-    # A newer Tempo stops this one with SIGTERM; exiting through finally stops the shells.
+    # A newer Tempo stops this one with SIGTERM; exiting through finally stops the shells,
+    # but not their tmux sessions, so the newer one attaches to them again.
     signal.signal(signal.SIGTERM, _exit)
     try:
         with contextlib.suppress(KeyboardInterrupt):
