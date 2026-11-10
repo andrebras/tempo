@@ -24,6 +24,13 @@ All notable changes to Tempo are listed here. The format follows
 - In the sidebar, `g` goes to the pane where the shown project's Claude session runs, in
   whichever tmux session it is, and says so when none is open.
 
+### Changed
+
+- Sessions no longer start the page by default: you answer from the terminal, with the tmux
+  sidebar, `tempo tui` or `tempo show`. `tempo config page on`, or the switch under Sessions
+  in Settings, makes each session start the page again. If you had never changed the
+  setting, it is now off.
+
 ## [0.11.0] - 2026-11-10
 
 ### Changed

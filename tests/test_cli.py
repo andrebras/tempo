@@ -65,6 +65,9 @@ class CliTest(DatabaseTest):
         waits = mock.patch.object(cli, "_wait_processes", side_effect=lambda: dict(self.waits))
         waits.start()
         self.addCleanup(waits.stop)
+        # Most of these tests are about the page's links, so the page is on; the tests of
+        # the default and of the page off say so.
+        self.store.set_start_page(True)
 
     def test_add_prints_the_number_and_link(self):
         code, out, _ = run(
@@ -1153,11 +1156,11 @@ class CliTest(DatabaseTest):
         self.assertIn("the page did not start: no room", err)
         self.assertIn("hook session-start demo note sent, page not started", self.hook_log())
 
-    def test_an_unreadable_page_setting_counts_as_on(self):
+    def test_an_unreadable_page_setting_counts_as_off(self):
         with mock.patch.object(cli, "Store", side_effect=OSError("locked")):
             err = io.StringIO()
             with redirect_stderr(err):
-                self.assertTrue(cli.page_on())
+                self.assertFalse(cli.page_on())
         self.assertIn("page setting not read: locked", err.getvalue())
 
     def test_the_session_note_asks_for_linked_question_numbers(self):
@@ -1554,6 +1557,7 @@ class NoRealServerTest(DatabaseTest):
 
     def test_a_hook_that_would_start_the_page_fails_the_test(self):
         # The hook turns any Exception into "page not started"; this one gets through.
+        self.store.set_start_page(True)
         with self.assertRaises(RealServerStart):
             run("hook", "session-start", stdin="{}")
 

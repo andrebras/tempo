@@ -922,20 +922,20 @@ class AdditionTest(DatabaseTest):
 
 
 class SettingsTest(DatabaseTest):
-    def test_the_page_starts_with_each_session_by_default(self):
-        self.assertTrue(self.store.start_page())
+    def test_sessions_do_not_start_the_page_by_default(self):
+        self.assertFalse(self.store.start_page())
 
-    def test_turning_the_page_off_and_on_is_kept(self):
-        self.store.set_start_page(False)
+    def test_turning_the_page_on_and_off_is_kept(self):
+        self.store.set_start_page(True)
         with Store(connect(os.environ["TEMPO_DB"])) as store:
-            self.assertFalse(store.start_page())
-            store.set_start_page(True)
-        self.assertTrue(self.store.start_page())
+            self.assertTrue(store.start_page())
+            store.set_start_page(False)
+        self.assertFalse(self.store.start_page())
 
     def test_an_existing_database_gets_the_table_without_a_new_version(self):
         self.store.db.execute("DROP TABLE settings")
         with Store(connect(os.environ["TEMPO_DB"])) as store:
-            self.assertTrue(store.start_page())
+            self.assertFalse(store.start_page())
             self.assertEqual(_user_version(store.db), len(MIGRATIONS))
 
 
