@@ -11,8 +11,9 @@ target-version = "py39"
 line-length = 100
 # bin/check-version, bin/media and bin/release are Python without the .py ending.
 extend-include = ["bin/check-version", "bin/media", "bin/release"]
-# Git worktrees under .claude/ are other copies of this repository, not its source.
-extend-exclude = [".claude", ".tempo-dev"]
+# Git worktrees under .claude/ are other copies of this repository, not its source, and
+# desktop/ holds the desktop app, whose npm packages ship Python files of their own.
+extend-exclude = [".claude", ".tempo-dev", "desktop"]
 
 [tool.ruff.lint]
 # pycodestyle, pyflakes, isort, bugbear, pyupgrade, simplify, flake8-bandit, ruff's own

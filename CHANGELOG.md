@@ -32,6 +32,11 @@ All notable changes to Tempo are listed here. The format follows
 - The question list on the left can be made wider or narrower by dragging its right edge
   (or with the arrow keys), and collapsed to a thin strip that still shows the number of
   open questions and the "something new" dot. The browser remembers both.
+- An early desktop app in `desktop/`, built with Tauri 2, shows the page in a window of
+  its own on a Mac. It runs its own page server on a free port, and only its window can
+  use that server's terminal: the server takes a token the app gives it in
+  `TEMPO_APP_TOKEN`, and serves a page without the terminal's secret. It is run from a
+  Tempo checkout for now; `desktop/README.md` says how, and what is not done yet.
 
 ### Changed
 

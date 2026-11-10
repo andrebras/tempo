@@ -215,6 +215,11 @@ as you could already run commands as you, but on a computer shared with other us
 their programs can reach the page too. So turn the terminal on only on a computer that only
 you use.
 
+The desktop app (`desktop/`, an early test) closes that gap for its own window. It starts a
+server of its own on a free port with a random token in `TEMPO_APP_TOKEN`, and hands the
+token to its window only. That server takes the token in place of the secret and serves its
+page without a secret, so asking it for the page gives nothing that opens a shell.
+
 Each shell is your `$SHELL` started as a login shell (`-l`), so your prompt, aliases and
 `PATH` load, with `TERM=xterm-256color`, in the first of the project's folders that is still
 on disk. `CLAUDECODE` is left out of its environment: a Claude session that started the

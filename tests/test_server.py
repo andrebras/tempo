@@ -13,7 +13,7 @@ from http.server import ThreadingHTTPServer
 from unittest import mock
 
 from tempo import terminal
-from tempo.server import ROOT, make_handler
+from tempo.server import APP_TOKEN, ROOT, make_handler
 from tempo.store import Store
 from tests.helpers import DatabaseTest
 
@@ -699,6 +699,74 @@ class TerminalTest(TerminalBase):
         name = terminal.session_name("/somewhere/my.app:v2")
         self.assertRegex(name, r"^tempo-my-app-v2-[0-9a-f]{6}$")
         self.assertNotEqual(terminal.session_name("/elsewhere/my.app:v2"), name)
+
+
+class AppTokenTest(TerminalBase):
+    """A server the desktop app started: the terminal takes the app's token, and the page it
+    serves carries no secret, so only the app's window can open a shell."""
+
+    TOKEN = "app-token-0123456789abcdefghijklmnopqrstuvwxyz"
+
+    def setUp(self):
+        super().setUp()
+        # The secret a server without the token would have put in its page.
+        self.page_secret = self.secret
+        with mock.patch.dict(os.environ, {APP_TOKEN: self.TOKEN}):
+            self.server.RequestHandlerClass = make_handler(self.port)
+        self.secret = self.TOKEN
+
+    def test_the_page_carries_no_secret(self):
+        _, page = self.request("GET", "/")
+        self.assertIn(b'<meta name="tempo-secret" content="">', page)
+        self.assertNotIn(self.TOKEN.encode(), page)
+
+    def test_the_token_opens_a_shell_and_runs_what_is_typed(self):
+        key = self.open()
+        _, response = self.read(key)
+        self.type(key, "echo hi$((1+1))\n")
+        seen, _ = self.until(response, "hi2")
+        self.assertIn(b"hi2", seen)
+        self.assertEqual(self.terminal("/api/terminal/running"), (200, {"running": 1}))
+
+    def test_each_request_without_the_token_is_refused(self):
+        key = self.open()
+        for secret in ("", "wrong", self.page_secret, self.TOKEN[:-1]):
+            for path, body in [
+                ("/api/terminal", {"project": "demo"}),
+                ("/api/terminal/running", None),
+                ("/api/terminal/%s/input" % key, {"data": "echo x > made\n"}),
+                ("/api/terminal/%s/resize" % key, {"cols": 80, "rows": 24}),
+                ("/api/terminal/%s/close" % key, {}),
+                ("/api/terminal/%s/output" % key, None),
+            ]:
+                with self.subTest(secret=secret, path=path):
+                    status, data = self.terminal(path, body, secret=secret)
+                    self.assertEqual(status, 403)
+                    self.assertIn("Only the Tempo app", data["error"])
+        self.assertEqual(list(terminal.SHELLS.shells), [key])
+        time.sleep(0.2)
+        self.assertEqual(os.listdir(self.folder), [])
+
+    def test_the_token_still_needs_this_pages_host_and_origin(self):
+        body = {"project": "demo"}
+        self.assertEqual(
+            self.terminal("/api/terminal", body, origin="https://evil.example")[0], 403
+        )
+        self.assertEqual(self.terminal("/api/terminal", body, host="evil.example")[0], 403)
+        self.assertEqual(terminal.SHELLS.shells, {})
+
+    def test_the_rest_of_the_page_needs_no_token(self):
+        self.assertEqual(self.request("GET", "/health")[0], 200)
+        status, data = self.request("GET", "/api/questions")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(json.loads(data)["questions"]), 1)
+
+    def test_an_empty_token_is_the_same_as_none(self):
+        with mock.patch.dict(os.environ, {APP_TOKEN: ""}):
+            handler = make_handler(self.port)
+        self.assertFalse(handler.app_only)
+        self.assertGreaterEqual(len(handler.terminal_secret), 40)
+        self.assertIn(handler.terminal_secret.encode(), handler.page)
 
 
 def tmux_sessions(tmux):
