@@ -28,6 +28,7 @@ import contextlib
 import fcntl
 import json
 import os
+import re
 import shutil
 import socket
 import sqlite3
@@ -178,6 +179,33 @@ REWORD = {
     ),
     "note": "Added what accounting software needs from the file.",
 }
+# What the stand-in for Claude's pane says in the sidebar's GIF, as a session would.
+CLAUDE_START = (
+    "\n\033[2m  ~/acme-shop\033[0m\n\n"
+    "\033[1m> Add an orders export to the admin, as a CSV file\033[0m\n\n"
+    "\033[38;5;174m●\033[0m Read src/admin/orders.tsx and the export code\n\n"
+    "\033[38;5;174m●\033[0m The export works. Two choices are yours first, so I asked\n"
+    "  them in Tempo:\n"
+    '  \033[2m⎿\033[0m Q1 Where should the new "Export orders" button go?\n'
+    "  \033[2m⎿\033[0m Q2 Which columns should the orders export include?\n\n"
+)
+CLAUDE_ANSWERED = (
+    '\033[38;5;114m●\033[0m Tempo: Q1 answered (b), "%s"' % ANSWER_NOTE,
+    "\033[38;5;174m●\033[0m Update src/admin/OrdersToolbar.tsx",
+    '  \033[2m⎿\033[0m Added a More menu with "Export orders" (+31 -4)\n',
+)
+CLAUDE_ASKED = (
+    '\033[38;5;114m●\033[0m Tempo: on Q2 you asked "%s"' % FOLLOWUP,
+    "\033[38;5;174m●\033[0m Read the import help of three accounting tools",
+    "  \033[2m⎿\033[0m They need number, date, customer, total, tax, shipping",
+)
+CLAUDE_REWORDED = "\033[38;5;174m●\033[0m Reworded Q2 in Tempo with what they need"
+CLAUDE_GARDEN = (
+    "\n\033[2m  ~/garden-planner\033[0m\n\n"
+    "\033[1m> Plan the seed calendar's first screen\033[0m\n\n"
+    "\033[38;5;174m●\033[0m One choice is yours, asked in Tempo:\n"
+    "  \033[2m⎿\033[0m Q1 Should the seed calendar start the week on Monday or Sunday?\n\n"
+)
 # The page has drawn its list and a question.
 LOADED = "document.querySelector('#detail h2') && document.querySelector('#list a')"
 # A mouse pointer drawn into the page: headless Chrome draws none.
@@ -695,8 +723,9 @@ class Tui(Demo):
 
 
 class Sidebar(Tui):
-    """The tmux sidebar beside a stand-in for Claude's pane, on a tmux server of its own,
-    shown by ttyd and recorded in Chrome, telling the same story in the sidebar's popup."""
+    """The tmux sidebar in a tmux session of its own, shown by ttyd and recorded in Chrome:
+    a window per project, each with a stand-in for Claude's pane that says what a session
+    would, and the same story told in the sidebar's popup."""
 
     width, height = SIDEBAR_WIDTH, SIDEBAR_HEIGHT
 
@@ -706,30 +735,44 @@ class Sidebar(Tui):
         self.sockets = Path(tempfile.mkdtemp(prefix="tempo-tmux-"))
         self.folder = work / "acme-shop"
         self.folder.mkdir()
+        self.garden = work / "garden-planner"
+        self.garden.mkdir()
+        # What each stand-in for Claude shows: a file it follows, which the story adds to.
+        self.claude = work / "claude-acme-shop.log"
+        self.claude.write_text(CLAUDE_START)
+        (work / "claude-garden-planner.log").write_text(CLAUDE_GARDEN)
         self.config = work / "tmux.conf"
         self.config.write_text(
-            "set -g status off\n"
             "set -g default-terminal xterm-256color\n"
+            "set -g allow-rename off\n"
+            "set -s escape-time 0\n"
+            "set -g automatic-rename off\n"
             "set -g pane-border-style fg=colour238\n"
-            "set -g pane-active-border-style fg=colour238\n"
+            "set -g pane-active-border-style fg=colour244\n"
             "set -g popup-border-lines rounded\n"
+            "set -g status-style bg=colour236,fg=colour248\n"
+            "set -g status-left '#[fg=colour235,bg=colour110,bold] #S #[default] '\n"
+            "set -g status-left-length 20\n"
+            "set -g status-right '#[fg=colour244]tmux '\n"
+            "set -g window-status-format ' #I #W '\n"
+            "set -g window-status-current-format '#[fg=colour255,bg=colour239,bold] #I #W '\n"
         )
         # The tmux server is the sessions' own, never the one this may run in.
         for name in ("TMUX", "TMUX_PANE"):
             self.env.pop(name, None)
         self.env["TMUX_TMPDIR"] = str(self.sockets)
 
+    def follow(self, project: str) -> list[str]:
+        """The stand-in for Claude's pane in a project's window: it shows its file as it
+        grows, and nothing else, so no key typed there changes it."""
+        log = self.work / ("claude-%s.log" % project)
+        return ["sh", "-c", 'stty -echo; exec tail -n +1 -f "$0" </dev/null', str(log)]
+
     def program(self) -> list[str]:
-        # Claude's pane: only what it says while it waits on you, so nothing in it moves.
-        claude = (
-            "printf '\\n  \\033[1macme-shop\\033[0m\\n\\n"
-            "  Claude asked you 5 questions.\\n"
-            "  Answer them in the sidebar \\342\\206\\222\\n'; exec cat >/dev/null"
-        )
         tmux = shutil.which("tmux") or "tmux"
         return [
-            tmux, "-f", str(self.config), "new-session", "-s", "demo",
-            "-c", str(self.folder), "sh", "-c", claude,
+            tmux, "-f", str(self.config), "new-session", "-s", "work", "-n", "acme-shop",
+            "-c", str(self.folder), *self.follow("acme-shop"),
         ]  # fmt: skip
 
     def tmux(self, *args: str) -> str:
@@ -741,6 +784,15 @@ class Sidebar(Tui):
             check=True,
         )
         return done.stdout
+
+    def says(self, *lines: str, hold: int) -> None:
+        """Claude's pane adds lines, a moment apart, as a session would while it works."""
+        for line in lines:
+            with open(self.claude, "a") as log:
+                log.write(line + "\n")
+            self.until(strip(line)[-20:].strip(), timeout=8)
+            self.frame(700)
+        self.frame(hold)
 
     def until_gone(self, words: str, timeout: float = 5) -> None:
         end = time.monotonic() + timeout
@@ -758,8 +810,13 @@ class Sidebar(Tui):
 
     def story(self) -> None:
         self.frames_folder = self.work / "frames"
-        self.until("Answer them in the sidebar")
-        # Turned on as a key binding would, from inside the session.
+        self.until("Two choices are yours")
+        self.tmux(
+            "new-window", "-d", "-n", "garden-planner", "-c", str(self.garden),
+            *self.follow("garden-planner"),
+        )  # fmt: skip
+        self.frame(1800)
+        # Turned on as a key binding would, from inside the session: every window gets one.
         socket = self.tmux("display-message", "-p", "#{socket_path}").strip()
         inside = dict(self.env, TMUX="%s,0,0" % socket)
         subprocess.run(  # noqa: S603
@@ -770,33 +827,50 @@ class Sidebar(Tui):
             stdout=subprocess.DEVNULL,
         )
         self.until("acme-shop · 5 open")
-        self.frame(1400)
-        self.tmux("select-pane", "-t", "demo:0.1")
+        self.frame(1600)
+        self.tmux("select-pane", "-t", "work:0.1")
         self.frame(400)
         self.key("j", "", 500)
         self.key("k", "", 600)
-        # Answer Q1 with (b) and a note in its popup, which closes; the list moves on.
+        # Answer Q1 with (b) and a note in its popup, which closes; the list moves on, and
+        # Claude, told by Tempo, gets on with it.
         self.key("enter", 'In a "More" menu', 1200)
         self.key("b", "Note for (b)", 1000)
         self.write(ANSWER_NOTE)
-        self.key("enter", "acme-shop · 4 open", 1800)
+        self.key("enter", "acme-shop · 4 open", 900)
+        self.says(*CLAUDE_ANSWERED, hold=1400)
         # Ask for more on Q2, in its popup.
-        self.key("enter", "Which columns", 1000)
+        self.key("enter", "plus tax and shipping", 1000)
         self.key("r", "Enter sends", 500)
         self.write(FOLLOWUP)
         # Sent, the popup closes and the list marks Q2 as waiting on Claude.
         self.key("enter", "", 0)
         self.until_gone("Follow-up on Q2")
-        self.frame(1600)
+        self.frame(1200)
+        self.says(*CLAUDE_ASKED, hold=300)
         # Claude rewords the question, the way a session does; the list follows by itself,
         # and its popup shows the new wording and the thread.
         args = ["reword", "2", "--project", "acme-shop", "--note", REWORD["note"]]
         self.tempo(*args, "--title", REWORD["title"], "--context", REWORD["context"])
         self.until("for the accountant", timeout=8)
-        self.frame(1600)
+        self.says(CLAUDE_REWORDED, hold=1400)
         self.key("enter", "Added what accounting", 3500)
-        self.key("esc", "acme-shop · 4 open", 1500)
+        self.key("h", "", 0)
+        self.until_gone("Thread")
+        self.frame(1200)
+        # Another window, another project: its sidebar shows that project's questions.
+        self.tmux("select-window", "-t", "work:1")
+        self.until("garden-planner · 1 open")
+        self.frame(2400)
+        self.tmux("select-window", "-t", "work:0")
+        self.until("acme-shop · 4 open")
+        self.frame(1500)
         encode(self.frames, self.work / "frames.txt", DOCS / "sidebar.gif", TUI_WIDTH, TUI_LIMIT)
+
+
+def strip(line: str) -> str:
+    """A line as the terminal shows it: without its colour codes."""
+    return re.sub(r"\033\[[0-9;]*m", "", line)
 
 
 def high(fd: int) -> int:
