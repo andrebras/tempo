@@ -137,6 +137,11 @@
   #terminal .screens { flex: 1; min-height: 0; padding: 4px 8px; }
   #terminal .term { height: 100%; }
   #terminal .term[hidden] { display: none; }
+  /* Maximized, the terminal takes the whole right-hand column and the question steps aside;
+     the list on the left stays. The height dragged on the grip comes back on Restore. */
+  main.terminal-max #detail { display: none; }
+  main.terminal-max #terminal { grid-row: 1 / 3; height: auto !important; }
+  main.terminal-max #terminal .grip { visibility: hidden; }
   #side { border-right: 1px solid var(--line); display: flex; flex-direction: column; background: var(--sunken); }
   .side-top { display: grid; gap: 8px; padding: 16px 16px 8px; }
   #search { margin: 0; padding: 9px 12px 9px 34px; border: 1px solid var(--line);
@@ -347,6 +352,7 @@
     main { grid-template-columns: minmax(0, 1fr); }
     #side { border-right: 0; border-bottom: 1px solid var(--line); grid-row: auto; }
     #terminal { grid-column: 1; }
+    main.terminal-max #terminal { grid-row: auto; height: 75vh !important; }
     #list { max-height: 38vh; }
     #detail { padding: 20px 16px 40px; }
     #detail h2 { font-size: 1.375rem; }
@@ -387,7 +393,9 @@
     <div class="grip" role="separator" aria-orientation="horizontal" aria-label="Terminal height"
          tabindex="0" title="Drag to change the terminal's height"></div>
     <div class="bar"><strong class="name"></strong> <span class="where"></span> <span class="mode"></span>
-      <span class="actions"><button class="hide" type="button">Hide</button>
+      <span class="actions"><button class="max" type="button" aria-pressed="false"
+        title="Fill the right-hand column with the terminal">Maximize</button>
+      <button class="hide" type="button">Hide</button>
       <button class="end" type="button">End shell</button></span></div>
     <div class="screens"></div>
   </section>

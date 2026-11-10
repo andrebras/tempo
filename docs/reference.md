@@ -188,7 +188,10 @@ With it on, a Terminal button appears beside the gear. It opens a shell for the 
 shown, at the bottom of the question's pane. Each project has its own shell, and the panel
 follows the project you pick in the header. **Hide** keeps the shell running; **End shell**
 stops it. Drag the panel's top edge (or focus it and use the up and down arrow keys) to
-change its height, which the browser remembers. The terminal uses the page's colours, light or dark, and
+change its height, which the browser remembers. **Maximize** makes the terminal fill the
+right-hand column in place of the question, while the list stays on the left; **Restore**,
+Escape (when the keyboard isn't in the shell, where Escape belongs to the shell) or picking
+a question in the list puts it back under the question, at its own height. The terminal uses the page's colours, light or dark, and
 the font and size from Settings. If the font you name isn't installed, the terminal falls
 back to the system's monospace font, so the columns still line up. It is drawn by [xterm.js](https://xtermjs.org) 6.0.0 and its
 fit addon 0.11.0, which ship with Tempo in `tempo/vendor/xterm` (MIT licence), so the page

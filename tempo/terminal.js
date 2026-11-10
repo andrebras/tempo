@@ -242,8 +242,25 @@ function fitTerminal(entry) {
   try { entry.fit.fit(); } catch { /* hidden: it fits when shown */ }
 }
 
+// Maximized, the terminal fills the right-hand column in place of the question. Its shell
+// runs on either way; only the room it has changes.
+function maximizeTerminal(max) {
+  $("main").classList.toggle("terminal-max", max);
+  const button = $("#terminal .max");
+  button.setAttribute("aria-pressed", String(max));
+  button.textContent = max ? "Restore" : "Maximize";
+  button.title = max ? "Back to its own height, under the question" : "Fill the right-hand column with the terminal";
+}
+
+function terminalMaximized() {
+  return $("main").classList.contains("terminal-max");
+}
+
 function setTerminalButton(open) {
-  if (!open) for (const entry of Object.values(terminals)) detachTerminal(entry);
+  if (!open) {
+    for (const entry of Object.values(terminals)) detachTerminal(entry);
+    maximizeTerminal(false);
+  }
   $("#terminal").hidden = !open;
   $("#terminal-toggle").setAttribute("aria-pressed", String(open));
 }
@@ -315,6 +332,17 @@ function startTerminal() {
   $("#terminal-toggle").addEventListener("click", () => {
     if ($("#terminal").hidden) showTerminal();
     else setTerminalButton(false);
+  });
+  $("#terminal .max").addEventListener("click", () => maximizeTerminal(!terminalMaximized()));
+  // Picking a question shows it: the terminal goes back under it.
+  $("#list").addEventListener("click", (event) => {
+    if (event.target.closest("a") && terminalMaximized()) maximizeTerminal(false);
+  });
+  // Escape restores it too, unless the shell has the keyboard: there Escape is the shell's.
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !terminalMaximized() || event.defaultPrevented) return;
+    if ($("#terminal .screens").contains(document.activeElement)) return;
+    maximizeTerminal(false);
   });
   $("#terminal .hide").addEventListener("click", () => setTerminalButton(false));
   $("#terminal .end").addEventListener("click", endTerminal);
