@@ -502,28 +502,40 @@ def run_tui(args: argparse.Namespace) -> int:
 # The sidebar's width in columns, and the pane option that marks a pane as the sidebar.
 SIDEBAR_WIDTH = 40
 SIDEBAR_MARK = "@tempo-sidebar"
+# What a workmux sidebar pane was started with. When the window has one, Tempo goes below it,
+# so the window keeps one column on the left.
+WORKMUX_SIDEBAR = "workmux _sidebar-run"
 
 
 def run_tmux(args: argparse.Namespace) -> int:
     """Show the sidebar (`tempo tui --sidebar`) on the left of the current tmux window,
     keeping the keyboard in the current pane; when it is already there, close it. So one
-    key bound to this shows and hides it."""
+    key bound to this shows and hides it. When the window has a workmux sidebar on the
+    left, Tempo takes the lower half of it instead of a column of its own."""
     if not os.environ.get("TMUX"):
         print("tempo: tmux works only inside tmux; start tmux, then run it there", file=sys.stderr)
         return 1
     # The pane this runs in; tmux's own key bindings run it without one, on the current pane.
     here = ["-t", os.environ["TMUX_PANE"]] if os.environ.get("TMUX_PANE") else []
     try:
-        panes = _tmux("list-panes", *here, "-F", "#{pane_id} #{%s}" % SIDEBAR_MARK)
-        shown = [line.split()[0] for line in panes.splitlines() if line.endswith(" 1")]
+        listing = _tmux(
+            "list-panes", *here, "-F", "#{pane_id}\t#{%s}\t#{pane_start_command}" % SIDEBAR_MARK
+        )
+        panes = [line.split("\t", 2) + [""] * 2 for line in listing.splitlines()]
+        shown = [pane[0] for pane in panes if pane[1] == "1"]
+        workmux = [pane[0] for pane in panes if WORKMUX_SIDEBAR in pane[2]]
         if shown:
             for pane in shown:
                 _tmux("kill-pane", "-t", pane)
             return 0
         tempo = os.path.join(CODE_ROOT, "bin", "tempo")
         command = [tempo, "tui", "--sidebar", "--project", _project(args.project)]
+        if workmux:
+            place = ["-t", workmux[0], "-vd", "-l", "50%"]
+        else:
+            place = [*here, "-hbd", "-l", str(SIDEBAR_WIDTH)]
         pane = _tmux(
-            "split-window", *here, "-hbd", "-l", str(SIDEBAR_WIDTH), "-c", os.getcwd(),
+            "split-window", *place, "-c", os.getcwd(),
             "-e", "TEMPO_DB=%s" % db_path(), "-P", "-F", "#{pane_id}", shlex.join(command),
         ).strip()  # fmt: skip
         _tmux("set-option", "-p", "-t", pane, SIDEBAR_MARK, "1")
