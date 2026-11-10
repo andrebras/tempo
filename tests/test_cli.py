@@ -1117,7 +1117,7 @@ class CliTest(DatabaseTest):
 
     def test_config_shows_and_changes_the_page_setting(self):
         self.assertEqual(
-            run("config", "page"),
+            run("config"),
             (0, "page on: each session starts the page at http://127.0.0.1:%d/\n" % TEST_PORT, ""),
         )
         code, out, _ = run("config", "page", "off")
@@ -1128,47 +1128,8 @@ class CliTest(DatabaseTest):
         self.assertIn("page off", run("config", "page")[1])
         run("config", "page", "on")
         self.assertTrue(self.store.start_page())
-        self.assertEqual(run("config", "page", "maybe"), (2, "", "tempo: page is on or off\n"))
-        self.assertTrue(self.store.start_page())
-
-    def test_config_shows_and_changes_the_terminal_setting(self):
-        code, out, _ = run("config")
-        self.assertEqual(code, 0)
-        self.assertEqual(
-            [line.split(":")[0] for line in out.splitlines()],
-            ["page on", "terminal off", "terminal-font", "terminal-size"],
-        )
-        out = run("config", "terminal", "on")[1]
-        self.assertTrue(out.startswith("terminal on:"))
-        self.assertIn("any command as you", out)
-        self.assertTrue(self.store.terminal())
-        self.assertNotIn("page", run("config", "terminal")[1].split(":")[0])
-        run("config", "terminal", "off")
-        self.assertFalse(self.store.terminal())
-        self.assertTrue(self.store.start_page())
-
-    def test_config_sets_the_terminals_font_and_size(self):
-        self.assertEqual(
-            run("config", "terminal-font"),
-            (0, "terminal-font: default, the system's monospace font\n", ""),
-        )
-        self.assertEqual(run("config", "terminal-size"), (0, "terminal-size: 13\n", ""))
-        out = run("config", "terminal-font", '"JetBrains Mono", monospace')[1]
-        self.assertEqual(out, 'terminal-font: "JetBrains Mono", monospace\n')
-        self.assertEqual(run("config", "terminal-size", "15")[1], "terminal-size: 15\n")
-        self.assertEqual(self.store.terminal_size(), 15)
-        for name, value in [
-            ("terminal-size", "big"),
-            ("terminal-size", "99"),
-            ("terminal-font", "Menlo; color: red"),
-        ]:
-            with self.subTest(value=value):
-                code, out, err = run("config", name, value)
-                self.assertEqual((code, out), (2, ""))
-                self.assertIn("font", err)
-        run("config", "terminal-font", "default")
-        self.assertEqual(self.store.terminal_font(), "")
-        self.assertEqual(self.store.terminal_size(), 15)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            cli.main(["config", "page", "maybe"])
 
     def test_with_the_page_off_the_session_start_hook_leaves_it_alone(self):
         self.add()

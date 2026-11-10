@@ -906,30 +906,6 @@ class SettingsTest(DatabaseTest):
             store.set_start_page(True)
         self.assertTrue(self.store.start_page())
 
-    def test_the_terminal_is_off_by_default_and_turning_it_on_is_kept(self):
-        self.assertFalse(self.store.terminal())
-        self.store.set_terminal(True)
-        with Store(connect(os.environ["TEMPO_DB"])) as store:
-            self.assertTrue(store.terminal())
-            store.set_terminal(False)
-        self.assertFalse(self.store.terminal())
-        self.assertTrue(self.store.start_page())
-
-    def test_the_terminals_font_and_size_have_defaults_and_are_checked(self):
-        self.assertEqual((self.store.terminal_font(), self.store.terminal_size()), ("", 13))
-        self.store.set_terminal_font('  "Fira Code", Menlo, monospace ')
-        self.store.set_terminal_size(16)
-        self.assertEqual(self.store.terminal_font(), '"Fira Code", Menlo, monospace')
-        self.assertEqual(self.store.terminal_size(), 16)
-        for font in ("Menlo; x", "a{b}", "<script>", "x" * 201):
-            with self.subTest(font=font), self.assertRaises(QuestionError):
-                self.store.set_terminal_font(font)
-        for size in (7, 33):
-            with self.subTest(size=size), self.assertRaises(QuestionError):
-                self.store.set_terminal_size(size)
-        self.store.db.execute("UPDATE settings SET value = 'huge' WHERE name = 'terminal_size'")
-        self.assertEqual(self.store.terminal_size(), 13)
-
     def test_an_existing_database_gets_the_table_without_a_new_version(self):
         self.store.db.execute("DROP TABLE settings")
         with Store(connect(os.environ["TEMPO_DB"])) as store:

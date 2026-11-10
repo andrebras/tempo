@@ -21,9 +21,6 @@ and Biome and Ruff skip `.claude/`, so git worktrees kept there do not break the
 It needs [ShellCheck](https://www.shellcheck.net) (`brew install shellcheck`) and
 [Node.js](https://nodejs.org) 18 or newer (`brew install node`), which runs the checks for
 the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on first use.
-The tests of the terminal's tmux sessions need [tmux](https://github.com/tmux/tmux)
-(`brew install tmux`) and skip, saying why, without it. They run their own tmux server on a
-socket in a temporary folder, so your own tmux sessions are never touched.
 
 | Check | Tool |
 | --- | --- |
@@ -70,10 +67,8 @@ checks that the last release still works on a database the current code has open
 `tests/test_page.py` runs the page in headless Google Chrome against the real server code
 and a throwaway database: answering, asking for more, a reword under a typed note,
 reopening, the timed refresh keeping focus, a server restart keeping the draft, the "new"
-dots, a link to a missing question, long words wrapping, labels for screen readers,
-Settings keeping the keyboard focus, and the terminal running a command in a project's
-folder in the page's colours, and a hidden terminal coming back as it was. It also checks
-that the page's colours meet the
+dots, a link to a missing question, long words wrapping, labels for screen readers, and
+Settings keeping the keyboard focus. It also checks that the page's colours meet the
 contrast minimum of WCAG (the Web Content Accessibility Guidelines) in both themes. `bin/ci` runs them with the other tests; to run only
 them, use `python3 -m unittest tests.test_page`. They take about two seconds. They skip,
 saying why, when Chrome isn't installed; set `CHROME` to the browser's path if it isn't
@@ -108,10 +103,6 @@ tempo/
   server.py       the page's web server
   page.html       the page, with its styles
   page.js         the page's script
-  terminal.py     the shells the page's terminal opens
-  terminal.js     the page's terminal, drawn by xterm.js
-  vendor/xterm/   xterm.js 6.0.0 and its fit addon 0.11.0, copied unchanged from npm
-                  (@xterm/xterm, @xterm/addon-fit), with their licence
   slash.py        what the slash commands run
   log.py          the page log, server.log
   store/          the SQLite database: questions, projects, settings and delivery
@@ -119,7 +110,7 @@ tempo/
 skills/           five skills: tempo, which teaches Claude the workflow, and one for each
                   slash command (list, show, answer, dive)
 tests/            Python tests (test_page.py drives the page in Chrome), and page.test.js
-                  and terminal.test.js for the page's scripts
+                  for the page's script
 ```
 
 ## Releasing

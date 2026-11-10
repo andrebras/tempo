@@ -3,9 +3,7 @@
   "files": {
     "includes": [
       "tempo/page.js",
-      "tempo/terminal.js",
       "tests/page.test.js",
-      "tests/terminal.test.js",
       "!!.claude",
       "!!.venv",
       "!!.tempo-dev"

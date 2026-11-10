@@ -20,7 +20,7 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo reply <n> "…"` | For you, not Claude: ask for more context from the terminal, as the page's follow-up does |
 | `tempo status` | For you, not Claude: print `? 3` when the current folder's project has 3 open questions, nothing when it has none, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
 | `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
-| `tempo config`, `tempo config page on\|off`, `tempo config terminal on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) or whether the page may open a shell in a project's folder (off by default). `terminal-font` and `terminal-size` set that terminal's font and size (see [The terminal](#the-terminal)) |
+| `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) |
 | `tempo serve [--background]` | Run the page; works whether or not sessions start it (`--port` picks another port) |
 | `tempo hook <event>` | Run by Claude Code's hooks (`session-start`, `user-prompt-submit`, `stop`); not for direct use (see [Hooks](#hooks)) |
 | `tempo slash <name>` | Run by the slash commands below, with the typed text on stdin; not for direct use |
@@ -170,92 +170,6 @@ The setting is kept in the database, so every session and project sees it. With 
   The Stop hook counts a question's number (such as Q5) in a sentence as pointing at it,
   where it would otherwise want the question's link.
 
-### The terminal
-
-The page can show a terminal in a project's folder, so you don't have to switch to your
-terminal app. It is off unless you turn it on, under Terminal in the page's Settings or from
-the terminal:
-
-```bash
-tempo config terminal on                          # the page may open a shell
-tempo config terminal off                         # back to the default
-tempo config terminal-font '"JetBrains Mono", monospace'
-tempo config terminal-font default                # the system's monospace font
-tempo config terminal-size 14                     # in pixels, 8 to 32; 13 by default
-```
-
-With it on, a Terminal button appears beside the gear. It opens a shell for the project
-shown, at the bottom of the question's pane. Each project has its own shell, and the panel
-follows the project you pick in the header. **Hide** keeps the shell running; **End shell**
-stops it. Drag the panel's top edge (or focus it and use the up and down arrow keys) to
-change its height, which the browser remembers. The terminal uses the page's colours, light or dark, and
-the font and size from Settings. If the font you name isn't installed, the terminal falls
-back to the system's monospace font, so the columns still line up. It is drawn by [xterm.js](https://xtermjs.org) 6.0.0 and its
-fit addon 0.11.0, which ship with Tempo in `tempo/vendor/xterm` (MIT licence), so the page
-loads nothing from the internet.
-
-**Security: with the terminal on, the page can run any command as you.** Only turn it on if
-you are happy for anything that can use the page to do so. The server answers only on
-`127.0.0.1`, refuses requests that name another host, and takes writes only from its own
-page. On top of that, each terminal request must carry a secret the server makes when it
-starts and puts only in the page it serves. A website open in your browser can't read it.
-A program running on your computer can, by asking the server for the page. Programs running
-as you could already run commands as you, but on a computer shared with other user accounts,
-their programs can reach the page too. So turn the terminal on only on a computer that only
-you use.
-
-Each shell is your `$SHELL` started as a login shell (`-l`), so your prompt, aliases and
-`PATH` load, with `TERM=xterm-256color`, in the first of the project's folders that is still
-on disk. `CLAUDECODE` is left out of its environment: a Claude session that started the
-page sets it, and `claude` would then refuse to start in the terminal. The shell runs in a
-pseudo-terminal (PTY), so full-screen programs such as `claude` work. The page reads the shell's output as Server-Sent Events (SSE: one long response that the
-server writes to as output comes) and sends keys and the terminal's size as separate
-requests. None of this uses the database.
-
-#### Hidden terminals keep running
-
-The page reads a terminal's output only while it is shown. When you hide it, pick another
-project, or close or reload the tab, the page lets go of that connection, and the shell
-keeps running. Browsers allow only about six connections at once to one server, so this
-keeps the page's own updates moving however many projects have a shell. When you show the
-terminal again, the page gets the same shell back, with what happened while it was hidden.
-The bar above the terminal says where the shell lives.
-
-**With [tmux](https://github.com/tmux/tmux) installed** (found on your `PATH`), each
-project's shell runs in a tmux session. tmux is a terminal multiplexer: a program that keeps
-shells running on its own, so you can leave them and come back. The session is named
-`tempo-`, then the folder's name (with dots, colons and other signs turned into `-`), then
-six letters and digits from the folder's full path, so two folders with the same name get
-two sessions: for example `tempo-my-app-3f9a1c`. The page's PTY runs only a tmux client
-attached to that session (`tmux new-session -A`, which attaches or creates). Hiding the
-terminal ends the client, and tmux keeps the shell; showing it attaches again, and tmux
-draws the screen as it was. The shell also survives a restart of the page server: the new
-server attaches to the same session. Inside tmux, the shell is the one tmux starts (your
-login shell unless your tmux config says otherwise), with tmux's own environment.
-
-You can attach to the same shell from your own terminal, as the bar shows:
-
-```bash
-tmux attach -t tempo-my-app-3f9a1c    # the page and your terminal then show the same shell
-tmux ls                               # every session, Tempo's among them
-```
-
-Tempo uses your usual tmux server, so these sessions are listed with yours, and it never
-changes your tmux config. Scrolling back is tmux's own (with your prefix key, then `[`).
-
-**Without tmux**, the page server keeps the shell itself, and keeps its latest output, up to
-about 1 MB, for the page to read when it comes back. A page that comes back asks only for
-what it hasn't shown yet; a new tab or a reloaded page gets all that is kept. If the same
-terminal is shown in two tabs, the latest one takes it over, and the other says so.
-
-A shell stops when you end it with **End shell**, when you type `exit`, when the terminal is
-turned off in the page's Settings, and, without tmux, when the server stops. End shell with
-tmux also ends the session. Turning the terminal off in Settings ends every shell and every
-tmux session Tempo started (by their names), also those an earlier server left, and no
-other. Turning it off with `tempo config terminal off` only refuses new shells; the running
-ones stop with End shell or Settings, the server (without tmux), or
-`tmux kill-session -t <name>`. Each project has one shell, and the server runs at most 32.
-
 ## Projects in the header
 
 The page shows one project at a time. The header has a chip for each project that has
@@ -337,10 +251,6 @@ The gear button at the top right of the page opens Settings.
 - **Sessions**: "Start the page with each session", On or Off. It is the same setting as
   `tempo config page on|off` (see [Turning the page off](#turning-the-page-off)) and is kept
   in the database.
-- **Terminal**: "Terminal in the project's folder", On or Off (off by default), the terminal's
-  font and its size. They are the same settings as `tempo config terminal`,
-  `terminal-font` and `terminal-size` (see [The terminal](#the-terminal)), kept in the
-  database. Turning it off here also stops every open shell.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
   its questions, their numbers and its folders along.

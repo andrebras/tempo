@@ -49,7 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, rewordNotice, state,
+  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -235,20 +235,6 @@ test("the page switch shows whether each session starts the page", () => {
     assert.deepEqual(buttons.map((button) => button.attributes["aria-pressed"]), pressed);
     assert.match(card.textContent, /Start the page with each session/);
   }
-});
-
-test("the terminal card shows the switch, the font and its size", () => {
-  const card = renderTerminal({ terminal: false, terminal_font: "", terminal_size: 13 });
-  const buttons = all(card, "BUTTON");
-  assert.deepEqual(buttons.map((button) => button.textContent), ["On", "Off", "Save", "Save"]);
-  assert.deepEqual(buttons.slice(0, 2).map((button) => button.attributes["aria-pressed"]), ["false", "true"]);
-  const [font, size] = all(card, "INPUT");
-  assert.deepEqual([font.attributes["aria-label"], font.attributes.value, font.attributes.placeholder],
-    ["Terminal font", "", "System monospace"]);
-  assert.deepEqual([size.attributes.type, size.attributes.value, size.attributes.min, size.attributes.max],
-    ["number", "13", "8", "32"]);
-  assert.match(card.textContent, /any command as you/);
-  assert.match(card.textContent, /tempo config terminal/);
 });
 
 test("chips show projects with open questions or news, and always the current one", () => {
