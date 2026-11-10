@@ -1116,14 +1116,15 @@ class SidebarCommandTest(DatabaseTest):
 
     def run_sidebar(self, tmux, *args, env=None):
         env = {"TMUX": "/tmp/tmux-501/default,1,0", "TMUX_PANE": "%1", **(env or {})}
-        err = io.StringIO()
+        err, out = io.StringIO(), io.StringIO()
         with (
             mock.patch.dict(os.environ, env),
             mock.patch("subprocess.run", side_effect=tmux),
             redirect_stderr(err),
+            redirect_stdout(out),
         ):
             code = cli.main(["sidebar", *args])
-        return code, err.getvalue()
+        return code, err.getvalue(), out.getvalue()
 
     def test_on_every_window_gets_a_full_height_sidebar_on_the_left_with_its_project(self):
         tmux = FakeTmux({"@1": ["%1"], "@2": ["%2", "%3"]})
@@ -1162,6 +1163,43 @@ class SidebarCommandTest(DatabaseTest):
         self.assertEqual(tmux.sidebars(), {"@1": [], "@2": []})
         self.assertEqual(tmux.hooks["after-new-window"], {0: "run-shell mine"})
         self.assertEqual(tmux.hooks["after-new-session"], {})
+
+    def test_toggle_says_nothing_so_a_key_binding_shows_no_output(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.assertEqual(self.run_sidebar(tmux, "toggle")[2], "")
+        self.assertEqual(tmux.on, "left")
+        self.assertEqual(self.run_sidebar(tmux, "toggle")[2], "")
+        self.assertEqual(tmux.on, "")
+
+    def test_on_twice_leaves_the_sidebars_as_they_are_and_says_so(self):
+        tmux = FakeTmux({"@1": ["%1"], "@2": ["%2"]})
+        self.assertEqual(self.run_sidebar(tmux, "on")[::2], (0, "Sidebar on, on the left.\n"))
+        self.assertEqual(
+            self.run_sidebar(tmux, "on")[::2], (0, "Sidebar already on, on the left.\n")
+        )
+        self.assertEqual(tmux.sidebars(), {"@1": ["%91"], "@2": ["%92"]})
+        self.assertEqual(len(tmux.splits()), 2)
+        self.assertEqual([len(hooks) for hooks in tmux.hooks.values()], [1, 1])
+
+    def test_on_with_the_other_side_moves_every_sidebar(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.run_sidebar(tmux, "on")
+        code, _, out = self.run_sidebar(tmux, "on", "--side", "right")
+        self.assertEqual((code, out), (0, "Sidebar moved to the right.\n"))
+        self.assertEqual((tmux.on, tmux.sidebars()), ("right", {"@1": ["%92"]}))
+        self.assertEqual(tmux.splits()[-1][3], "-hfd")
+
+    def test_off_twice_closes_every_sidebar_once_and_says_so(self):
+        tmux = FakeTmux(
+            {"@1": ["%1"], "@2": ["%2"]}, hooks={"after-new-window": {0: "run-shell mine"}}
+        )
+        self.run_sidebar(tmux, "on")
+        self.assertEqual(self.run_sidebar(tmux, "off")[::2], (0, "Sidebar off.\n"))
+        self.assertEqual(self.run_sidebar(tmux, "off")[::2], (0, "Sidebar already off.\n"))
+        self.assertEqual(tmux.on, "")
+        self.assertEqual(tmux.sidebars(), {"@1": [], "@2": []})
+        self.assertEqual(tmux.hooks["after-new-window"], {0: "run-shell mine"})
+        self.assertEqual(len(tmux.splits()), 2)
 
     def test_the_side_is_remembered_and_switching_it_moves_every_sidebar(self):
         tmux = FakeTmux({"@1": ["%1"]})

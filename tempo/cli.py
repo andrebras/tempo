@@ -240,6 +240,13 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
         "sidebar", help="Turn the questions' sidebar on or off in every tmux window"
     )
     sidebar.add_argument(
+        "action",
+        nargs="?",
+        choices=["on", "off", "toggle"],
+        default="toggle",
+        help="on or off everywhere; toggle (the default) flips it",
+    )
+    sidebar.add_argument(
         "--side", choices=SIDES, help="Which side of each window it goes on; remembered"
     )
     # What tmux's hooks run for a new window, so it gets a sidebar too.
@@ -517,8 +524,10 @@ def run_sidebar(args: argparse.Namespace) -> int:
     """Turn the sidebar (`tempo tui --sidebar`) on or off in every tmux window, as workmux
     does with its own. On, each window gets a column of its own, the full height, showing
     the project of the window's folder, and tmux's hooks give one to each new window and
-    session; the keyboard stays where it is. Run again, every sidebar closes and the hooks
-    go. With --side while on, the sidebars move to that side. `q` closes just one."""
+    session; the keyboard stays where it is. Off, every sidebar closes and the hooks go.
+    toggle flips it, quietly, for a key binding; on and off say what they did, and do
+    nothing when it already is so. With --side while on, the sidebars move to that side.
+    `q` closes just one."""
     try:
         if args.window:
             side = _tmux("show-options", "-gqv", SIDEBAR_SIDE).strip()
@@ -536,9 +545,16 @@ def run_sidebar(args: argparse.Namespace) -> int:
                 store.set_tmux_side(args.side)
             side = store.tmux_side()
         on = _tmux("show-options", "-gqv", SIDEBAR_SIDE).strip()
-        _sidebars_off()
-        if on and not (args.side and args.side != on):
+        moving = bool(on) and args.side is not None and args.side != on
+        if args.action == "off" or (args.action == "toggle" and on and not moving):
+            _sidebars_off()
+            if args.action == "off":
+                print("Sidebar off." if on else "Sidebar already off.")
             return 0
+        if on and not moving:
+            print("Sidebar already on, on the %s." % on)
+            return 0
+        _sidebars_off()
         _tmux("set-option", "-g", SIDEBAR_SIDE, side)
         ensure = shlex.join(
             ["env", "TEMPO_DB=%s" % db_path(), os.path.join(CODE_ROOT, "bin", "tempo"), "sidebar"]
@@ -548,6 +564,8 @@ def run_sidebar(args: argparse.Namespace) -> int:
             _tmux("set-hook", "-ag", hook, command)
         for window in _tmux("list-windows", "-a", "-F", "#{window_id}").split():
             _add_sidebar(window, side)
+        if args.action == "on":
+            print("Sidebar moved to the %s." % side if on else "Sidebar on, on the %s." % side)
     except (OSError, subprocess.CalledProcessError) as error:
         print("tempo: tmux failed: %s" % _tmux_error(error), file=sys.stderr)
         return 1
