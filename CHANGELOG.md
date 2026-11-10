@@ -22,6 +22,11 @@ All notable changes to Tempo are listed here. The format follows
   sessions get one too. `tempo sidebar off` turns them all off; both do nothing when it
   already is so. A plain `tempo sidebar` toggles it, for a tmux key binding. `--side right`
   puts them on the right; the side is remembered.
+- A sidebar left alone in its window, once you quit Claude there for one, closes too, and
+  the window with it.
+- `tempo sidebar` remembers whether the sidebar is on. `run-shell -b "tempo sidebar
+  --restore"` in `~/.tmux.conf` (with the full path of `bin/tempo`) brings it back after
+  tmux restarts or the computer reboots.
 - The sidebar lists each question as the page does: a line with its state mark in a column
   on the left, its number, "quick" and its age, then its title in up to two lines.
 - In the sidebar, `g` goes to the pane where the shown project's Claude session runs, in
