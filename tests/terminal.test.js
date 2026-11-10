@@ -45,8 +45,8 @@ test("in light colours, white and yellow text stay readable on the white panel",
   assert.deepEqual([night.white, night.brightWhite, night.yellow], [undefined, undefined, undefined]);
 });
 
-test("the font is the page's monospace one unless Settings names another", () => {
+test("the font is the page's monospace one unless Settings names another, then its fallback", () => {
   assert.deepEqual(terminalFont({ font: "", size: 13 }), { fontFamily: MONO, fontSize: 13 });
-  assert.deepEqual(terminalFont({ font: '"Fira Code"', size: 16 }), { fontFamily: '"Fira Code"', fontSize: 16 });
+  assert.deepEqual(terminalFont({ font: '"Fira Code"', size: 16 }), { fontFamily: `"Fira Code", ${MONO}`, fontSize: 16 });
   assert.match(MONO, /ui-monospace/);
 });

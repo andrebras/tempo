@@ -8,7 +8,8 @@
 const terminals = {};
 const terminalSettings = { on: false, font: "", size: 13 };
 let xtermLoading = null;
-// The page's own monospace font, used unless Settings names another.
+// The page's own monospace font: the terminal's font unless Settings names another, and the
+// fallback after the one Settings names, so a font that isn't installed still gives a grid.
 const MONO = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace';
 
 function terminalSecret() {
@@ -74,7 +75,7 @@ function pageTheme() {
 
 // What xterm.js gets for the saved font and size.
 function terminalFont(settings) {
-  return { fontFamily: settings.font || MONO, fontSize: settings.size };
+  return { fontFamily: settings.font ? `${settings.font}, ${MONO}` : MONO, fontSize: settings.size };
 }
 
 function loadXterm() {
