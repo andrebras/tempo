@@ -22,6 +22,12 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Changed
 
+- `/tempo:install` now sets everything up in one step. It links `tempo` into your shell
+  and, when tmux is installed, asks you whether to set tmux up for the sidebar too, then
+  runs `tempo install --tmux`. Plain `tempo install` says when `--tmux` would help.
+- The README starts with a quick start: two commands to install the plugin, then
+  `/tempo:install` in a new session. The manual steps are kept as the alternative, with the
+  detail moved to the reference.
 - `tempo uninstall` also removes the marked lines `tempo install --tmux` added, and nothing
   else in the file.
 

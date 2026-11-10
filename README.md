@@ -14,6 +14,7 @@ in chat. You answer in the terminal whenever it suits you, in a sidebar beside C
 tmux or in a full-screen view, and Claude picks the answer up by itself. A local web page
 is there too if you want it; it is off unless you turn it on.
 
+- 🚀 [Quick start](#quick-start)
 - 🎬 [See it in action](#see-it-in-action)
 - 📦 [Install](#install)
 - 🔄 [Update and uninstall](#update-and-uninstall)
@@ -27,6 +28,23 @@ is there too if you want it; it is off unless you turn it on.
 - 🤝 [Contributing](#contributing)
 - 📜 [Changelog](CHANGELOG.md)
 - ⚖️ [License](#license)
+
+## Quick start
+
+```bash
+claude plugin marketplace add andrebras/tempo
+claude plugin install tempo@tempo
+```
+
+The first command adds Tempo's marketplace, the list of plugins Claude Code installs from.
+The second installs the plugin. Then start a new Claude Code session and type:
+
+```text
+/tempo:install
+```
+
+It puts the `tempo` command in your own terminal and, once you say yes, sets tmux up for
+the sidebar. Claude tells you what it did. New sessions remind you of it until it is done.
 
 ## See it in action
 
@@ -78,7 +96,8 @@ A Claude session keeps the plugin version it started with. After you update Temp
 open sessions (for example with `claude --continue`) so they use the new hooks. A session
 whose hooks are older than the installed Tempo says so once, so you know to restart it.
 
-To remove it:
+To remove it, run `tempo uninstall` first if you ran `/tempo:install`: it removes the
+`~/.local/bin/tempo` link and Tempo's lines in `~/.tmux.conf`. Then:
 
 ```bash
 claude plugin uninstall tempo@tempo
@@ -100,25 +119,22 @@ works too. Merging two projects renumbers the questions that move.
 ### Use `tempo` in your own shell
 
 `tempo` is on Claude Code's `PATH` (the list of folders your shell looks in for commands)
-only inside a session. To use it in your own shell, run this once, or type `/tempo:install`
-in a Claude session:
+only inside a session. `/tempo:install` (see [Quick start](#quick-start)) puts it in your
+own shell. To do it by hand instead, run this once:
 
 ```bash
-~/.claude/plugins/marketplaces/tempo/bin/tempo install
+~/.claude/plugins/marketplaces/tempo/bin/tempo install          # just the command
+~/.claude/plugins/marketplaces/tempo/bin/tempo install --tmux   # and the tmux sidebar
 ```
 
-It makes `~/.local/bin/tempo`, a symlink (a small file that points at another) to Tempo's
-marketplace copy, which `claude plugin marketplace update tempo` keeps up to date. Sessions
-run the installed copy in `~/.claude/plugins/cache/tempo/tempo/<version>/`, so the
-marketplace path is the one that doesn't change. From a clone of Tempo, it links to your
-clone's `bin/tempo` instead. It never replaces anything already at `~/.local/bin/tempo`, and
-when `~/.local/bin` is not on your `PATH` it prints the line to add to your shell's config.
-`tempo uninstall` removes the link. If you'd rather not have the link, an alias such as
-`alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo` in `~/.zshrc` works too.
+It makes `~/.local/bin/tempo`, a link to Tempo's copy that stays put across updates, and
+never replaces anything already there. `tempo uninstall` undoes it. More, including an
+alias instead of the link, in [`tempo` in your own shell](docs/reference.md#tempo-in-your-own-shell).
 
 ### A sidebar in tmux
 
-In [tmux](https://github.com/tmux/tmux), run this once in any pane:
+`/tempo:install` turns it on for you. To do it by hand in [tmux](https://github.com/tmux/tmux),
+run this once in any pane:
 
 ```bash
 tempo sidebar on                  # a sidebar in every window, on the left
@@ -143,18 +159,10 @@ The list itself never answers, so a stray key can't. A column on the left marks
 each question: a dot when a question is new or changed since you opened it, `…` while it waits on
 Claude, and `»` for the question to start with.
 
-tmux forgets its sidebars when it stops, after a reboot say. To have them come back, add
-this line to `~/.tmux.conf`:
-
-```tmux
-run-shell -b "~/.local/bin/tempo sidebar --restore"
-```
-
-It is `tempo sidebar --restore`, with the full path of the link `tempo install` makes:
-tmux's `run-shell` may not see the `PATH` your shell sets, so a plain `tempo` may not be
-found there.
-
-More, including a key to show or hide it, in
+tmux forgets its sidebars when it stops, after a reboot say. `/tempo:install` or
+`tempo install --tmux` adds three marked lines to `~/.tmux.conf` that bring them back, and
+`tempo uninstall` removes exactly those lines. The lines, how to add them yourself, and a key
+to show or hide the sidebar are in
 [A sidebar beside Claude](docs/reference.md#a-sidebar-beside-claude).
 
 ### Without tmux: `tempo tui`
