@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -1852,6 +1853,13 @@ class InstallTest(HomeTest):
         self.assertEqual(
             run("uninstall"), (0, "Nothing to remove: %s isn't there.\n" % self.link, "")
         )
+
+    def test_uninstall_removes_a_link_to_a_tempo_that_is_gone(self):
+        os.makedirs(self.bin)
+        os.symlink(os.path.join(self.cache, "bin", "tempo"), self.link)
+        shutil.rmtree(self.cache)
+        self.assertEqual(run("uninstall")[0], 0)
+        self.assertFalse(os.path.lexists(self.link))
 
     def test_uninstall_leaves_a_file_or_a_link_to_something_else(self):
         os.makedirs(self.bin)

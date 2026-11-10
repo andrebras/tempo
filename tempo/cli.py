@@ -571,15 +571,17 @@ def run_uninstall(args: argparse.Namespace) -> int:
 
 
 def _tempo_link(link: str) -> str | None:
-    """Where link points, when it is a symlink to the bin/tempo of a Tempo that is still
-    there; None otherwise."""
+    """Where link points, when it is a symlink to a Tempo's bin/tempo, or to a bin/tempo
+    that is gone, such as a cache copy Claude Code removed; None otherwise."""
     if not os.path.islink(link):
         return None
     target = os.path.normpath(os.path.join(os.path.dirname(link), os.readlink(link)))
     root = os.path.dirname(os.path.dirname(target))
     if not target.endswith(os.sep + os.path.join("bin", "tempo")):
         return None
-    return target if os.path.exists(os.path.join(root, "tempo", "__main__.py")) else None
+    if os.path.lexists(target) and not os.path.exists(os.path.join(root, "tempo", "__main__.py")):
+        return None
+    return target
 
 
 def _what_is(path: str) -> str:
