@@ -263,8 +263,8 @@ class Board:
     def _sidebar(self, key: str) -> bool:
         """The sidebar's own keys; False for a key it reads as the full view does. In the
         list, h and l switch project, Enter opens the question and g goes to the project's
-        Claude session (so option (g) needs Shift there); once it is open, h or Esc goes
-        back to the list."""
+        Claude session; the list only browses, so no other letter answers or writes there.
+        Once the question is open, h or Esc goes back to the list."""
         if self.focus == "detail":
             if key not in ("h", "left", "esc"):
                 return False
@@ -282,6 +282,9 @@ class Board:
             self._jump()
         elif key in ("esc", "tab", "btab"):
             # The list is the sidebar's only panel, and Esc there must not close it.
+            pass
+        elif len(key) == 1 and key.isalpha() and key not in "jkqs":
+            # Answers and follow-ups are written where the whole question shows.
             pass
         else:
             return False

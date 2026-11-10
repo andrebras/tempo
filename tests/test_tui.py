@@ -480,6 +480,13 @@ class SidebarTest(BoardTest):
         self.keys(board, "esc")
         self.assertEqual(board.focus, "questions")
 
+    def test_a_letter_in_the_list_answers_nothing(self):
+        self.add(title="One")
+        board = self.sidebar()
+        self.keys(board, "a", "B", "r", "enter")
+        self.assertEqual((board.mode, board.focus), ("normal", "detail"))
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
     def test_answering_an_open_question_goes_back_to_the_list(self):
         self.add(title="One")
         self.add(title="Two")
@@ -995,13 +1002,15 @@ class JumpTest(BoardTest):
         self.assertEqual(board.message, ("No Claude session open for demo.", "error"))
         self.assertEqual(self.store.get("shop", 1)["status"], "open")
 
-    def test_outside_tmux_g_says_so_and_shift_g_still_answers(self):
+    def test_outside_tmux_g_says_so_and_the_open_question_answers_with_g(self):
         self.add(title="One", options=list("abcdefg"))
         board = Board(self.board_store, "demo", sidebar=True)
         board.press("g")
         self.assertEqual(board.message, ("g works only inside tmux.", "error"))
         board.press("G")
-        self.assertEqual(board.mode, "note")
+        self.assertEqual(board.mode, "normal")
+        self.keys(board, "enter", "g")
+        self.assertEqual((board.mode, board.letter), ("note", "g"))
 
     @unittest.skipUnless(curses is not None, "needs curses")
     def test_the_claude_pane_is_found_in_the_projects_folders(self):
