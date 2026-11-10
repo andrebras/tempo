@@ -179,7 +179,8 @@ The project you are on always has a chip, highlighted, even with nothing open. C
 to switch to that project.
 
 A dot on a chip means something arrived since you last viewed that project: a new question,
-a reworded question, or Claude's reply to a follow-up. Viewing the project clears the dot.
+a reworded question, or Claude's reply to a follow-up. Only open questions count, so a
+project with nothing open never has a dot. Viewing the project clears the dot.
 When you last viewed each project is kept in your browser, not in the database; on a
 browser's first visit nothing counts as new yet.
 
