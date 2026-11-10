@@ -232,7 +232,10 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
         help="Your settings: show them, or change one, such as `tempo config page off`",
     )
     config.add_argument(
-        "name", nargs="?", choices=["page"], help="page: start the page with each session"
+        "name",
+        nargs="?",
+        choices=["page", "terminal"],
+        help="page: start the page with each session; terminal: let the page open a shell",
     )
     config.add_argument("value", nargs="?", choices=["on", "off"])
     config.set_defaults(run=run_config)
@@ -459,15 +462,24 @@ def run_status(args: argparse.Namespace) -> None:
 def run_config(args: argparse.Namespace) -> None:
     """Print the settings, or change the one named and print it."""
     store = _store()
-    if args.value is not None:
+    if args.value is not None and args.name == "terminal":
+        store.set_terminal(args.value == "on")
+    elif args.value is not None:
         store.set_start_page(args.value == "on")
-    if store.start_page():
+    if args.name in (None, "page") and store.start_page():
         print("page on: each session starts the page at http://127.0.0.1:%d/" % _port())
-    else:
+    elif args.name in (None, "page"):
         print(
             "page off: sessions don't start the page; `tempo serve --background` starts it."
             " Claude points you to the terminal (`tempo show`, `tempo answer`)."
         )
+    if args.name in (None, "terminal") and store.terminal():
+        print(
+            "terminal on: the page has a Terminal button that opens a shell in the project's"
+            " folder. The page can then run any command as you."
+        )
+    elif args.name in (None, "terminal"):
+        print("terminal off: the page opens no shell; `tempo config terminal on` allows it.")
 
 
 def run_tui(args: argparse.Namespace) -> int:

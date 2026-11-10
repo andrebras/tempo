@@ -323,6 +323,17 @@ class ServerTest(DatabaseTest):
                 self.assertIn("true or false", json.loads(data)["error"])
         self.assertTrue(self.store.start_page())
 
+    def test_turns_the_terminal_on_and_off(self):
+        _, data = self.request("GET", "/api/settings")
+        self.assertFalse(json.loads(data)["terminal"])
+        status, data = self.request("POST", "/api/settings/terminal", {"on": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(data)["terminal"])
+        self.assertTrue(self.store.terminal())
+        self.assertEqual(self.request("POST", "/api/settings/terminal", {"on": "on"})[0], 400)
+        self.request("POST", "/api/settings/terminal", {"on": False})
+        self.assertFalse(self.store.terminal())
+
     def test_reports_settings_errors(self):
         self.add(project="other")
         status, data = self.request("POST", "/api/projects/demo/rename", {"name": " "})

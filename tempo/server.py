@@ -248,7 +248,15 @@ def _rename(request: Handler, store: Store, args: list[str], body: dict[str, Any
 
 
 def _start_page(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
-    request._save_setting(store, lambda: _set_start_page(store, body))
+    """Settings' "Start the page with each session" switch, the same as `tempo config page`."""
+    request._save_setting(store, lambda: _switch(store.set_start_page, body))
+
+
+def _terminal_setting(
+    request: Handler, store: Store, args: list[str], body: dict[str, Any]
+) -> None:
+    """Settings' Terminal switch, the same as `tempo config terminal`."""
+    request._save_setting(store, lambda: _switch(store.set_terminal, body))
 
 
 # A part of a route's path that matches any one part, which is passed to the route.
@@ -267,6 +275,7 @@ ROUTES: list[tuple[str, tuple[str | None, ...], Run]] = [
     ("POST", ("api", "questions", ANY, ANY, "reopen"), _reopen),
     ("POST", ("api", "projects", ANY, "rename"), _rename),
     ("POST", ("api", "settings", "page"), _start_page),
+    ("POST", ("api", "settings", "terminal"), _terminal_setting),
 ]
 
 
@@ -351,15 +360,16 @@ def _settings(store: Store) -> dict[str, Any]:
     return {
         "projects": projects,
         "start_page": store.start_page(),
+        "terminal": store.terminal(),
     }
 
 
-def _set_start_page(store: Store, body: Any) -> dict[str, Any]:
-    """Settings' "Start the page with each session" switch, the same as `tempo config page`."""
+def _switch(change: Callable[[bool], None], body: dict[str, Any]) -> dict[str, Any]:
+    """Turn an on-or-off setting from Settings to the body's value."""
     on = body.get("on")
     if not isinstance(on, bool):
         raise QuestionError("on must be true or false")
-    store.set_start_page(on)
+    change(on)
     return {}
 
 
