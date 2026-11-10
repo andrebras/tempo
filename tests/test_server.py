@@ -368,7 +368,8 @@ class ServerTest(ServerBase):
         self.assertEqual(self.request("POST", "/api/settings/terminal", {"on": "on"})[0], 400)
         # Off ends Tempo's tmux sessions: without tmux here, the user's own are never reached.
         with mock.patch.object(terminal, "TMUX", None):
-            self.request("POST", "/api/settings/terminal", {"on": False})
+            _, data = self.request("POST", "/api/settings/terminal", {"on": False})
+        self.assertEqual(json.loads(data)["ended"], 0)
         self.assertFalse(self.store.terminal())
 
     def test_saves_the_terminals_font_and_size(self):
@@ -686,7 +687,11 @@ class TerminalTest(TerminalBase):
         self.addCleanup(os.rmdir, other)
         self.store.see_folder("other", other)
         shells = [terminal.SHELLS.get(self.open(project)) for project in ("demo", "other")]
-        self.request("POST", "/api/settings/terminal", {"on": False})
+        self.assertEqual(self.terminal("/api/terminal/running"), (200, {"running": 2}))
+        self.assertEqual(self.terminal("/api/terminal/running", secret="wrong")[0], 403)
+        _, data = self.request("POST", "/api/settings/terminal", {"on": False})
+        self.assertEqual(json.loads(data)["ended"], 2)
+        self.assertEqual(self.terminal("/api/terminal/running"), (200, {"running": 0}))
         self.assertEqual(terminal.SHELLS.shells, {})
         self.assertTrue(all(shell.process.poll() is not None for shell in shells))
 
@@ -780,7 +785,10 @@ class TmuxTerminalTest(TerminalBase):
         left = terminal.session_name(tempfile.gettempdir())
         for name in (left, "tempo-test-mine"):
             subprocess.run([*self.tmux, "new-session", "-d", "-s", name], check=True)
-        self.request("POST", "/api/settings/terminal", {"on": False})
+        # The shown one and the one left behind count; the user's own doesn't.
+        self.assertEqual(self.terminal("/api/terminal/running"), (200, {"running": 2}))
+        _, data = self.request("POST", "/api/settings/terminal", {"on": False})
+        self.assertEqual(json.loads(data)["ended"], 2)
         self.assertTrue(self.ended(key, shell))
         self.assertEqual(tmux_sessions(self.tmux), ["tempo-test-mine"])
         subprocess.run([*self.tmux, "kill-session", "-t", "=tempo-test-mine"], check=True)

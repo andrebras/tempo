@@ -120,6 +120,10 @@ class Handler(BaseHTTPRequestHandler):
         if not hmac.compare_digest(secret, self.terminal_secret.encode()):
             self._json(403, {"error": "Only this page can use the terminal"})
             return True
+        if method == "GET" and parts[2:] == ["running"]:
+            # Asked by Settings before turning the terminal off, to warn what that ends.
+            self._json(200, {"running": terminal.SHELLS.running()})
+            return True
         for route_method, pattern, run in TERMINAL_ROUTES:
             args = _match(pattern, parts)
             if route_method == method and args is not None:
@@ -327,19 +331,18 @@ def _terminal_setting(
 ) -> None:
     """Settings' Terminal card: the switch, the same as `tempo config terminal`, and the
     font and its size. Turning it off here also ends the open shells and Tempo's tmux
-    sessions; off from the command, it only refuses new ones."""
-
-    def change(on: bool) -> None:
-        store.set_terminal(on)
-        if not on:
-            terminal.SHELLS.end_all()
+    sessions, and answers how many terminals were running. Off from the command, only the
+    tmux sessions end, as the command cannot reach this server."""
 
     def run() -> dict[str, Any]:
         if "font" in body:
             store.set_terminal_font(_text(body, "font", ""))
         if "size" in body:
             store.set_terminal_size(_number(body, "size") or 0)
-        return _switch(change, body) if "on" in body else {}
+        if "on" not in body:
+            return {}
+        _switch(store.set_terminal, body)
+        return {} if store.terminal() else {"ended": terminal.SHELLS.end_all()}
 
     request._save_setting(store, run)
 
