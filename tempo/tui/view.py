@@ -22,6 +22,11 @@ HINTS = {
     "settings": [("j/k", "project"), ("m", "merge into…"), ("Esc", "back to the questions")],
     "merge": [("j/k", "project"), ("Enter", "merge into this one"), ("Esc", "cancel")],
 }
+# The sidebar's keys, in the list and with a question open.
+SIDEBAR = {
+    "questions": [("Enter", "open"), ("h/l", "project")],
+    "detail": [("h", "back")],
+}
 HELP = [
     ("j k ↑ ↓", "move; in Detail, scroll"),
     ("h l ← →", "previous or next panel"),
@@ -79,6 +84,12 @@ def draw(board: Board, canvas: Canvas) -> tuple[int, int] | None:
     if board.mode in SETTINGS:
         _settings(board, canvas, Rect(0, 0, max(1, height - 1), width))
         return _bottom(board, canvas, height - 1, width)
+    if board.sidebar:
+        _sidebar(board, canvas, Rect(0, 0, max(1, height - 1), width))
+        cursor = _bottom(board, canvas, height - 1, width)
+        if board.mode == "help":
+            _help(canvas, height, width)
+        return cursor
     panels = layout(width, height, board.focus, len(board.projects))
     for name, rect in panels.items():
         title = TITLES[name]
@@ -160,7 +171,11 @@ def _questions(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
         style = ""
         if question["number"] == board.number:
             style = "selected" if focused else "current"
-        _row(canvas, rect.top + y, rect, text, style, "quick" if question["quick"] else "")
+        end = "quick" if question["quick"] else ""
+        if board.sidebar:
+            # The page's dot for something new; the pane has no room for "quick".
+            end = "●" if board.fresh(question) else ""
+        _row(canvas, rect.top + y, rect, text, style, end)
 
 
 def _detail(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
@@ -182,6 +197,32 @@ def _detail(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
         )
         x = rect.left + rect.width - cell_width(where)
         canvas.put(rect.top + rect.height, x, where, "border-focus" if focused else "border")
+
+
+def _sidebar(board: Board, canvas: Canvas, rect: Rect) -> None:
+    """The compact view: the project with its neighbours on top, then its questions by
+    goal, each with the page's marks; or the question that is open, over the whole pane."""
+    if board.focus == "detail":
+        title = "%s · h back" % (board.question["label"] if board.question else "Detail")
+        _box(canvas, rect, title, True)
+        inner = Rect(rect.top + 1, rect.left + 1, rect.height - 2, rect.width - 2)
+        if inner.height > 0 and inner.width > 0:
+            _detail(board, canvas, inner, True)
+        return
+    count = dict(board.projects).get(board.project, 0)
+    head = "◂ %s · %d open ▸" % (board.project, count)
+    canvas.put(rect.top, rect.left, clip(head, rect.width), "title")
+    # The other projects with something open or new, a dot on those with news.
+    others: Line = []
+    for name, open_count in board.projects:
+        if name == board.project or not (open_count or board.fresh_project(name)):
+            continue
+        others += [(" " if others else "", ""), ("%s %d" % (name, open_count), "dim")]
+        if board.fresh_project(name):
+            others.append(("●", "dot"))
+    _spans(canvas, rect.top + 1, rect.left, others, rect.width)
+    canvas.put(rect.top + 2, rect.left, "─" * rect.width, "border")
+    _questions(board, canvas, Rect(rect.top + 3, rect.left, rect.height - 3, rect.width), True)
 
 
 def _settings(board: Board, canvas: Canvas, rect: Rect) -> None:
@@ -265,8 +306,8 @@ def _bottom(board: Board, canvas: Canvas, y: int, width: int) -> tuple[int, int]
     if board.mode in HINTS:
         _spans(canvas, y, 0, _keys(list(HINTS[board.mode])), width - 1)
         return None
-    keys = list(HINTS[board.focus])
-    if board.question:
+    keys = list((SIDEBAR if board.sidebar else HINTS)[board.focus])
+    if board.question and (board.focus == "detail" or not board.sidebar):
         letters = [option["letter"] for option in board.question["options"]]
         keys.append(("%s-%s" % (letters[0], letters[-1]), "answer"))
         keys.append(("r", "follow up"))

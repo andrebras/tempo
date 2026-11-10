@@ -222,6 +222,11 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
         "tui", help="Answer in a full-screen terminal view, with panels like the page's"
     )
     tui.add_argument("--project", help="Start on this project; the folder's by default")
+    tui.add_argument(
+        "--sidebar",
+        action="store_true",
+        help="A compact view for a narrow pane beside Claude's, such as a tmux split",
+    )
     tui.set_defaults(run=run_tui)
 
 
@@ -478,7 +483,7 @@ def run_tui(args: argparse.Namespace) -> int:
     # Imported here, so the hooks and other commands never load curses.
     from tempo.tui import screen
 
-    return screen.run(_project(args.project))
+    return screen.run(_project(args.project), sidebar=args.sidebar)
 
 
 def open_count(path: str, project: str | None = None, folder: str | None = None) -> int:

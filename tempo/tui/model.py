@@ -54,10 +54,20 @@ class Row(NamedTuple):
 class Board:
     """The screen's state: the projects, the selected project's open questions, the
     selected question in full, which panel has the focus, and what the keys are doing
-    (moving, typing a note or a follow-up, showing help, or Settings)."""
+    (moving, typing a note or a follow-up, showing help, or Settings).
 
-    def __init__(self, store: Store, home: str) -> None:
+    With sidebar set, it is the compact view for a narrow pane beside Claude's (`tempo tui
+    --sidebar`): the list of questions, or one question opened over it."""
+
+    def __init__(self, store: Store, home: str, sidebar: bool = False) -> None:
         self.store = store
+        self.sidebar = sidebar
+        # Every open question, of every project, as last loaded.
+        self.everything: Questions = []
+        # When each open question was last opened here: its activity then, by project and
+        # number, as the page keeps it per browser. What is open at the start counts as
+        # opened, as on the page's first visit, so only what changes later gets a dot.
+        self.opened: dict[tuple[str, int], str] = {}
         # The current folder's project: always listed, even with nothing open.
         self.home = home
         self.project = home
@@ -90,6 +100,7 @@ class Board:
         self.into: str | None = None
         self._seen: int | None = None
         self.reload()
+        self.opened = {(q["project"], q["number"]): q["activity"] for q in self.everything}
 
     # Loading
 
@@ -100,7 +111,7 @@ class Board:
         numbers = [question["number"] for question in self.questions]
         place = numbers.index(self.number) if self.number in numbers else 0
         self._seen = self._data_version()
-        everything = self.store.list(None, "open")
+        everything = self.everything = self.store.list(None, "open")
         counts = Counter(question["project"] for question in everything)
         # The selected project stays listed, so answering its last question doesn't move away.
         names = set(counts) | {self.home, self.project}
@@ -112,6 +123,7 @@ class Board:
             self.number = numbers[min(place, len(numbers) - 1)] if numbers else None
             self.scroll = 0
         self.question = self.store.get(self.project, self.number) if self.number else None
+        self._mark_opened()
         if self.mode in SETTINGS:
             self.store.forget_gone_folders()
             self.summaries = self.store.project_summaries()
@@ -130,6 +142,24 @@ class Board:
             return False
         self.reload()
         return True
+
+    def fresh(self, question: Question) -> bool:
+        """Whether a question gets the dot for something new: Claude asked, reworded or
+        added to it since it was last opened here."""
+        seen = self.opened.get((question["project"], question["number"]))
+        return bool(seen != question["activity"])
+
+    def fresh_project(self, name: str) -> bool:
+        """Whether a project has a question with something new."""
+        return any(self.fresh(q) for q in self.everything if q["project"] == name)
+
+    def _mark_opened(self) -> None:
+        """The question on screen counts as opened: in the sidebar, only once it is open."""
+        if self.question is None or (self.sidebar and self.focus != "detail"):
+            return
+        for question in self.questions:
+            if question["number"] == self.number:
+                self.opened[(self.project, self.number)] = question["activity"]
 
     def _data_version(self) -> int:
         return int(self.store.db.execute("PRAGMA data_version").fetchone()[0])
@@ -166,6 +196,8 @@ class Board:
         if self.mode in SETTINGS:
             self._settings(key)
             return True
+        if self.sidebar and self._sidebar(key):
+            return True
         if key in ("q", "esc"):
             return False
         if key in ("j", "down"):
@@ -193,6 +225,34 @@ class Board:
         elif len(key) == 1 and key.lower() in string.ascii_lowercase and key not in BOUND:
             self._pick(key.lower())
         return True
+
+    def _sidebar(self, key: str) -> bool:
+        """The sidebar's own keys; False for a key it reads as the full view does. In the
+        list, h and l switch project and Enter opens the question; once it is open, h or
+        Esc goes back to the list."""
+        if self.focus == "detail":
+            if key not in ("h", "left", "esc"):
+                return False
+            self.focus = "questions"
+        elif key in ("enter", "right", "left", "l", "h"):
+            if key == "enter" and self._selected():
+                self.focus, self.scroll = "detail", 0
+                self._mark_opened()
+            elif key != "enter":
+                self.switch(1 if key in ("l", "right") else -1)
+        elif key in ("esc", "tab", "btab"):
+            # The list is the sidebar's only panel, and Esc there must not close it.
+            pass
+        else:
+            return False
+        return True
+
+    def switch(self, step: int) -> None:
+        """Show the next or previous project, round the list."""
+        names = [name for name, _ in self.projects]
+        index = (names.index(self.project) + step) % len(names)
+        self.project, self.number, self.scroll, self.questions = names[index], None, 0, []
+        self.reload()
 
     def paste(self, text: str) -> None:
         """Pasted text: added to the note or follow-up being written, newlines and all.
@@ -348,6 +408,9 @@ class Board:
         self.mode = "normal"
         try:
             self.message = (save(), "ok")
+            if self.sidebar:
+                # Back to the list, where the next question is selected.
+                self.focus = "questions"
         except (QuestionError, sqlite3.Error) as error:
             self.message = (str(error), "error")
         self.reload()
