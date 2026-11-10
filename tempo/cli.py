@@ -237,9 +237,13 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
     tui.set_defaults(run=run_tui)
 
     tmux = commands.add_parser(
-        "tmux", help="Show or hide the questions' sidebar on the left of this tmux window"
+        "tmux", help="Turn the questions' sidebar on or off in every tmux window"
     )
-    tmux.add_argument("--project", help="Start on this project; the folder's by default")
+    tmux.add_argument(
+        "--side", choices=SIDES, help="Which side of each window it goes on; remembered"
+    )
+    # What tmux's hooks run for a new window, so it gets a sidebar too.
+    tmux.add_argument("--window", help=argparse.SUPPRESS)
     tmux.set_defaults(run=run_tmux)
 
 
@@ -502,47 +506,88 @@ def run_tui(args: argparse.Namespace) -> int:
 # The sidebar's width in columns, and the pane option that marks a pane as the sidebar.
 SIDEBAR_WIDTH = 40
 SIDEBAR_MARK = "@tempo-sidebar"
-# What a workmux sidebar pane was started with. When the window has one, Tempo goes below it,
-# so the window keeps one column on the left.
-WORKMUX_SIDEBAR = "workmux _sidebar-run"
+# The server option that says the sidebar is on, and on which side.
+SIDEBAR_ON = "@tempo-sidebar-on"
+SIDES = ("left", "right")
+# The tmux hooks that give each new window and session a sidebar while it is on.
+SIDEBAR_HOOKS = ("after-new-window", "after-new-session")
 
 
 def run_tmux(args: argparse.Namespace) -> int:
-    """Show the sidebar (`tempo tui --sidebar`) on the left of the current tmux window,
-    keeping the keyboard in the current pane; when it is already there, close it. So one
-    key bound to this shows and hides it. When the window has a workmux sidebar on the
-    left, Tempo takes the lower half of it instead of a column of its own."""
-    if not os.environ.get("TMUX"):
-        print("tempo: tmux works only inside tmux; start tmux, then run it there", file=sys.stderr)
-        return 1
-    # The pane this runs in; tmux's own key bindings run it without one, on the current pane.
-    here = ["-t", os.environ["TMUX_PANE"]] if os.environ.get("TMUX_PANE") else []
+    """Turn the sidebar (`tempo tui --sidebar`) on or off in every tmux window, as workmux
+    does with its own. On, each window gets a column of its own, the full height, showing
+    the project of the window's folder, and tmux's hooks give one to each new window and
+    session; the keyboard stays where it is. Run again, every sidebar closes and the hooks
+    go. With --side while on, the sidebars move to that side. `q` closes just one."""
     try:
-        listing = _tmux(
-            "list-panes", *here, "-F", "#{pane_id}\t#{%s}\t#{pane_start_command}" % SIDEBAR_MARK
-        )
-        panes = [line.split("\t", 2) + [""] * 2 for line in listing.splitlines()]
-        shown = [pane[0] for pane in panes if pane[1] == "1"]
-        workmux = [pane[0] for pane in panes if WORKMUX_SIDEBAR in pane[2]]
-        if shown:
-            for pane in shown:
-                _tmux("kill-pane", "-t", pane)
+        if args.window:
+            side = _tmux("show-options", "-gqv", SIDEBAR_ON).strip()
+            if side in SIDES:
+                _add_sidebar(args.window, side)
             return 0
-        tempo = os.path.join(CODE_ROOT, "bin", "tempo")
-        command = [tempo, "tui", "--sidebar", "--project", _project(args.project)]
-        if workmux:
-            place = ["-t", workmux[0], "-vd", "-l", "50%"]
-        else:
-            place = [*here, "-hbd", "-l", str(SIDEBAR_WIDTH)]
-        pane = _tmux(
-            "split-window", *place, "-c", os.getcwd(),
-            "-e", "TEMPO_DB=%s" % db_path(), "-P", "-F", "#{pane_id}", shlex.join(command),
-        ).strip()  # fmt: skip
-        _tmux("set-option", "-p", "-t", pane, SIDEBAR_MARK, "1")
+        if not os.environ.get("TMUX"):
+            print(
+                "tempo: tmux works only inside tmux; start tmux, then run it there",
+                file=sys.stderr,
+            )
+            return 1
+        with Store(connect()) as store:
+            if args.side:
+                store.set_tmux_side(args.side)
+            side = store.tmux_side()
+        on = _tmux("show-options", "-gqv", SIDEBAR_ON).strip()
+        _sidebars_off()
+        if on and not (args.side and args.side != on):
+            return 0
+        _tmux("set-option", "-g", SIDEBAR_ON, side)
+        ensure = shlex.join(
+            ["env", "TEMPO_DB=%s" % db_path(), os.path.join(CODE_ROOT, "bin", "tempo"), "tmux"]
+        )
+        for hook in SIDEBAR_HOOKS:
+            command = "run-shell -b %s" % shlex.quote(ensure + " --window #{window_id}")
+            _tmux("set-hook", "-ag", hook, command)
+        for window in _tmux("list-windows", "-a", "-F", "#{window_id}").split():
+            _add_sidebar(window, side)
     except (OSError, subprocess.CalledProcessError) as error:
         print("tempo: tmux failed: %s" % _tmux_error(error), file=sys.stderr)
         return 1
     return 0
+
+
+def _add_sidebar(window: str, side: str) -> None:
+    """Give a window a sidebar on side, unless it has one: a full-height column showing
+    the project of the folder its current pane is in."""
+    listing = _tmux("list-panes", "-t", window, "-F", "#{%s}" % SIDEBAR_MARK)
+    if "1" in listing.split():
+        return
+    path = _tmux("display-message", "-p", "-t", window, "#{pane_current_path}").strip()
+    command = [
+        os.path.join(CODE_ROOT, "bin", "tempo"), "tui", "--sidebar",
+        "--project", project_name(path or os.getcwd()),
+    ]  # fmt: skip
+    place = "-hbfd" if side == "left" else "-hfd"
+    pane = _tmux(
+        "split-window", "-t", window, place, "-l", str(SIDEBAR_WIDTH), "-c", path or os.getcwd(),
+        "-e", "TEMPO_DB=%s" % db_path(), "-P", "-F", "#{pane_id}", shlex.join(command),
+    ).strip()  # fmt: skip
+    _tmux("set-option", "-p", "-t", pane, SIDEBAR_MARK, "1")
+
+
+def _sidebars_off() -> None:
+    """Close every sidebar, and remove Tempo's hooks and switch; the user's own hooks on the
+    same events stay."""
+    listing = _tmux("list-panes", "-a", "-F", "#{pane_id}\t#{%s}" % SIDEBAR_MARK)
+    for line in listing.splitlines():
+        pane, _, mark = line.partition("\t")
+        if mark == "1":
+            _tmux("kill-pane", "-t", pane)
+    for hook in SIDEBAR_HOOKS:
+        # Each line is "after-new-window[2] run-shell ..."; only ours are removed.
+        for line in _tmux("show-hooks", "-g", hook).splitlines():
+            name, _, command = line.partition(" ")
+            if "tempo" in command and "tmux --window" in command:
+                _tmux("set-hook", "-gu", name)
+    _tmux("set-option", "-gu", SIDEBAR_ON)
 
 
 def _tmux(*args: str) -> str:

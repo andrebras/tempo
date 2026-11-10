@@ -1047,18 +1047,74 @@ class JumpTest(BoardTest):
             self.assertEqual(screen.jump("shop", ["/work/shop"]), "tmux failed: no server running")
 
 
+class FakeTmux:
+    """A tmux server for `tempo tmux`: windows with their panes, server options and hooks."""
+
+    def __init__(self, windows, on="", hooks=None):
+        self.windows = {window: list(panes) for window, panes in windows.items()}
+        self.marked = set()
+        self.on = on
+        self.hooks = hooks or {}
+        self.calls = []
+        self.next = 90
+
+    def __call__(self, command, **_):
+        args = command[1:]
+        self.calls.append(args)
+        return subprocess.CompletedProcess(command, 0, self.answer(args), "")
+
+    def answer(self, args):
+        name = args[0]
+        if name == "show-options":
+            return self.on + "\n" if self.on else ""
+        if name == "set-option" and args[1] == "-g":
+            self.on = args[3]
+        elif name == "set-option" and args[1] == "-gu":
+            self.on = ""
+        elif name == "set-option" and args[1] == "-p":
+            self.marked.add(args[3])
+        elif name == "list-windows":
+            return "".join(window + "\n" for window in self.windows)
+        elif name == "list-panes" and args[1] == "-a":
+            panes = [pane for panes in self.windows.values() for pane in panes]
+            return "".join("%s\t%s\n" % (p, "1" if p in self.marked else "") for p in panes)
+        elif name == "list-panes":
+            return "".join("1\n" if p in self.marked else "\n" for p in self.windows[args[2]])
+        elif name == "display-message":
+            return "/work/%s\n" % args[3].strip("@")
+        elif name == "split-window":
+            self.next += 1
+            pane = "%%%d" % self.next
+            self.windows[args[2]].append(pane)
+            return pane + "\n"
+        elif name == "kill-pane":
+            for panes in self.windows.values():
+                if args[2] in panes:
+                    panes.remove(args[2])
+            self.marked.discard(args[2])
+        elif name == "show-hooks":
+            return "".join(
+                "%s[%d] %s\n" % (args[2], i, c) for i, c in self.hooks.get(args[2], {}).items()
+            )
+        elif name == "set-hook" and args[1] == "-ag":
+            hooks = self.hooks.setdefault(args[2], {})
+            hooks[max(hooks, default=-1) + 1] = args[3]
+        elif name == "set-hook" and args[1] == "-gu":
+            hook, index = args[2].rstrip("]").split("[")
+            del self.hooks[hook][int(index)]
+        return ""
+
+    def sidebars(self):
+        return {w: [p for p in panes if p in self.marked] for w, panes in self.windows.items()}
+
+    def splits(self):
+        return [args for args in self.calls if args[0] == "split-window"]
+
+
 class TmuxTest(DatabaseTest):
-    """`tempo tmux` shows the sidebar on the left of the tmux window, or hides it."""
+    """`tempo tmux` turns the sidebar on or off in every tmux window, as workmux does."""
 
-    def run_tmux(self, panes, env=None):
-        """Run the command with tmux faked: list-panes gives panes, split-window a new id."""
-        calls = []
-
-        def tmux(command, **_):
-            calls.append(command[1:])
-            out = {"list-panes": panes, "split-window": "%9\n"}.get(command[1], "")
-            return subprocess.CompletedProcess(command, 0, out, "")
-
+    def run_tmux(self, tmux, *args, env=None):
         env = {"TMUX": "/tmp/tmux-501/default,1,0", "TMUX_PANE": "%1", **(env or {})}
         err = io.StringIO()
         with (
@@ -1066,35 +1122,59 @@ class TmuxTest(DatabaseTest):
             mock.patch("subprocess.run", side_effect=tmux),
             redirect_stderr(err),
         ):
-            code = cli.main(["tmux"])
-        return code, calls, err.getvalue()
+            code = cli.main(["tmux", *args])
+        return code, err.getvalue()
 
-    def test_it_opens_the_sidebar_on_the_left_and_keeps_the_keyboard_here(self):
-        code, calls, _ = self.run_tmux("%1\t\t\n")
-        self.assertEqual(code, 0)
-        split = calls[1]
-        self.assertEqual(split[:7], ["split-window", "-t", "%1", "-hbd", "-l", "40", "-c"])
+    def test_on_every_window_gets_a_full_height_sidebar_on_the_left_with_its_project(self):
+        tmux = FakeTmux({"@1": ["%1"], "@2": ["%2", "%3"]})
+        self.assertEqual(self.run_tmux(tmux)[0], 0)
+        self.assertEqual(tmux.on, "left")
+        self.assertEqual(tmux.sidebars(), {"@1": ["%91"], "@2": ["%92"]})
+        split = tmux.splits()[1]
+        self.assertEqual(split[:7], ["split-window", "-t", "@2", "-hbfd", "-l", "40", "-c"])
         self.assertIn("TEMPO_DB=%s" % os.environ["TEMPO_DB"], split)
-        self.assertEqual(
-            split[-1],
-            "%s tui --sidebar --project demo" % os.path.join(CODE_ROOT, "bin", "tempo"),
+        tempo = os.path.join(CODE_ROOT, "bin", "tempo")
+        self.assertEqual(split[-1], "%s tui --sidebar --project 2" % tempo)
+        # New windows and sessions get one through tmux's hooks.
+        for hook in cli.SIDEBAR_HOOKS:
+            (command,) = tmux.hooks[hook].values()
+            self.assertTrue(command.startswith("run-shell -b 'env TEMPO_DB="))
+            self.assertTrue(command.endswith(" tmux --window #{window_id}'"))
+
+    def test_a_new_window_gets_one_while_it_is_on_and_only_one(self):
+        tmux = FakeTmux({"@1": ["%1"]}, on="left")
+        self.assertEqual(self.run_tmux(tmux, "--window", "@1", env={"TMUX": ""})[0], 0)
+        self.assertEqual(tmux.sidebars(), {"@1": ["%91"]})
+        self.run_tmux(tmux, "--window", "@1")
+        self.assertEqual(len(tmux.splits()), 1)
+        # Off, the hook does nothing.
+        off = FakeTmux({"@1": ["%1"]})
+        self.run_tmux(off, "--window", "@1")
+        self.assertEqual(off.splits(), [])
+
+    def test_run_again_every_sidebar_and_only_our_hooks_go(self):
+        tmux = FakeTmux(
+            {"@1": ["%1"], "@2": ["%2"]}, hooks={"after-new-window": {0: "run-shell mine"}}
         )
-        self.assertEqual(calls[2], ["set-option", "-p", "-t", "%9", "@tempo-sidebar", "1"])
+        self.run_tmux(tmux)
+        self.run_tmux(tmux)
+        self.assertEqual(tmux.on, "")
+        self.assertEqual(tmux.sidebars(), {"@1": [], "@2": []})
+        self.assertEqual(tmux.hooks["after-new-window"], {0: "run-shell mine"})
+        self.assertEqual(tmux.hooks["after-new-session"], {})
 
-    def test_run_again_it_closes_the_sidebar(self):
-        code, calls, _ = self.run_tmux("%1\t\t\n%9\t1\t/x/tempo tui --sidebar\n")
-        self.assertEqual(code, 0)
-        self.assertEqual(calls[1:], [["kill-pane", "-t", "%9"]])
-
-    def test_with_a_workmux_sidebar_it_goes_below_it(self):
-        workmux = "%4\t\t/opt/homebrew/bin/workmux _sidebar-run\n%1\t\t\n"
-        code, calls, _ = self.run_tmux(workmux)
-        self.assertEqual(code, 0)
-        self.assertEqual(calls[1][:7], ["split-window", "-t", "%4", "-vd", "-l", "50%", "-c"])
-        self.assertEqual(calls[2], ["set-option", "-p", "-t", "%9", "@tempo-sidebar", "1"])
-        # Run again, it closes Tempo's pane, never workmux's.
-        code, calls, _ = self.run_tmux(workmux + "%9\t1\t/x/tempo tui --sidebar\n")
-        self.assertEqual(calls[1:], [["kill-pane", "-t", "%9"]])
+    def test_the_side_is_remembered_and_switching_it_moves_every_sidebar(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.run_tmux(tmux, "--side", "right")
+        self.assertEqual(tmux.splits()[0][3], "-hfd")
+        self.run_tmux(tmux, "--side", "left")
+        self.assertEqual((tmux.on, tmux.sidebars()), ("left", {"@1": ["%92"]}))
+        self.run_tmux(tmux)
+        self.run_tmux(tmux)
+        # Plain `tempo tmux` keeps the side last chosen.
+        self.assertEqual(tmux.splits()[-1][3], "-hbfd")
+        with Store(connect()) as store:
+            self.assertEqual(store.tmux_side(), "left")
 
     def test_outside_tmux_it_says_so(self):
         with mock.patch.dict(os.environ, {}, clear=False):
