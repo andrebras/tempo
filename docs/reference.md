@@ -337,7 +337,8 @@ the full view, `r` writes a follow-up, and `h` or Esc goes back. After an answer
 `q` quits; Esc in the list does nothing, so the pane isn't closed by mistake.
 
 Inside tmux, Enter opens the question in a popup over your panes instead, 80% of the
-window, with the same keys. The popup closes once you answer or send a follow-up, and on
+window, with the same keys. The question never opens over the list there: if the popup
+can't open, the sidebar stays on the list and says so. The popup closes once you answer or send a follow-up, and on
 `h` or Esc; it closes by itself too if the question is answered elsewhere meanwhile. The
 sidebar keeps updating while it is open. `tempo tui --project NAME --question N` is what
 the popup runs, and works on its own too.

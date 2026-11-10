@@ -15,7 +15,8 @@ All notable changes to Tempo are listed here. The format follows
   and `l` switch project, Enter opens a question over the list, and `h` or Esc goes back.
   The list only browses: you answer once the question is open, where all of it shows.
 - Inside tmux, the sidebar opens a question in a popup over the panes, which closes once
-  you answer or follow up. `tempo tui --question N` shows one question that way anywhere.
+  you answer or follow up. If the popup can't open, the sidebar stays on its list and says
+  so. `tempo tui --question N` shows one question that way anywhere.
 - `tempo sidebar on` turns the sidebar on in every tmux window, as workmux does with its
   own: a full-height column 40 columns wide, showing each window's project. New windows and
   sessions get one too. `tempo sidebar off` turns them all off; both do nothing when it

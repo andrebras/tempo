@@ -928,11 +928,21 @@ class PopupTest(BoardTest):
         self.assertEqual(opened, [("demo", 1)])
         self.assertEqual(board.focus, "questions")
 
-    def test_without_a_popup_the_question_opens_over_the_list(self):
+    def test_outside_tmux_the_question_opens_over_the_list(self):
         self.add(title="One")
-        board = Board(self.board_store, "demo", sidebar=True, opener=lambda *q: False)
+        board = Board(self.board_store, "demo", sidebar=True)
         board.press("enter")
         self.assertEqual(board.focus, "detail")
+        self.assertIn(("demo", 1), board.opened)
+
+    def test_a_popup_that_fails_leaves_the_list_and_says_so(self):
+        self.add(title="One")
+        board = Board(self.board_store, "demo", sidebar=True, opener=lambda *q: False)
+        board.opened.clear()
+        board.press("enter")
+        self.assertEqual(board.focus, "questions")
+        self.assertEqual(board.message, ("Could not open the popup.", "error"))
+        self.assertNotIn(("demo", 1), board.opened)
 
     def test_one_question_closes_once_answered_or_on_escape(self):
         self.add(title="One")
