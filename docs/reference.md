@@ -173,9 +173,9 @@ The setting is kept in the database, so every session and project sees it. With 
 ### The question list
 
 On a wide screen, drag the question list's right edge (or focus it and use the left and
-right arrow keys) to make the list wider or narrower. The button beside the search box
-collapses the list to a thin strip that still shows how many questions are open in the
-project, with a dot when one has something new; the same button opens it again. The browser
+right arrow keys) to make the list wider or narrower. The button beside the search box, a
+window with an arrow pointing left, collapses the list to a thin strip that still shows how many questions are open in the
+project, with a dot when one has something new; the same button, its arrow now pointing right, opens it again. The browser
 remembers the width and whether the list is collapsed. On a phone the list stays as it is.
 
 ### The terminal
