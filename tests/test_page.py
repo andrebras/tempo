@@ -335,39 +335,40 @@ class PageTest(DatabaseTest):
     def collapsed(self):
         return self.run_js("$('main').classList.contains('side-collapsed')")
 
-    def arrow(self):
-        """Which of the toggle's two arrows shows: 'close' (left) or 'open' (right)."""
-        return self.run_js(
-            "['close', 'open'].filter((name) => getComputedStyle("
-            "$('#side-toggle .' + name)).display !== 'none').join()"
+    def press_bracket(self, target):
+        self.run_js(
+            "%s.dispatchEvent(new KeyboardEvent('keydown', {key: '[', bubbles: true}))" % target
         )
 
-    def test_the_list_collapses_to_a_strip_and_the_browser_remembers_it(self):
+    def test_the_list_hides_from_a_button_by_the_name_and_the_browser_remembers_it(self):
         self.open("#/demo/1", ready=LOADED + " && $('#side-toggle').offsetWidth")
+        # The button sits in the header, left of the name, whether the list shows or not.
+        self.assertTrue(self.run_js("$('.brand').contains($('#side-toggle'))"))
         self.assertEqual(self.run_js("$('#side-toggle').getAttribute('aria-expanded')"), "true")
-        # Its arrow points the way the click moves the list.
-        self.assertEqual(self.arrow(), "close")
+        before = self.run_js("$('#detail').offsetWidth")
         self.click("#side-toggle")
-        self.wait("$('main').classList.contains('side-collapsed')")
+        self.wait("$('main').classList.contains('side-collapsed') && $('#side').offsetWidth === 0")
         self.assertEqual(self.run_js("$('#side-toggle').getAttribute('aria-expanded')"), "false")
-        self.assertEqual(self.arrow(), "open")
-        self.assertEqual(self.focused(), "Expand the list")
-        # A thin strip with the number of open questions; the list and search step aside.
-        self.assertLess(self.run_js("$('#side').offsetWidth"), 80)
-        self.assertEqual(self.run_js("$('#list').offsetHeight"), 0)
-        self.assertEqual(self.text(".side-strip .count"), "2")
-        self.assertTrue(self.run_js("$('#detail h2').offsetWidth > 0"))
-        # A question Claude changes since it was opened shows its dot on the strip too.
+        self.assertEqual(self.focused(), "Show the list")
+        # The question gets the room, and the hidden list can't be tabbed into.
+        self.wait("$('#detail').offsetWidth > %d" % before)
+        self.assertEqual(self.run_js("getComputedStyle($('#side')).visibility"), "hidden")
+        # A question Claude changes since it was opened shows its dot on the button.
         # Times are kept to the second, so the context is dated a little later.
+        self.assertFalse(self.run_js("Boolean($('#side-toggle .dot'))"))
         with mock.patch("tempo.store.common.now", return_value="2099-01-01T00:00:00Z"):
             self.store.add_context("demo", 2, "Fast costs twice as much.")
         self.tick()
-        self.wait("$('.side-strip .dot')")
-        # Kept for the next visit, and the same button opens it again.
+        self.wait("$('#side-toggle .dot') && $('#side-toggle .dot').offsetWidth")
+        # Kept for the next visit; [ shows it again, but not while typing in a field.
         self.open("#/demo/1", ready=LOADED + " && $('#side-toggle').offsetWidth")
         self.assertTrue(self.collapsed())
-        self.click("#side-toggle")
+        self.press_bracket("document.body")
         self.wait("!$('main').classList.contains('side-collapsed') && $('#list').offsetHeight")
+        # With the list showing, the button's dot stays out of the way.
+        self.assertEqual(self.run_js("$('#side-toggle .dot')?.offsetWidth ?? 0"), 0)
+        self.press_bracket("$('#search')")
+        self.assertFalse(self.collapsed())
 
     def test_the_lists_edge_changes_its_width_and_the_browser_remembers_it(self):
         self.open("#/demo/1", ready=LOADED + " && $('#side .side-grip').offsetWidth")
