@@ -102,6 +102,24 @@ class ServerTest(ServerBase):
         self.assertRegex(health["started"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
         self.assertEqual(health["db"], self.env["TEMPO_DB"])
 
+    def test_serves_xterm_from_the_plugin(self):
+        for path, kind, text in [
+            ("/vendor/xterm.js", "text/javascript; charset=utf-8", b"Terminal"),
+            ("/vendor/addon-fit.js", "text/javascript; charset=utf-8", b"FitAddon"),
+            ("/vendor/xterm.css", "text/css; charset=utf-8", b".xterm"),
+        ]:
+            with self.subTest(path=path):
+                connection = http.client.HTTPConnection("127.0.0.1", self.port)
+                connection.request("GET", path, headers={"Host": "127.0.0.1:%d" % self.port})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.getheader("Content-Type"), kind)
+                self.assertIn(text, response.read())
+                connection.close()
+        for path in ("/vendor/LICENSE", "/vendor/..%2Fserver.py", "/vendor/xterm/xterm.js"):
+            with self.subTest(path=path):
+                self.assertEqual(self.request("GET", path)[0], 404)
+
     def test_health_and_page_files_are_read_when_the_server_starts(self):
         # A checkout updated under a running server must not make it claim the new
         # version, which would stop a newer session from replacing it, nor serve the
