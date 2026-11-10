@@ -347,6 +347,9 @@ only browse, so switching project never moves you. In the list, option (g) needs
 `tempo tmux`, run in a tmux pane such as Claude's, opens the sidebar on the left of that
 window, 40 columns wide, on the folder's project (`--project NAME` for another). The
 keyboard stays in your pane. Run it again to close the sidebar. It works only inside tmux.
+When the window already has a workmux sidebar on the left (a pane started with
+`workmux _sidebar-run`), Tempo takes the lower half of that pane instead, so the window
+keeps one column on the left; running it again closes only Tempo's pane.
 
 - **Jump between the sidebar and Claude:** tmux's own keys, `prefix` then `o` (the next
   pane) or `prefix` then an arrow key.

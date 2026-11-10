@@ -1037,7 +1037,7 @@ class TmuxTest(DatabaseTest):
         return code, calls, err.getvalue()
 
     def test_it_opens_the_sidebar_on_the_left_and_keeps_the_keyboard_here(self):
-        code, calls, _ = self.run_tmux("%1 \n")
+        code, calls, _ = self.run_tmux("%1\t\t\n")
         self.assertEqual(code, 0)
         split = calls[1]
         self.assertEqual(split[:7], ["split-window", "-t", "%1", "-hbd", "-l", "40", "-c"])
@@ -1049,8 +1049,18 @@ class TmuxTest(DatabaseTest):
         self.assertEqual(calls[2], ["set-option", "-p", "-t", "%9", "@tempo-sidebar", "1"])
 
     def test_run_again_it_closes_the_sidebar(self):
-        code, calls, _ = self.run_tmux("%1 \n%9 1\n")
+        code, calls, _ = self.run_tmux("%1\t\t\n%9\t1\t/x/tempo tui --sidebar\n")
         self.assertEqual(code, 0)
+        self.assertEqual(calls[1:], [["kill-pane", "-t", "%9"]])
+
+    def test_with_a_workmux_sidebar_it_goes_below_it(self):
+        workmux = "%4\t\t/opt/homebrew/bin/workmux _sidebar-run\n%1\t\t\n"
+        code, calls, _ = self.run_tmux(workmux)
+        self.assertEqual(code, 0)
+        self.assertEqual(calls[1][:7], ["split-window", "-t", "%4", "-vd", "-l", "50%", "-c"])
+        self.assertEqual(calls[2], ["set-option", "-p", "-t", "%9", "@tempo-sidebar", "1"])
+        # Run again, it closes Tempo's pane, never workmux's.
+        code, calls, _ = self.run_tmux(workmux + "%9\t1\t/x/tempo tui --sidebar\n")
         self.assertEqual(calls[1:], [["kill-pane", "-t", "%9"]])
 
     def test_outside_tmux_it_says_so(self):
