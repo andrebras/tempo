@@ -251,6 +251,13 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
     )
     # What tmux's hooks run for a new window, so it gets a sidebar too.
     sidebar.add_argument("--window", help=argparse.SUPPRESS)
+    # What tmux's hooks run when a pane closes, so a sidebar left alone closes too.
+    sidebar.add_argument("--tidy", action="store_true", help=argparse.SUPPRESS)
+    sidebar.add_argument(
+        "--restore",
+        action="store_true",
+        help="Turn it back on, quietly, if it was on when tmux stopped; for ~/.tmux.conf",
+    )
     sidebar.set_defaults(run=run_sidebar)
 
 
@@ -518,6 +525,11 @@ SIDEBAR_SIDE = "@tempo-sidebar-side"
 SIDES = ("left", "right")
 # The tmux hooks that give each new window and session a sidebar while it is on.
 SIDEBAR_HOOKS = ("after-new-window", "after-new-session")
+# The tmux hooks that close a sidebar left alone in its window once every other pane there
+# has closed: by its program ending, or by kill-pane.
+TIDY_HOOKS = ("pane-exited", "after-kill-pane")
+# What every hook of ours runs, which tells them from the user's own.
+OUR_FLAGS = ("--window", "--tidy")
 
 
 def run_sidebar(args: argparse.Namespace) -> int:
@@ -527,12 +539,24 @@ def run_sidebar(args: argparse.Namespace) -> int:
     session; the keyboard stays where it is. Off, every sidebar closes and the hooks go.
     toggle flips it, quietly, for a key binding; on and off say what they did, and do
     nothing when it already is so. With --side while on, the sidebars move to that side.
-    `q` closes just one."""
+    `q` closes just one, and a sidebar left alone in its window closes with it. Whether it
+    is on is saved, so --restore, run from ~/.tmux.conf, brings it back after tmux restarts."""
     try:
+        if args.tidy:
+            _tidy_sidebars()
+            return 0
         if args.window:
             side = _tmux("show-options", "-gqv", SIDEBAR_SIDE).strip()
             if side in SIDES:
                 _add_sidebar(args.window, side)
+            return 0
+        if args.restore:
+            # tmux runs this as it reads ~/.tmux.conf, perhaps before any session exists;
+            # the hooks then give the first one its sidebar.
+            with Store(connect()) as store:
+                saved, side = store.tmux_sidebar(), store.tmux_side()
+            if saved and not _tmux("show-options", "-gqv", SIDEBAR_SIDE).strip():
+                _sidebars_on(side)
             return 0
         if not os.environ.get("TMUX"):
             print(
@@ -548,28 +572,43 @@ def run_sidebar(args: argparse.Namespace) -> int:
         moving = bool(on) and args.side is not None and args.side != on
         if args.action == "off" or (args.action == "toggle" and on and not moving):
             _sidebars_off()
+            _save_sidebar(False)
             if args.action == "off":
                 print("Sidebar off." if on else "Sidebar already off.")
             return 0
+        _save_sidebar(True)
         if on and not moving:
             print("Sidebar already on, on the %s." % on)
             return 0
-        _sidebars_off()
-        _tmux("set-option", "-g", SIDEBAR_SIDE, side)
-        ensure = shlex.join(
-            ["env", "TEMPO_DB=%s" % db_path(), os.path.join(CODE_ROOT, "bin", "tempo"), "sidebar"]
-        )
-        for hook in SIDEBAR_HOOKS:
-            command = "run-shell -b %s" % shlex.quote(ensure + " --window #{window_id}")
-            _tmux("set-hook", "-ag", hook, command)
-        for window in _tmux("list-windows", "-a", "-F", "#{window_id}").split():
-            _add_sidebar(window, side)
+        _sidebars_on(side)
         if args.action == "on":
             print("Sidebar moved to the %s." % side if on else "Sidebar on, on the %s." % side)
     except (OSError, subprocess.CalledProcessError) as error:
         print("tempo: tmux failed: %s" % _tmux_error(error), file=sys.stderr)
         return 1
     return 0
+
+
+def _save_sidebar(on: bool) -> None:
+    with Store(connect()) as store:
+        store.set_tmux_sidebar(on)
+
+
+def _sidebars_on(side: str) -> None:
+    """Give every window a sidebar on side, and set the switch and the hooks that give new
+    windows one and close one left alone; any sidebars already there go first."""
+    _sidebars_off()
+    _tmux("set-option", "-g", SIDEBAR_SIDE, side)
+    ensure = shlex.join(
+        ["env", "TEMPO_DB=%s" % db_path(), os.path.join(CODE_ROOT, "bin", "tempo"), "sidebar"]
+    )
+    for hook in SIDEBAR_HOOKS:
+        command = "run-shell -b %s" % shlex.quote(ensure + " --window #{window_id}")
+        _tmux("set-hook", "-ag", hook, command)
+    for hook in TIDY_HOOKS:
+        _tmux("set-hook", "-ag", hook, "run-shell -b %s" % shlex.quote(ensure + " --tidy"))
+    for window in _tmux("list-windows", "-a", "-F", "#{window_id}").split():
+        _add_sidebar(window, side)
 
 
 def _add_sidebar(window: str, side: str) -> None:
@@ -593,19 +632,30 @@ def _add_sidebar(window: str, side: str) -> None:
 
 def _sidebars_off() -> None:
     """Close every sidebar, and remove Tempo's hooks and switch; the user's own hooks on the
-    same events stay."""
+    same events stay. The hooks go first, so closing the sidebars doesn't run them."""
+    for hook in SIDEBAR_HOOKS + TIDY_HOOKS:
+        # Each line is "after-new-window[2] run-shell ..."; only ours are removed.
+        for line in _tmux("show-hooks", "-g", hook).splitlines():
+            name, _, command = line.partition(" ")
+            if "tempo" in command and any("sidebar " + flag in command for flag in OUR_FLAGS):
+                _tmux("set-hook", "-gu", name)
     listing = _tmux("list-panes", "-a", "-F", "#{pane_id}\t#{%s}" % SIDEBAR_MARK)
     for line in listing.splitlines():
         pane, _, mark = line.partition("\t")
         if mark == "1":
             _tmux("kill-pane", "-t", pane)
-    for hook in SIDEBAR_HOOKS:
-        # Each line is "after-new-window[2] run-shell ..."; only ours are removed.
-        for line in _tmux("show-hooks", "-g", hook).splitlines():
-            name, _, command = line.partition(" ")
-            if "tempo" in command and "sidebar --window" in command:
-                _tmux("set-hook", "-gu", name)
     _tmux("set-option", "-gu", SIDEBAR_SIDE)
+
+
+def _tidy_sidebars() -> None:
+    """Close each sidebar that is the only pane left in its window, which closes the window,
+    as it would have closed without the sidebar. A `tempo tui --sidebar` run by hand has no
+    mark, so it stays."""
+    listing = _tmux("list-panes", "-a", "-F", "#{pane_id}\t#{window_panes}\t#{%s}" % SIDEBAR_MARK)
+    for line in listing.splitlines():
+        pane, panes, mark = line.split("\t")
+        if panes == "1" and mark == "1":
+            _tmux("kill-pane", "-t", pane)
 
 
 def _tmux(*args: str) -> str:

@@ -932,6 +932,14 @@ class SettingsTest(DatabaseTest):
             store.set_start_page(False)
         self.assertFalse(self.store.start_page())
 
+    def test_the_sidebar_is_off_until_turned_on_and_its_state_is_kept(self):
+        self.assertFalse(self.store.tmux_sidebar())
+        self.store.set_tmux_sidebar(True)
+        with Store(connect(os.environ["TEMPO_DB"])) as store:
+            self.assertTrue(store.tmux_sidebar())
+            store.set_tmux_sidebar(False)
+        self.assertFalse(self.store.tmux_sidebar())
+
     def test_an_existing_database_gets_the_table_without_a_new_version(self):
         self.store.db.execute("DROP TABLE settings")
         with Store(connect(os.environ["TEMPO_DB"])) as store:
