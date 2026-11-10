@@ -26,6 +26,9 @@ All notable changes to Tempo are listed here. The format follows
 - Turning the terminal off says what it ends. In Settings, with terminals running, it first
   asks, inline, and then says how many it ended. `tempo config terminal off` now also ends
   the tmux sessions Tempo started, and no other, and names them.
+- The terminal's Maximize button makes it fill the right-hand column, with the question
+  list still on the left. Restore, Escape outside the shell, or picking a question puts it
+  back under the question.
 
 ### Changed
 

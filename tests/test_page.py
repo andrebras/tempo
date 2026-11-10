@@ -409,6 +409,44 @@ class PageTest(DatabaseTest):
         self.click("#terminal .hide")
         self.wait("$('#terminal').hidden && !terminals.demo.reading")
 
+    def test_maximize_fills_the_column_and_picking_a_question_restores_it(self):
+        self.start_terminal()
+        self.open("#/demo/1", ready=LOADED + " && !$('#terminal-toggle').hidden")
+        self.click("#terminal-toggle")
+        self.wait("terminals.demo && terminals.demo.id")
+        normal = self.run_js("$('#terminal').offsetHeight")
+        self.click("#terminal .max")
+        self.wait("$('main').classList.contains('terminal-max')")
+        self.assertEqual(self.run_js("$('#terminal .max').getAttribute('aria-pressed')"), "true")
+        self.assertEqual(self.text("#terminal .max"), "Restore")
+        # The question steps aside and the terminal takes its room; the list stays.
+        self.assertEqual(self.run_js("$('#detail').offsetHeight"), 0)
+        self.assertGreater(self.run_js("$('#terminal').offsetHeight"), normal)
+        self.assertGreater(self.run_js("$('#list').offsetHeight"), 0)
+        # Escape in the shell is the shell's: it stays maximized.
+        self.run_js("terminals.demo.term.focus()")
+        self.press_escape()
+        self.assertTrue(self.run_js("$('main').classList.contains('terminal-max')"))
+        # Picking another question shows it, with the same shell back under it.
+        self.click('#list a[href="#/demo/2"]')
+        self.wait("!$('main').classList.contains('terminal-max') && $('#detail').offsetHeight")
+        self.wait("$('#detail h2').textContent.includes('How fast?')")
+        self.assertEqual(self.run_js("$('#terminal').offsetHeight"), normal)
+        self.assertEqual(self.text("#terminal .max"), "Maximize")
+        self.assertFalse(self.run_js("$('#terminal').hidden"))
+        # Escape anywhere else restores it, and so does the button.
+        self.click("#terminal .max")
+        self.run_js("document.activeElement.blur()")
+        self.press_escape()
+        self.wait("!$('main').classList.contains('terminal-max')")
+        self.click("#terminal .max")
+        self.click("#terminal .max")
+        self.wait("!$('main').classList.contains('terminal-max')")
+        # Hidden while maximized, it comes back at its own height.
+        self.click("#terminal .max")
+        self.click("#terminal .hide")
+        self.wait("$('#terminal').hidden && !$('main').classList.contains('terminal-max')")
+
     def test_the_terminal_takes_the_pages_colours_and_font(self):
         self.start_terminal()
         self.store.set_terminal_size(17)
