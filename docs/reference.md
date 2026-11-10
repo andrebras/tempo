@@ -336,6 +336,14 @@ window, with the same keys. The popup closes once you answer or send a follow-up
 sidebar keeps updating while it is open. `tempo tui --project NAME --question N` is what
 the popup runs, and works on its own too.
 
+Inside tmux, `g` in the list goes to the shown project's Claude session: tmux switches to
+the pane running Claude in one of the project's folders, or a folder inside one such as a
+worktree, in whichever tmux session it is. With several, the most recently used window
+wins. A pane counts as Claude's when its command is `claude` or a version number such as
+`2.1.311`, which is what Claude Code shows; plain `node` doesn't count, since any Node
+program shows it. When none is open the sidebar says so; it never starts one. `h` and `l`
+only browse, so switching project never moves you. In the list, option (g) needs Shift.
+
 `tempo tmux`, run in a tmux pane such as Claude's, opens the sidebar on the left of that
 window, 40 columns wide, on the folder's project (`--project NAME` for another). The
 keyboard stays in your pane. Run it again to close the sidebar. It works only inside tmux.

@@ -62,7 +62,11 @@ class Board:
     Esc: the view a tmux popup opens.
 
     opener, when set, opens a question somewhere else, such as a tmux popup; it returns
-    False when it couldn't, and the sidebar then opens the question over its list."""
+    False when it couldn't, and the sidebar then opens the question over its list.
+
+    jumper, when set, moves to the pane where a project's Claude session runs, given the
+    project and its folders' paths; it returns what went wrong, or None. Without it (outside
+    tmux), the sidebar's g only says it needs tmux."""
 
     def __init__(
         self,
@@ -71,11 +75,13 @@ class Board:
         sidebar: bool = False,
         question: int | None = None,
         opener: Callable[[str, int], bool] | None = None,
+        jumper: Callable[[str, list[str]], str | None] | None = None,
     ) -> None:
         self.store = store
         self.sidebar = sidebar or question is not None
         self.single = question is not None
         self.opener = opener
+        self.jumper = jumper
         # Set when the single question's view is done, so the screen closes.
         self.done = False
         # Every open question, of every project, as last loaded.
@@ -256,8 +262,9 @@ class Board:
 
     def _sidebar(self, key: str) -> bool:
         """The sidebar's own keys; False for a key it reads as the full view does. In the
-        list, h and l switch project and Enter opens the question; once it is open, h or
-        Esc goes back to the list."""
+        list, h and l switch project, Enter opens the question and g goes to the project's
+        Claude session (so option (g) needs Shift there); once it is open, h or Esc goes
+        back to the list."""
         if self.focus == "detail":
             if key not in ("h", "left", "esc"):
                 return False
@@ -271,12 +278,28 @@ class Board:
                 self.opened[(self.project, self.number)] = self._activity()
             elif key != "enter":
                 self.switch(1 if key in ("l", "right") else -1)
+        elif key == "g":
+            self._jump()
         elif key in ("esc", "tab", "btab"):
             # The list is the sidebar's only panel, and Esc there must not close it.
             pass
         else:
             return False
         return True
+
+    def _jump(self) -> None:
+        """g in the sidebar's list: go to the shown project's Claude session."""
+        if self.jumper is None:
+            self.message = ("g works only inside tmux.", "error")
+            return
+        paths = [
+            str(folder["path"])
+            for folder in self.store.folders()
+            if folder["project"] == self.project and folder["path"]
+        ]
+        problem = self.jumper(self.project, paths)
+        if problem:
+            self.message = (problem, "error")
 
     def switch(self, step: int) -> None:
         """Show the next or previous project, round the list."""

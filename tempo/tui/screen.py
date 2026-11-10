@@ -11,6 +11,7 @@ import contextlib
 import curses
 import locale
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -22,6 +23,17 @@ from tempo.store import CODE_ROOT, Store, connect, db_path
 from tempo.tui.model import Board
 from tempo.tui.view import draw
 
+# What a pane running Claude Code shows as its command: "claude", or the version it names
+# its process after, such as "2.1.311". Plain "node" is left out: any Node program shows it.
+CLAUDE = re.compile(r"claude|\d+\.\d+\.\d+")
+# The panes, as `tmux list-panes -a` lists them for claude_pane, one per line.
+PANES = "\t".join(
+    "#{%s}" % name
+    for name in (
+        "pane_id", "session_name", "window_id", "window_activity",
+        "pane_current_command", "pane_current_path",
+    )
+)  # fmt: skip
 # How long to wait for a key before checking the database, in milliseconds.
 TICK = 500
 # How long to wait for the rest of an escape sequence, and for more of a paste, in
@@ -189,9 +201,13 @@ def run(project: str, sidebar: bool = False, question: int | None = None) -> int
     popup. With question, only that question, until it is answered."""
     # Without the user's locale, curses draws box lines and accents as garbage.
     locale.setlocale(locale.LC_ALL, "")
-    popups = Popups() if sidebar and os.environ.get("TMUX") else None
+    tmux = sidebar and bool(os.environ.get("TMUX"))
+    popups = Popups() if tmux else None
     with Store(connect()) as store:
-        board = Board(store, project, sidebar, question, popups.open if popups else None)
+        board = Board(
+            store, project, sidebar, question, popups.open if popups else None,
+            jump if tmux else None,
+        )  # fmt: skip
         if board.done:
             print("tempo: %s Q%d is not open" % (project, question or 0), file=sys.stderr)
             return 1
@@ -234,6 +250,54 @@ class Popups:
 
     def collect(self) -> None:
         self.running = [popup for popup in self.running if popup.poll() is None]
+
+
+def claude_pane(listing: str, paths: list[str], own: str | None) -> tuple[str, str, str] | None:
+    """The pane where a project's Claude session runs, from tmux's list of panes (PANES):
+    one running Claude in one of the project's folders or a folder inside one, such as a
+    worktree, never the sidebar's own pane. The most recently active wins. Gives its
+    session, window and pane, or None."""
+    best: tuple[int, tuple[str, str, str]] | None = None
+    for line in listing.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 6:
+            continue
+        pane, session, window, activity, command, path = parts
+        inside = any(
+            path == root or path.startswith(root.rstrip(os.sep) + os.sep) for root in paths
+        )
+        if pane == own or not inside or not CLAUDE.fullmatch(command):
+            continue
+        when = int(activity) if activity.isdigit() else 0
+        if best is None or when > best[0]:
+            best = (when, (session, window, pane))
+    return best[1] if best else None
+
+
+def jump(project: str, paths: list[str]) -> str | None:
+    """Switch this tmux client to the pane where project's Claude session runs. Gives what
+    went wrong, or None; it never starts a session."""
+    try:
+        listing = _tmux("list-panes", "-a", "-F", PANES)
+        found = claude_pane(listing, paths, os.environ.get("TMUX_PANE"))
+        if found is None:
+            return "No Claude session open for %s." % project
+        session, window, pane = found
+        _tmux("switch-client", "-t", session)
+        _tmux("select-window", "-t", window)
+        _tmux("select-pane", "-t", pane)
+    except (OSError, subprocess.CalledProcessError) as error:
+        detail = getattr(error, "stderr", "") or str(error)
+        return "tmux failed: %s" % str(detail).strip()
+    return None
+
+
+def _tmux(*args: str) -> str:
+    """Run a tmux command and give its output; raises when it fails."""
+    return subprocess.run(  # noqa: S603
+        ["tmux", *args],  # noqa: S607
+        capture_output=True, text=True, check=True,
+    ).stdout  # fmt: skip
 
 
 def _loop(window: Any, board: Board, popups: Popups | None = None) -> None:

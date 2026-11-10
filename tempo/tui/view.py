@@ -24,7 +24,7 @@ HINTS = {
 }
 # The sidebar's keys, in the list and with a question open.
 SIDEBAR = {
-    "questions": [("Enter", "open"), ("h/l", "project")],
+    "questions": [("Enter", "open"), ("h/l", "project"), ("g", "Claude")],
     "detail": [("h", "back")],
 }
 HELP = [
@@ -34,6 +34,7 @@ HELP = [
     ("Enter", "open the questions, then the detail"),
     ("a b c …", "answer with that option (asks y/n)"),
     ("A B C …", "the same; Shift is needed for h j k l q r s"),
+    ("g", "sidebar: go to the project's Claude (tmux)"),
     ("r", "ask Claude for more (a follow-up)"),
     ("s", "Settings: the projects, their folders, merging"),
     ("PgUp PgDn", "scroll the detail a page (or Ctrl-u Ctrl-d)"),
