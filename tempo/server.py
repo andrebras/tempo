@@ -3,7 +3,7 @@
 Any website open in the browser could send requests to a localhost port, so
 every request must name this server as its Host, and writes must be JSON from
 this page's own origin. Terminal requests must also carry the secret this server put
-in the page it served.
+in the page it served, or, when the desktop app started this server, the app's token.
 """
 
 from __future__ import annotations
@@ -46,6 +46,11 @@ FILES = {
 }
 # Where page.html gets the terminal's secret.
 SECRET_PLACE = b"{{terminal-secret}}"
+# The desktop app (desktop/) starts its own server with a random token in this variable, and
+# gives the token to its window only. That server then takes the token for the terminal in
+# place of the secret, and leaves the page's secret empty, so a browser tab on its port can
+# show the questions but never open a shell. This is the variable's name, not a token.
+APP_TOKEN = "TEMPO_APP_TOKEN"  # noqa: S105  # nosec B105
 
 
 def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
@@ -55,9 +60,10 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
     started = health()
     # New at each start and only ever sent inside the page, so a terminal request without
     # it comes from somewhere else, even when it names this page as its origin.
-    secret = secrets.token_urlsafe(32)
+    token = os.environ.get(APP_TOKEN, "")
+    secret = token or secrets.token_urlsafe(32)
     with open(PAGE, "rb") as file:
-        page_html = file.read().replace(SECRET_PLACE, secret.encode())
+        page_html = file.read().replace(SECRET_PLACE, b"" if token else secret.encode())
     with open(SCRIPT, "rb") as file:
         page_script = file.read()
     page_files = {}
@@ -73,6 +79,7 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
         script = page_script
         files = page_files
         terminal_secret = secret
+        app_only = bool(token)
 
     return PortHandler
 
@@ -91,6 +98,8 @@ class Handler(BaseHTTPRequestHandler):
     script: ClassVar[bytes] = b""
     files: ClassVar[dict[str, tuple[bytes, str]]] = {}
     terminal_secret: ClassVar[str] = ""
+    # Whether the terminal takes the desktop app's token in place of the page's secret.
+    app_only: ClassVar[bool] = False
 
     def do_GET(self) -> None:
         if not self._trusted(write=False):
@@ -118,7 +127,8 @@ class Handler(BaseHTTPRequestHandler):
             return False
         secret = (self.headers.get("X-Tempo-Secret") or "").encode()
         if not hmac.compare_digest(secret, self.terminal_secret.encode()):
-            self._json(403, {"error": "Only this page can use the terminal"})
+            who = "the Tempo app" if self.app_only else "this page"
+            self._json(403, {"error": "Only %s can use the terminal" % who})
             return True
         if method == "GET" and parts[2:] == ["running"]:
             # Asked by Settings before turning the terminal off, to warn what that ends.
