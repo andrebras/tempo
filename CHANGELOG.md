@@ -4,7 +4,7 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.11.0] - 2026-11-10
 
 ### Added
 
@@ -47,10 +47,16 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- A project with no open questions no longer shows a "something new" dot on its chip, for
+  example after its questions were answered in the terminal. Only open questions count as
+  news.
 - An empty project left by a folder that no longer exists, such as a throwaway folder in
   `/tmp` where a session once ran, no longer stays in Settings and the project list
   forever. Tempo forgets its folders once they are all gone. Projects with questions are
   always kept.
+- A session in a temporary folder, such as an agent's scratchpad in `/tmp`, no longer adds
+  an empty project to Settings and the project list, and such projects already listed are
+  forgotten. A question asked there still gets its own project.
 
 ## [0.10.0] - 2026-11-09
 
@@ -750,7 +756,8 @@ All notable changes to Tempo are listed here. The format follows
 - First version: questions in SQLite, the `tempo` command, hooks, a skill, and a local page
   to read, follow up on and answer them.
 
-[Unreleased]: https://github.com/andrebras/tempo/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/andrebras/tempo/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/andrebras/tempo/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/andrebras/tempo/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/andrebras/tempo/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/andrebras/tempo/compare/v0.7.1...v0.8.0
