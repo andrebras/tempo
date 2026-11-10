@@ -936,3 +936,61 @@ class PopupTest(BoardTest):
             self.assertEqual(popen.call_args.args[0], screen.popup_command("demo", 1))
             popups.collect()
         self.assertEqual(popups.running, [])
+
+
+class TmuxTest(DatabaseTest):
+    """`tempo tmux` shows the sidebar on the left of the tmux window, or hides it."""
+
+    def run_tmux(self, panes, env=None):
+        """Run the command with tmux faked: list-panes gives panes, split-window a new id."""
+        calls = []
+
+        def tmux(command, **_):
+            calls.append(command[1:])
+            out = {"list-panes": panes, "split-window": "%9\n"}.get(command[1], "")
+            return subprocess.CompletedProcess(command, 0, out, "")
+
+        env = {"TMUX": "/tmp/tmux-501/default,1,0", "TMUX_PANE": "%1", **(env or {})}
+        err = io.StringIO()
+        with (
+            mock.patch.dict(os.environ, env),
+            mock.patch("subprocess.run", side_effect=tmux),
+            redirect_stderr(err),
+        ):
+            code = cli.main(["tmux"])
+        return code, calls, err.getvalue()
+
+    def test_it_opens_the_sidebar_on_the_left_and_keeps_the_keyboard_here(self):
+        code, calls, _ = self.run_tmux("%1 \n")
+        self.assertEqual(code, 0)
+        split = calls[1]
+        self.assertEqual(split[:7], ["split-window", "-t", "%1", "-hbd", "-l", "40", "-c"])
+        self.assertIn("TEMPO_DB=%s" % os.environ["TEMPO_DB"], split)
+        self.assertEqual(
+            split[-1],
+            "%s tui --sidebar --project demo" % os.path.join(CODE_ROOT, "bin", "tempo"),
+        )
+        self.assertEqual(calls[2], ["set-option", "-p", "-t", "%9", "@tempo-sidebar", "1"])
+
+    def test_run_again_it_closes_the_sidebar(self):
+        code, calls, _ = self.run_tmux("%1 \n%9 1\n")
+        self.assertEqual(code, 0)
+        self.assertEqual(calls[1:], [["kill-pane", "-t", "%9"]])
+
+    def test_outside_tmux_it_says_so(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TMUX", None)
+            err = io.StringIO()
+            with redirect_stderr(err):
+                self.assertEqual(cli.main(["tmux"]), 1)
+        self.assertIn("only inside tmux", err.getvalue())
+
+    def test_a_tmux_failure_is_reported(self):
+        failure = subprocess.CalledProcessError(1, ["tmux"], "", "no server running\n")
+        with (
+            mock.patch.dict(os.environ, {"TMUX": "x", "TMUX_PANE": "%1"}),
+            mock.patch("subprocess.run", side_effect=failure),
+            redirect_stderr(io.StringIO()) as err,
+        ):
+            self.assertEqual(cli.main(["tmux"]), 1)
+        self.assertEqual(err.getvalue(), "tempo: tmux failed: no server running\n")
