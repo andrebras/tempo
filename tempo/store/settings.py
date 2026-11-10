@@ -10,6 +10,9 @@ from tempo.store.common import StoreBase
 START_PAGE = "start_page"
 # Which side of each tmux window `tempo sidebar` puts the sidebar on: left unless set.
 TMUX_SIDE = "tmux_side"
+# Whether `tempo sidebar` last turned the sidebar on, so `--restore` brings it back after
+# tmux restarts. Off unless the user turned it on.
+TMUX_SIDEBAR = "tmux_sidebar"
 
 
 class SettingsStore(StoreBase):
@@ -38,4 +41,17 @@ class SettingsStore(StoreBase):
         with self._transaction():
             self.db.execute(
                 "INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)", (TMUX_SIDE, side)
+            )
+
+    def tmux_sidebar(self) -> bool:
+        """Whether the sidebar was last turned on; off by default."""
+        row = self.db.execute("SELECT value FROM settings WHERE name = ?", (TMUX_SIDEBAR,))
+        found = row.fetchone()
+        return found is not None and found["value"] == "on"
+
+    def set_tmux_sidebar(self, on: bool) -> None:
+        with self._transaction():
+            self.db.execute(
+                "INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)",
+                (TMUX_SIDEBAR, "on" if on else "off"),
             )
