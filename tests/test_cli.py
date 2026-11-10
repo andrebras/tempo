@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -11,7 +12,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
-from tempo import cli
+from tempo import cli, terminal
 from tests import REAL_START_SERVER, TEST_PORT, RealServerStart
 from tests.helpers import DatabaseTest
 
@@ -1143,7 +1144,14 @@ class CliTest(DatabaseTest):
         self.assertIn("any command as you", out)
         self.assertTrue(self.store.terminal())
         self.assertNotIn("page", run("config", "terminal")[1].split(":")[0])
-        run("config", "terminal", "off")
+        # Off ends Tempo's tmux sessions: without tmux here, the user's own are never reached.
+        with mock.patch.object(terminal, "TMUX", None):
+            out = run("config", "terminal", "off")[1]
+        self.assertEqual(
+            out,
+            "Terminal is off. Shells kept alive by a running page server stop when that server"
+            " stops, or when you turn the terminal off in the page's Settings.\n",
+        )
         self.assertFalse(self.store.terminal())
         self.assertTrue(self.store.start_page())
 
@@ -1255,6 +1263,55 @@ class CliTest(DatabaseTest):
         self.assertNotIn("link", reason)
         # The closing list names Q1, but that doesn't record the question asked above it.
         self.assertIn("block", reply("May I push?\n\n- Q1 Which way? `tempo show 1`"))
+
+
+@unittest.skipUnless(terminal.TMUX, "tmux is not installed")
+class TerminalOffTest(DatabaseTest):
+    """`tempo config terminal off` ends the tmux sessions Tempo started, and says which. The
+    tests use a tmux server of their own, never the user's."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Its own socket and no tmux config, so the user's sessions and settings play no part.
+        folder = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, folder)
+        cls.tmux = [*terminal.TMUX, "-S", os.path.join(folder, "tmux"), "-f", os.devnull]
+        cls.addClassCleanup(subprocess.run, [*cls.tmux, "kill-server"], capture_output=True)
+        for name, value in (("TMUX", cls.tmux), ("PREFIX", "tempo-test-")):
+            patch = mock.patch.object(terminal, name, value)
+            patch.start()
+            cls.addClassCleanup(patch.stop)
+
+    def sessions(self):
+        listed = subprocess.run(
+            [*self.tmux, "list-sessions", "-F", "#{session_name}"], capture_output=True, text=True
+        )
+        return sorted(listed.stdout.split())
+
+    def test_ends_tempos_sessions_and_names_them(self):
+        self.store.set_terminal(True)
+        names = sorted(terminal.session_name(path) for path in ("/x/app", "/y/web"))
+        for name in [*names, "tempo-test-mine"]:
+            subprocess.run([*self.tmux, "new-session", "-d", "-s", name], check=True)
+        self.addCleanup(subprocess.run, [*self.tmux, "kill-session", "-t", "=tempo-test-mine"])
+        self.assertEqual(
+            run("config", "terminal", "off"),
+            (
+                0,
+                "Terminal is off. Ended 2 tmux sessions Tempo started (%s, %s); anything"
+                " running in them was stopped.\n" % tuple(names),
+                "",
+            ),
+        )
+        self.assertFalse(self.store.terminal())
+        self.assertEqual(self.sessions(), ["tempo-test-mine"])
+
+    def test_says_when_no_session_was_running(self):
+        self.assertEqual(
+            run("config", "terminal", "off")[1],
+            "Terminal is off. No terminal sessions were running.\n",
+        )
 
 
 class GitTest(DatabaseTest):
