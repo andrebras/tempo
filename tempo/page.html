@@ -128,6 +128,8 @@
                    background: var(--sunken); border-bottom: 1px solid var(--line); }
   #terminal .where { color: var(--muted); font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
                      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #terminal .mode { color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #terminal .mode code { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
   #terminal .actions { margin-left: auto; display: flex; flex: none; gap: 6px; white-space: nowrap; }
   #terminal .actions button { padding: 3px 10px; border-radius: 7px; border: 1px solid var(--line);
                               background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
@@ -382,7 +384,7 @@
   <section id="terminal" hidden aria-label="Terminal">
     <div class="grip" role="separator" aria-orientation="horizontal" aria-label="Terminal height"
          tabindex="0" title="Drag to change the terminal's height"></div>
-    <div class="bar"><strong class="name"></strong> <span class="where"></span>
+    <div class="bar"><strong class="name"></strong> <span class="where"></span> <span class="mode"></span>
       <span class="actions"><button class="hide" type="button">Hide</button>
       <button class="end" type="button">End shell</button></span></div>
     <div class="screens"></div>
