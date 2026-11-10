@@ -290,8 +290,9 @@
   .row strong { display: block; font-weight: 600; overflow-wrap: anywhere; }
   .folders { list-style: none; margin: 4px 0 0; padding: 0; font-size: .8125rem; }
   .folders li + li { margin-top: 2px; }
-  /* Paths break only where the page put a <wbr>, after a /. */
-  .folders .path { color: var(--muted); overflow-wrap: normal;
+  /* Paths break where the page put a <wbr>, after a /; inside a folder's name only when that
+     name alone is wider than the line, as on a phone. */
+  .folders .path { color: var(--muted); overflow-wrap: break-word;
                    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: .75rem; }
   .folders .gone { margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--sunken);
                    color: var(--muted); font-size: .75rem; white-space: nowrap; }
