@@ -275,6 +275,7 @@ function showSettings(open) {
 
 async function openSettings() {
   showSettings(true);
+  editing = null;
   renderSettings(await api("/api/settings"));
 }
 
@@ -371,30 +372,73 @@ function count(number, word) {
   return `${number} ${word}${number === 1 ? "" : "s"}`;
 }
 
+// The project whose Edit panel is open in Settings, by name, so a redraw keeps it open;
+// only one opens at a time. editors shows or hides each drawn row's panel.
+let editing = null;
+const editors = new Map();
+
 function renderProjects(data) {
+  editors.clear();
   return el("section", { class: "card" },
     el("h3", {}, "Projects"),
-    el("p", {}, "A project's name is what you see everywhere. Renaming it takes its questions and the "
-      + "git folders it covers along. To join two projects, such as a folder's old project and its new one "
-      + "after a rename or move, use Merge into… (renaming one to the other's name does the same). If both "
-      + "have questions, the merged one's questions move after the other's and get new numbers; each keeps "
-      + "a note of its old one."),
+    el("p", {}, "Rename a project, or merge one into another, such as a renamed folder's old project into its new one."),
     data.notice && el("p", { class: "meta", role: "status" }, data.notice),
-    data.projects.length ? data.projects.map((project) => {
-      const input = el("input", { value: project.name, "aria-label": `New name for ${project.name}` });
-      return el("div", { class: "row" },
-        el("div", {}, el("strong", {}, project.name),
-          el("span", { class: "meta" }, count(project.questions, "question")),
-          renderFolders(project)),
-        el("div", { class: "forms" },
-          saveForm(input,
-            () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
-            (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
-              renamed(project.name, name);
-              return { ...result, notice: joinNotice(project.name, name, result.moved || []) };
-            }), "Rename"),
-          mergeForm(project, data.projects)));
-    }) : el("p", { class: "empty" }, "No projects yet. One appears when Claude asks its first question."));
+    data.projects.length ? data.projects.map((project, index) => projectRow(project, data.projects, index))
+      : el("p", { class: "empty" }, "No projects yet. One appears when Claude asks its first question."));
+}
+
+// A project's name, question count and folders, with an Edit button that opens Rename and
+// Merge into… below them. Esc closes it; closing drops what was typed or picked there.
+function projectRow(project, projects, index) {
+  const input = el("input", { value: project.name, "aria-label": `New name for ${project.name}` });
+  const edit = el("button", { type: "button", class: "edit", "aria-label": editLabel(project.name),
+    "aria-expanded": String(editing === project.name), "aria-controls": `editor-${index}`,
+    onclick: () => openEditor(editing === project.name ? null : project.name) }, "Edit");
+  const editor = el("div", { class: "editor", id: `editor-${index}`, hidden: editing !== project.name },
+    saveForm(input,
+      () => (input.value.trim() && input.value.trim() !== project.name ? input.value.trim() : null),
+      (name) => api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name }).then((result) => {
+        renamed(project.name, name);
+        editing = null;
+        return { ...result, notice: joinNotice(project.name, name, result.moved || []), focus: editLabel(name) };
+      }), "Rename"),
+    mergeForm(project, projects));
+  editors.set(project.name, (open) => {
+    if (!open && !editor.hidden) {
+      for (const form of editor.querySelectorAll("form")) {
+        form.reset();
+        form.dispatchEvent(new Event("change"));
+      }
+      for (const error of editor.querySelectorAll(".error")) error.hidden = true;
+    }
+    editor.hidden = !open;
+    edit.setAttribute("aria-expanded", String(open));
+  });
+  return el("div", { class: "row project", onkeydown: (event) => {
+    if (event.key !== "Escape" || editor.hidden) return;
+    openEditor(null);
+    edit.focus();
+  } },
+  el("div", {}, el("strong", {}, project.name),
+    el("span", { class: "meta" }, count(project.questions, "question")),
+    renderFolders(project)),
+  edit, editor);
+}
+
+function editLabel(name) {
+  return `Edit ${name}`;
+}
+
+// Opens one project's Edit panel and closes the others; null closes them all. The
+// keyboard moves to the new name, selected, so typing replaces it.
+function openEditor(name) {
+  editing = name;
+  for (const [project, show] of editors) show(project === name);
+  const field = name && document.querySelector("#settings .editor:not([hidden]) input");
+  if (field) {
+    field.focus();
+    field.select();
+  }
 }
 
 // Merges a project into another one picked from a list. "Merge…" first shows what will
@@ -409,6 +453,8 @@ function mergeForm(project, projects) {
   const error = el("p", { class: "error", hidden: true });
   const confirm = el("div", { class: "confirm", role: "group", hidden: true, onkeydown: (event) => {
     if (event.key !== "Escape") return;
+    // A second Esc closes the Edit panel around it.
+    event.stopPropagation();
     close();
     select.focus();
   } });
@@ -420,7 +466,9 @@ function mergeForm(project, projects) {
     yes.disabled = true;
     api(`/api/projects/${encodeURIComponent(project.name)}/rename`, { name: target.name }).then((result) => {
       renamed(project.name, target.name);
-      return { ...result, notice: mergeNotice(project.name, target.name, project.questions, result.moved || []) };
+      editing = null;
+      return { ...result, notice: mergeNotice(project.name, target.name, project.questions, result.moved || []),
+        focus: editLabel(target.name) };
     }).then(renderSettings, (problem) => {
       error.textContent = problem.message;
       error.hidden = false;
@@ -513,8 +561,10 @@ function renderSettings(data) {
     field.dispatchEvent(new Event(field.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
   }
   // The redraw replaces every control, so the keyboard goes back to the one it was on.
-  if (focused) [...document.querySelectorAll("#settings button, #settings input, #settings select")]
-    .find((node) => controlKey(node) === focused)?.focus();
+  // After a save, it goes to the button the save names, such as the renamed project's Edit.
+  const controls = [...document.querySelectorAll("#settings button, #settings input, #settings select")];
+  if (data.focus) controls.find((node) => node.getAttribute("aria-label") === data.focus)?.focus();
+  else if (focused) controls.find((node) => controlKey(node) === focused)?.focus();
 }
 
 // Names a Settings control so its copy can be found after a redraw: a field by its label,
@@ -985,6 +1035,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  pathParts, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
+  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 };
 else start();

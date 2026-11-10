@@ -128,6 +128,22 @@ class PageTest(DatabaseTest):
     def type(self, text):
         self.browser.send("Input.insertText", text=text)
 
+    def press_escape(self):
+        for kind in ("keyDown", "keyUp"):
+            self.browser.send(
+                "Input.dispatchKeyEvent",
+                type=kind,
+                key="Escape",
+                code="Escape",
+                windowsVirtualKeyCode=27,
+            )
+
+    def focused(self):
+        """The focused control's accessible name: its label, else its text."""
+        return self.run_js(
+            "(e => e.getAttribute('aria-label') || e.textContent)(document.activeElement)"
+        )
+
     def text(self, selector):
         return self.run_js("document.querySelector(%s)?.textContent" % json.dumps(selector))
 
@@ -318,6 +334,8 @@ class PageTest(DatabaseTest):
         self.add(project="old-name", title="Which colour?")
         pick = "[aria-label='Merge old-name into']"
         self.open("#/settings", ready="$(%s)" % json.dumps(pick))
+        self.click("[aria-label='Edit old-name']")
+        self.wait("$(%s).checkVisibility()" % json.dumps(pick))
         self.run_js(
             "(s => { s.value = 'demo'; s.dispatchEvent(new Event('change', {bubbles: true})); })"
             "($(%s))" % json.dumps(pick)
@@ -336,6 +354,58 @@ class PageTest(DatabaseTest):
             [(p["name"], p["questions"]) for p in self.store.project_summaries()], [("demo", 3)]
         )
         self.assertIsNone(self.run_js("$(%s)" % json.dumps(pick)))
+        # The panel closed, and the keyboard is on the project the questions went to.
+        self.assertEqual(self.focused(), "Edit demo")
+
+    def test_edit_opens_one_project_at_a_time_and_renames_it(self):
+        self.add(project="garden", title="Frost warnings on?")
+        self.open("#/settings", ready="$(\"[aria-label='Edit garden']\")")
+        # Only names, counts, folders and Edit buttons show until one is opened.
+        self.assertFalse(self.run_js("$('#settings .editor input').checkVisibility()"))
+        self.click("[aria-label='Edit demo']")
+        self.click("[aria-label='Edit garden']")
+        self.wait("document.activeElement.getAttribute('aria-label') === 'New name for garden'")
+        self.assertEqual(
+            self.run_js("document.querySelectorAll('#settings .editor:not([hidden])').length"), 1
+        )
+        self.assertEqual(
+            self.run_js("$(\"[aria-label='Edit garden']\").getAttribute('aria-expanded')"), "true"
+        )
+        # The name is selected, so typing replaces it.
+        self.type("Garden")
+        self.click("#settings .editor:not([hidden]) form button")
+        self.wait("$(\"[aria-label='Edit Garden']\")")
+        self.assertEqual(self.store.get("Garden", 1)["title"], "Frost warnings on?")
+        self.assertEqual(self.focused(), "Edit Garden")
+        self.assertEqual(
+            self.run_js("document.querySelectorAll('#settings .editor:not([hidden])').length"), 0
+        )
+
+    def test_escape_cancels_the_merge_then_closes_the_editor(self):
+        self.add(project="old-name", title="Which colour?")
+        pick = "[aria-label='Merge old-name into']"
+        self.open("#/settings", ready="$(\"[aria-label='Edit old-name']\")")
+        self.click("[aria-label='Edit old-name']")
+        self.wait("document.activeElement.getAttribute('aria-label') === 'New name for old-name'")
+        self.type("typed")
+        self.run_js(
+            "(s => { s.value = 'demo'; s.dispatchEvent(new Event('change', {bubbles: true})); })"
+            "($(%s))" % json.dumps(pick)
+        )
+        self.click("form:has(%s) button" % pick)
+        self.wait("$('#settings .confirm:not([hidden])')")
+        self.press_escape()
+        self.wait("$('#settings .confirm').hidden")
+        self.assertEqual(self.focused(), "Merge old-name into")
+        self.press_escape()
+        self.wait("$('#settings .editor:not([hidden])') === null")
+        self.assertEqual(self.focused(), "Edit old-name")
+        # Closing drops what was typed and picked.
+        self.assertEqual(
+            self.run_js("$(\"[aria-label='New name for old-name']\").value"), "old-name"
+        )
+        self.assertEqual(self.run_js("$(%s).value" % json.dumps(pick)), "")
+        self.assertIn("old-name", [project["name"] for project in self.store.project_summaries()])
 
 
 class ContrastTest(TestCase):

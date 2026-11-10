@@ -49,7 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  pathParts, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
+  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -210,6 +210,21 @@ test("a path can break only after a /", () => {
   assert.deepEqual(pathParts("~/Lab/tempo").map(shape), ["~/", ["WBR"], "Lab/", ["WBR"], "tempo"]);
   assert.deepEqual(pathParts("tempo").map(shape), ["tempo"]);
   assert.deepEqual(pathParts(null), [""]);
+});
+
+test("a project row shows only its details and an Edit button until it is opened", () => {
+  const projects = [{ name: "old", questions: 1, folders: [tempo] }, { name: "new", questions: 0, folders: [] }];
+  const row = projectRow(projects[0], projects, 0);
+  const edit = all(row, "BUTTON")[0];
+  assert.equal(edit.textContent, "Edit");
+  assert.equal(edit.attributes["aria-label"], "Edit old");
+  assert.equal(edit.attributes["aria-expanded"], "false");
+  const editor = row.childNodes[2];
+  assert.equal(edit.attributes["aria-controls"], editor.attributes.id);
+  assert.equal(editor.attributes.hidden, "");
+  // Rename and Merge into… are inside the closed panel.
+  assert.deepEqual(all(editor, "BUTTON").map((button) => button.textContent), ["Rename", "Merge…"]);
+  assert.match(row.childNodes[0].textContent, /^old1 question/);
 });
 
 test("the page switch shows whether each session starts the page", () => {
