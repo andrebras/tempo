@@ -77,9 +77,7 @@ sneak into a list of next steps ("say whether you want X", "tell me if Y"). A qu
 lives only in chat is easy to miss and never reaches the page.
 
 That includes yes/no confirmations and requests for permission ("May I delete the old
-branch?"): add them with the options Yes and No. Merging, publishing and installing are the
-one exception: an answer in Tempo never approves them. Record the question in Tempo
-like any other, and also ask for a one-line OK in chat before you act.
+branch?"): add them with the options Yes and No.
 
 To continue numbering from an older list, run `tempo set-next <number>` once before the first add.
 

@@ -1168,8 +1168,8 @@ class CliTest(DatabaseTest):
         # The page's own port, not the default one: TEMPO_PORT here.
         self.assertIn("`- [Q3](http://127.0.0.1:%d/#/shop/3) Pick a colour`" % TEST_PORT, note)
         self.assertIn("Never print a bare link.", note)
-        # Answers from the terminal, the tui and slash commands don't approve merging either.
-        self.assertIn("An answer in Tempo never approves merging", note)
+        # An answer is an answer: no extra approval step for some kinds of action.
+        self.assertNotIn("never approves", note)
         self.assertNotIn("on the Tempo page", note)
 
     def test_with_the_page_off_serve_still_starts_it(self):
