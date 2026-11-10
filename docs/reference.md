@@ -254,9 +254,11 @@ The gear button at the top right of the page opens Settings.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
   its questions, their numbers and its folders along.
-  To join two projects, for example a folder's old project and the new one Tempo started
-  after the folder was renamed or moved, pick the other project in "Merge into…" under the
-  one to merge and click "Merge…". The page says what will move and asks again, inline,
+  Each project shows its name, its number of questions and its folders, with an Edit
+  button. Edit opens Rename and "Merge into…" under that project only; `Esc` closes it and
+  drops what was typed there. To join two projects, for example a folder's old project and
+  the new one Tempo started after the folder was renamed or moved, press Edit on the one to
+  merge, pick the other project in "Merge into…" and click "Merge…". The page says what will move and asks again, inline,
   with "Merge into <project>" and "Cancel" (`Esc` cancels too); nothing moves until then.
   The merged project's questions and folders move to the other one, and the merged project
   goes away. Renaming a project to another's name does the same. If the other has
@@ -267,8 +269,8 @@ The gear button at the top right of the page opens Settings.
   number, such as "Moved from tempo Q2 when tempo joined Tempo.", so old references can
   still be traced.
   Under each project, Settings lists the folders it covers, with their paths, read-only.
-  Only folders still on disk are listed: a folder that no longer exists, or that was
-  remembered before Tempo stored paths, is hidden but not deleted.
+  A long path wraps only after a `/`. A folder that no longer exists is marked "folder
+  gone"; one remembered before Tempo stored paths is hidden but not deleted.
   A project is listed from the first session in its folder, before its first question. A
   project with no questions, and no numbering set with `tempo set-next`, is listed only
   while at least one of its folders is still on disk: once they are all gone, as with a

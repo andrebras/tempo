@@ -333,22 +333,25 @@ def _commit() -> str | None:
 
 def _settings(store: Store) -> dict[str, Any]:
     """What the Settings screen shows: projects with their folders, and whether each
-    session starts the page. Only folders still on disk are listed; a folder that no
-    longer exists, or whose path isn't known yet, stays in the database but is hidden.
-    An empty project whose folders are all gone is forgotten (forget_gone_folders)."""
+    session starts the page. A folder that no longer exists is listed with gone set; one
+    whose path isn't known yet stays in the database but is hidden. An empty project
+    whose folders are all gone is forgotten (forget_gone_folders)."""
     store.forget_gone_folders()
     projects = [
-        dict(project, folders=[folder for folder in project["folders"] if _on_disk(folder)])
+        dict(
+            project,
+            folders=[
+                dict(folder, gone=not os.path.exists(str(folder["path"])))
+                for folder in project["folders"]
+                if folder["path"]
+            ],
+        )
         for project in store.project_summaries()
     ]
     return {
         "projects": projects,
         "start_page": store.start_page(),
     }
-
-
-def _on_disk(folder: dict[str, Any]) -> bool:
-    return bool(folder["path"]) and os.path.exists(str(folder["path"]))
 
 
 def _set_start_page(store: Store, body: Any) -> dict[str, Any]:

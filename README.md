@@ -105,7 +105,7 @@ decision, it adds a question and links to it in chat. On the page you can:
 - **Adjust Settings** with the gear button: theme, font, text size and line width, whether
   each session starts the page, and project names. Settings also lists the folders each
   project covers, and merges one project into another. A renamed or moved folder starts its
-  own project: use "Merge into…" to join its old project into the new one.
+  own project: press Edit on the old project and use "Merge into…" to join it into the new one.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/settings-dark.png">
