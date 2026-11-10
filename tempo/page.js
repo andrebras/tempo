@@ -352,14 +352,47 @@ function renderSessions(data) {
 
 // The terminal under the question, kept in the database like `tempo config terminal`. Off by
 // default: with it on, the page can run any command as the user. Its font and size apply to
-// open terminals at once.
+// open terminals at once. Off while terminals run first says what that ends, with buttons to
+// go ahead or cancel, as Merge does: the page never opens a browser dialog.
 function renderTerminal(data) {
   const error = el("p", { class: "error", hidden: true });
   const save = (body) => api("/api/settings/terminal", body);
-  const choose = (on) => save({ on }).then(renderSettings, (problem) => {
+  const failed = (problem) => {
     error.textContent = problem.message;
     error.hidden = false;
-  });
+  };
+  const turn = (on) => save({ on })
+    .then((result) => ({ ...result, terminalNotice: on ? null : terminalOffNotice(result.ended) }))
+    .then(renderSettings, failed);
+  const confirm = el("div", { class: "confirm", role: "group", hidden: true, onkeydown: (event) => {
+    if (event.key === "Escape") close();
+  } });
+  const close = () => {
+    confirm.hidden = true;
+    confirm.replaceChildren();
+    confirm.parentNode.querySelector("[aria-pressed=false]")?.focus();
+  };
+  const choose = async (on) => {
+    if (on || !data.terminal || typeof terminalRunning !== "function") return turn(on);
+    let running;
+    try {
+      running = await terminalRunning();
+    } catch (problem) {
+      return failed(problem);
+    }
+    if (!running) return turn(false);
+    const text = terminalOffQuestion(running);
+    const yes = el("button", { class: "primary", onclick: () => {
+      yes.disabled = true;
+      turn(false).finally(() => { yes.disabled = false; });
+    } }, "Turn off");
+    confirm.replaceChildren(el("p", {}, text),
+      el("div", { class: "actions" }, yes, el("button", { onclick: close }, "Cancel")));
+    // Read out when the keyboard lands on the first button.
+    confirm.setAttribute("aria-label", text);
+    confirm.hidden = false;
+    yes.focus();
+  };
   const font = el("input", { value: data.terminal_font, placeholder: "System monospace", "aria-label": "Terminal font" });
   const size = el("input", {
     type: "number", min: 8, max: 32, value: data.terminal_size, "aria-label": "Terminal font size",
@@ -367,13 +400,14 @@ function renderTerminal(data) {
   return el("section", { class: "card" },
     el("h3", {}, "Terminal"),
     el("p", {}, "Saved in the database, the same as ", el("code", {}, "tempo config terminal"), "."),
+    data.terminalNotice && el("p", { class: "meta", role: "status" }, data.terminalNotice),
     el("div", { class: "row" },
       el("div", {}, el("strong", {}, "Terminal in the project's folder"),
         el("span", { class: "meta" }, "On: a Terminal button opens a shell there. The page can then run any command as you.")),
       el("div", { class: "segmented", role: "group", "aria-label": "Terminal in the project's folder" },
         [[true, "On"], [false, "Off"]].map(([on, name]) =>
           el("button", { "aria-pressed": String(on === data.terminal), onclick: () => choose(on) }, name))),
-      error),
+      error, confirm),
     el("div", { class: "row" },
       el("div", {}, el("strong", {}, "Terminal font"),
         el("span", { class: "meta" }, "Font names, such as \"JetBrains Mono\", monospace. Empty: the system's monospace font.")),
@@ -383,6 +417,17 @@ function renderTerminal(data) {
       el("div", {}, el("strong", {}, "Font size"), el("span", { class: "meta" }, "In pixels, from 8 to 32.")),
       saveForm(size, () => (size.value !== "" && Number(size.value) !== data.terminal_size ? Number(size.value) : null),
         (value) => save({ size: value }))));
+}
+
+// What turning the terminal off ends, shown before it happens.
+function terminalOffQuestion(running) {
+  return `Turning the terminal off ends ${count(running, "running terminal")}; anything running in `
+    + `${running === 1 ? "it" : "them"} stops.`;
+}
+
+// Says how many terminals turning it off ended; nothing when none ran.
+function terminalOffNotice(ended) {
+  return ended ? `Terminal is off. Ended ${count(ended, "terminal")}.` : null;
 }
 
 // A small Settings form that saves one value, and the line for its errors. read() returns
@@ -1075,6 +1120,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, rewordNotice, state,
+  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, terminalOffQuestion, terminalOffNotice, rewordNotice, state,
 };
 else start();

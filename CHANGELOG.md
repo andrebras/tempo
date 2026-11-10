@@ -23,6 +23,9 @@ All notable changes to Tempo are listed here. The format follows
   `tempo-<folder>-<hash>`, which survives a server restart and which you can attach to from
   your own terminal; without tmux, the page server keeps the shell and its latest output
   until you end it or the server stops.
+- Turning the terminal off says what it ends. In Settings, with terminals running, it first
+  asks, inline, and then says how many it ended. `tempo config terminal off` now also ends
+  the tmux sessions Tempo started, and no other, and names them.
 
 ### Changed
 

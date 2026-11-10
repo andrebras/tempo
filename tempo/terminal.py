@@ -94,13 +94,20 @@ def _tmux(*args: str) -> subprocess.CompletedProcess[str] | None:
         return None
 
 
-def end_sessions() -> None:
-    """End every tmux session Tempo started, and no other: only names session_name makes."""
+def sessions() -> list[str]:
+    """The tmux sessions Tempo started, and no other: only names session_name makes."""
     listed = _tmux("list-sessions", "-F", "#{session_name}")
     mine = re.compile(r"%s.+-[0-9a-f]{6}" % re.escape(PREFIX))
-    for name in listed.stdout.split() if listed and listed.returncode == 0 else []:
-        if mine.fullmatch(name):
-            _tmux("kill-session", "-t", "=" + name)
+    names = listed.stdout.split() if listed and listed.returncode == 0 else []
+    return sorted(name for name in names if mine.fullmatch(name))
+
+
+def end_sessions() -> list[str]:
+    """End every tmux session Tempo started, and say which."""
+    names = sessions()
+    for name in names:
+        _tmux("kill-session", "-t", "=" + name)
+    return names
 
 
 class Shell:
@@ -274,10 +281,22 @@ class Shells:
         for key in keys:
             self.close(key)
 
-    def end_all(self) -> None:
-        """When the terminal is turned off: every shell and every Tempo tmux session ends."""
-        end_sessions()
+    def _kept(self) -> int:
+        """How many shells the server keeps itself, without tmux, that still run."""
+        with self.lock:
+            return sum(not shell.session and not shell.ended for shell in self.shells.values())
+
+    def running(self) -> int:
+        """How many terminals turning the terminal off would end: the shells the server
+        keeps, and every Tempo tmux session, shown or hidden, also one an earlier server left."""
+        return self._kept() + len(sessions())
+
+    def end_all(self) -> int:
+        """When the terminal is turned off: every shell and every Tempo tmux session ends.
+        Says how many terminals were running."""
+        ended = self._kept() + len(end_sessions())
         self.close_all()
+        return ended
 
 
 SHELLS = Shells()

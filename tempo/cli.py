@@ -467,6 +467,9 @@ def run_config(args: argparse.Namespace) -> None:
     store = _store()
     if args.value is not None:
         _change_setting(store, args.name, args.value)
+    if (args.name, args.value) == ("terminal", "off"):
+        print(_terminal_off())
+        return
     font = store.terminal_font() or "default, the system's monospace font"
     lines = {
         "page": (
@@ -487,6 +490,26 @@ def run_config(args: argparse.Namespace) -> None:
     for name, line in lines.items():
         if args.name in (None, name):
             print(line)
+
+
+def _terminal_off() -> str:
+    """End the tmux sessions Tempo started, and say what stopped. This command cannot reach
+    a running page server, so the shells it keeps itself, without tmux, go on until it
+    stops, or until the terminal is turned off in its Settings."""
+    from tempo import terminal
+
+    if not terminal.TMUX:
+        return (
+            "Terminal is off. Shells kept alive by a running page server stop when that"
+            " server stops, or when you turn the terminal off in the page's Settings."
+        )
+    ended = terminal.end_sessions()
+    if not ended:
+        return "Terminal is off. No terminal sessions were running."
+    return (
+        "Terminal is off. Ended %d tmux session%s Tempo started (%s); anything running in"
+        " them was stopped." % (len(ended), "" if len(ended) == 1 else "s", ", ".join(ended))
+    )
 
 
 def _change_setting(store: Store, name: str, value: str) -> None:

@@ -28,6 +28,16 @@ async function terminalPost(path, body) {
   return data;
 }
 
+// How many terminals turning the setting off would end: shown or hidden, in tmux or kept by
+// the page server. Settings asks before it turns the terminal off.
+// biome-ignore lint/correctness/noUnusedVariables: page.js calls it, from another script
+async function terminalRunning() {
+  const response = await fetch("/api/terminal/running", { headers: { "X-Tempo-Secret": terminalSecret() } });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "The terminal failed");
+  return data.running;
+}
+
 // The complete Server-Sent Events in text, each { event, data }, and the unfinished rest to
 // keep for the next chunk. Comments (lines starting with ":") only say the server is there.
 function sseEvents(text) {

@@ -436,6 +436,29 @@ class PageTest(DatabaseTest):
         self.wait("!$('#terminal-toggle').hidden")
         self.assertTrue(self.store.terminal())
 
+    def test_turning_the_terminal_off_in_settings_first_says_what_it_ends(self):
+        terminal.SHELLS.open(self.start_terminal())
+        self.open("#/settings", ready="$('#settings .segmented button')")
+        off = '#settings [aria-label="Terminal in the project\'s folder"] button:last-child'
+        self.click(off)
+        self.wait("$('#settings .confirm:not([hidden])')")
+        self.assertEqual(
+            self.text("#settings .confirm p"),
+            "Turning the terminal off ends 1 running terminal; anything running in it stops.",
+        )
+        self.assertEqual(self.focused(), "Turn off")
+        self.press_escape()
+        self.wait("$('#settings .confirm').hidden")
+        self.assertTrue(self.store.terminal())
+        self.assertEqual(len(terminal.SHELLS.shells), 1)
+        self.click(off)
+        self.wait("$('#settings .confirm:not([hidden])')")
+        self.click("#settings .confirm button.primary")
+        notice = "$('#settings [role=status]')?.textContent"
+        self.wait("%s === 'Terminal is off. Ended 1 terminal.'" % notice)
+        self.assertFalse(self.store.terminal())
+        self.assertEqual(terminal.SHELLS.shells, {})
+
     def test_merges_one_project_into_another_from_settings(self):
         # A folder renamed by hand: its old project keeps its question until it is merged.
         self.add(project="old-name", title="Which colour?")
