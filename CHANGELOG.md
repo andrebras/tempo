@@ -16,6 +16,10 @@ All notable changes to Tempo are listed here. The format follows
   when that is a regular file. With no `~/.tmux.conf` but a `~/.config/tmux/tmux.conf`, it
   uses that one.
 
+- While `~/.local/bin/tempo` isn't a link to Tempo, each session's start has Claude tell
+  you once: "To use Tempo in your terminal and tmux, type /tempo:install." It stops once
+  `tempo install` works, or after you say no, with `tempo config install-hint off`.
+
 ### Changed
 
 - `tempo uninstall` also removes the marked lines `tempo install --tmux` added, and nothing

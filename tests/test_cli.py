@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 from tempo import cli
-from tests import REAL_START_SERVER, TEST_PORT, RealServerStart
+from tests import REAL_START_SERVER, REAL_TEMPO_LINKED, TEST_PORT, RealServerStart
 from tests.helpers import DatabaseTest
 
 
@@ -1122,7 +1122,13 @@ class CliTest(DatabaseTest):
     def test_config_shows_and_changes_the_page_setting(self):
         self.assertEqual(
             run("config"),
-            (0, "page on: each session starts the page at http://127.0.0.1:%d/\n" % TEST_PORT, ""),
+            (
+                0,
+                "page on: each session starts the page at http://127.0.0.1:%d/\n"
+                "install-hint on: sessions offer /tempo:install while tempo isn't installed\n"
+                % TEST_PORT,
+                "",
+            ),
         )
         code, out, _ = run("config", "page", "off")
         self.assertEqual(code, 0)
@@ -1887,6 +1893,39 @@ class InstallTest(HomeTest, DatabaseTest):
     def read_conf(self, path=None):
         with open(path or self.conf) as file:
             return file.read()
+
+    def session_note(self):
+        with mock.patch.object(cli, "tempo_linked", REAL_TEMPO_LINKED):
+            return cli.session_note("demo", TEST_PORT)
+
+    def test_sessions_offer_the_slash_command_until_tempo_is_installed(self):
+        self.assertIn(cli.INSTALL_HINT, self.session_note())
+        run("install")
+        self.assertNotIn(cli.INSTALL_HINT, self.session_note())
+        self.assertFalse(self.store.install_hint())
+
+    def test_sessions_stop_offering_it_once_the_user_says_no(self):
+        code, out, _ = run("config", "install-hint", "off")
+        self.assertEqual(
+            (code, out), (0, "install-hint off: sessions don't offer /tempo:install\n")
+        )
+        self.assertNotIn(cli.INSTALL_HINT, self.session_note())
+        run("config", "install-hint", "on")
+        self.assertIn(cli.INSTALL_HINT, self.session_note())
+
+    def test_a_link_to_something_else_still_gets_the_offer(self):
+        os.makedirs(self.bin)
+        os.symlink("/usr/bin/true", self.link)
+        self.assertIn(cli.INSTALL_HINT, self.session_note())
+
+    def test_the_session_start_hook_offers_it_second(self):
+        with (
+            mock.patch.object(cli, "tempo_linked", REAL_TEMPO_LINKED),
+            mock.patch.object(cli, "page_on", return_value=False),
+        ):
+            out = run("hook", "session-start", stdin="{}")[1]
+        lines = json.loads(out)["hookSpecificOutput"]["additionalContext"].splitlines()
+        self.assertEqual(lines[1], cli.INSTALL_HINT)
 
     def test_tmux_adds_the_block_once_and_saves_the_sidebar_as_on(self):
         code, out, _ = run("install", "--tmux")
