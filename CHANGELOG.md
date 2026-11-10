@@ -15,6 +15,9 @@ All notable changes to Tempo are listed here. The format follows
 
 ### Fixed
 
+- A project with no open questions no longer shows a "something new" dot on its chip, for
+  example after its questions were answered in the terminal. Only open questions count as
+  news.
 - An empty project left by a folder that no longer exists, such as a throwaway folder in
   `/tmp` where a session once ran, no longer stays in Settings and the project list
   forever. Tempo forgets its folders once they are all gone. Projects with questions are

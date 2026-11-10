@@ -37,11 +37,18 @@ class ActivityTest(DatabaseTest):
         self.at("2026-01-03T00:00:00Z", self.store.reword, "demo", 1, "Clearer", title="Which?")
         self.at("2026-01-04T00:00:00Z", self.store.add_context, "other", 1, "More detail")
         self.at("2026-01-05T00:00:00Z", self.store.follow_up, "demo", 1, "Why?")
-        self.at("2026-01-06T00:00:00Z", self.store.answer, "other", 1, "a", "")
         self.assertEqual(
             self.store.project_activity(),
             {"demo": "2026-01-03T00:00:00Z", "other": "2026-01-04T00:00:00Z"},
         )
+
+    def test_a_project_with_nothing_open_has_no_activity(self):
+        self.at("2026-01-01T00:00:00Z", self.add)
+        self.at("2026-01-02T00:00:00Z", self.add, project="other")
+        # Answered elsewhere, say in the terminal: there is nothing new to look at.
+        self.at("2026-01-03T00:00:00Z", self.store.answer, "other", 1, "a", "")
+        self.at("2026-01-04T00:00:00Z", self.store.add_context, "other", 1, "Done")
+        self.assertEqual(self.store.project_activity(), {"demo": "2026-01-01T00:00:00Z"})
 
     def test_each_listed_question_has_its_latest_news_from_claude(self):
         def activity():
