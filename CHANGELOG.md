@@ -19,6 +19,8 @@ All notable changes to Tempo are listed here. The format follows
   and closes it when run again, so one tmux key can show and hide it.
 - With a workmux sidebar in the window, `tempo tmux` puts Tempo below it rather than in
   a second column on the left.
+- The sidebar lists each question as the page does: a line with its state mark in a column
+  on the left, its number, "quick" and its age, then its title in up to two lines.
 - In the sidebar, `g` goes to the pane where the shown project's Claude session runs, in
   whichever tmux session it is, and says so when none is open.
 

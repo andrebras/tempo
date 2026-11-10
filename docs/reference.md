@@ -320,10 +320,14 @@ Then reload the file with `tmux source-file ~/.tmux.conf`.
 
 `tempo tui --sidebar` is a compact view for a narrow pane, such as a tmux split beside
 Claude's session. Its top line names the project and how many questions are open there;
-the next lists the other projects with something open. Below are the project's questions
-by goal, with the page's marks: `»` before the question to start with, `…` before one
-waiting on Claude, and a dot after one Claude asked, reworded or added to since you last
-opened it here. What is open when the sidebar starts counts as opened.
+the next lists the other projects with something open, with a dot on those with something
+new. Below are the project's questions by goal, as on the page: each takes a line with
+its number, "quick" when it applies and how long it has been open (`4d`, `3h`, `12m`),
+then its title in up to two lines, and a blank line. A column on the left shows the page's
+marks, one per question: a dot when Claude asked, reworded or added to it since you last
+opened it here, `…` while it waits on Claude, and `»` for the question to start with; when
+several apply, the dot comes first, then `…`. What is open when the sidebar starts counts
+as opened. The selected question is highlighted whole and always shown whole.
 
 In the list, `j` and `k` move, `h` and `l` switch project, and Enter opens the question
 over the list. There, `j` and `k` scroll, a letter answers as in the full view, `r` writes
