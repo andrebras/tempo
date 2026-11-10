@@ -4,6 +4,23 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `tempo install --tmux` also sets tmux up for the sidebar. It adds three marked lines to
+  the end of `~/.tmux.conf` that bring the sidebar back when tmux starts, unless they, or a
+  `tempo sidebar --restore` line of your own, are already there. Then it turns the sidebar
+  on: at once inside tmux, otherwise the next time tmux starts. It never changes your other
+  lines. When `~/.tmux.conf` is a symlink, it edits the file the link points to, and only
+  when that is a regular file. With no `~/.tmux.conf` but a `~/.config/tmux/tmux.conf`, it
+  uses that one.
+
+### Changed
+
+- `tempo uninstall` also removes the marked lines `tempo install --tmux` added, and nothing
+  else in the file.
+
 ## [0.12.0] - 2026-11-10
 
 ### Added

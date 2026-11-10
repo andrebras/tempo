@@ -22,8 +22,8 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo sidebar` | For you, not Claude: inside tmux, turn the questions' sidebar (`tempo tui --sidebar`) on in every window, 40 columns wide, or off again (`on` or `off` sets it, toggling is the default; `--side left` or `--side right` picks the side and is remembered; whether it is on is remembered too, and `--restore` in `~/.tmux.conf` brings it back after tmux restarts) |
 | `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `--sidebar` is a compact view for a narrow pane beside Claude's; `--question N` shows only that question and closes once it is answered; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
 | `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Starting the page with each session](#starting-the-page-with-each-session)) |
-| `tempo install` | For you, not Claude: put `tempo` on your own shell's `PATH` with a symlink (a small file that points at another), `~/.local/bin/tempo`, to Tempo's marketplace copy of `bin/tempo`, which stays put across updates, or to your clone's when run from a clone. It makes `~/.local/bin` when it is missing, does nothing when the link is already there, never replaces anything else at that path, and prints the line to add to your shell's config when `~/.local/bin` is not on your `PATH`. `/tempo:install` runs it from a session |
-| `tempo uninstall` | For you, not Claude: remove `~/.local/bin/tempo`, but only when it is a link to a Tempo `bin/tempo` |
+| `tempo install` | For you, not Claude: put `tempo` on your own shell's `PATH` with a symlink (a small file that points at another), `~/.local/bin/tempo`, to Tempo's marketplace copy of `bin/tempo`, which stays put across updates, or to your clone's when run from a clone. It makes `~/.local/bin` when it is missing, does nothing when the link is already there, never replaces anything else at that path, and prints the line to add to your shell's config when `~/.local/bin` is not on your `PATH`. With `--tmux`, it then adds three marked lines to the end of your tmux config that bring the sidebar back when tmux starts (see [A sidebar beside Claude](#a-sidebar-beside-claude)), and turns the sidebar on. `/tempo:install` runs it from a session |
+| `tempo uninstall` | For you, not Claude: remove the marked lines `tempo install --tmux` added to your tmux config, and `~/.local/bin/tempo`, but only when it is a link to a Tempo `bin/tempo` |
 | `tempo serve [--background]` | Run the page; works whether or not sessions start it (`--port` picks another port) |
 | `tempo hook <event>` | Run by Claude Code's hooks (`session-start`, `user-prompt-submit`, `stop`); not for direct use (see [Hooks](#hooks)) |
 | `tempo slash <name>` | Run by the slash commands below, with the typed text on stdin; not for direct use |
@@ -381,11 +381,23 @@ while the sidebar is on moves every sidebar there.
 
 Whether the sidebar is on is remembered too, in Tempo's database. tmux forgets its
 sidebars when its server stops, after a reboot for one. To have them come back by
-themselves, add this line to `~/.tmux.conf`:
+themselves, run `tempo install --tmux` (or type `/tempo:install` in a session), which adds
+these lines to the end of `~/.tmux.conf`:
 
 ```tmux
+# tempo: bring the sidebar back when tmux starts
 run-shell -b "~/.local/bin/tempo sidebar --restore"
+# end tempo
 ```
+
+It adds them only when they, or a `tempo sidebar --restore` line of your own, aren't there
+yet, and never changes your other lines. When `~/.tmux.conf` is a symlink (a small file
+that points at another, as dotfile managers make), it edits the file the link points to,
+and only when that is a regular file; otherwise it prints the lines for you to add. When
+there is no `~/.tmux.conf` but there is a `~/.config/tmux/tmux.conf`, it uses that one,
+since a new `~/.tmux.conf` would hide it from tmux. It never reloads the file: the lines
+matter only when tmux starts. `tempo uninstall` removes exactly those lines, from the first
+marker to `# end tempo`. You can also add the lines yourself.
 
 A plain `run-shell -b "tempo sidebar --restore"` works only when tmux's `run-shell` sees
 the `PATH` your shell sets, which it often doesn't, so copy the line with the full path.
