@@ -330,6 +330,52 @@ class PageTest(DatabaseTest):
         self.assertEqual(self.run_js("document.activeElement.textContent"), "Off")
         self.assertTrue(self.run_js("$('#settings').contains(document.activeElement)"))
 
+    # The list on the left
+
+    def collapsed(self):
+        return self.run_js("$('main').classList.contains('side-collapsed')")
+
+    def test_the_list_collapses_to_a_strip_and_the_browser_remembers_it(self):
+        self.open("#/demo/1", ready=LOADED + " && $('#side-toggle').offsetWidth")
+        self.assertEqual(self.run_js("$('#side-toggle').getAttribute('aria-expanded')"), "true")
+        self.click("#side-toggle")
+        self.wait("$('main').classList.contains('side-collapsed')")
+        self.assertEqual(self.run_js("$('#side-toggle').getAttribute('aria-expanded')"), "false")
+        self.assertEqual(self.focused(), "Expand the list")
+        # A thin strip with the number of open questions; the list and search step aside.
+        self.assertLess(self.run_js("$('#side').offsetWidth"), 80)
+        self.assertEqual(self.run_js("$('#list').offsetHeight"), 0)
+        self.assertEqual(self.text(".side-strip .count"), "2")
+        self.assertTrue(self.run_js("$('#detail h2').offsetWidth > 0"))
+        # A question Claude changes since it was opened shows its dot on the strip too.
+        # Times are kept to the second, so the context is dated a little later.
+        with mock.patch("tempo.store.common.now", return_value="2099-01-01T00:00:00Z"):
+            self.store.add_context("demo", 2, "Fast costs twice as much.")
+        self.tick()
+        self.wait("$('.side-strip .dot')")
+        # Kept for the next visit, and the same button opens it again.
+        self.open("#/demo/1", ready=LOADED + " && $('#side-toggle').offsetWidth")
+        self.assertTrue(self.collapsed())
+        self.click("#side-toggle")
+        self.wait("!$('main').classList.contains('side-collapsed') && $('#list').offsetHeight")
+
+    def test_the_lists_edge_changes_its_width_and_the_browser_remembers_it(self):
+        self.open("#/demo/1", ready=LOADED + " && $('#side .side-grip').offsetWidth")
+        before = self.run_js("$('#side').offsetWidth")
+        self.run_js("$('#side .side-grip').focus()")
+        for _ in range(3):
+            for kind in ("keyDown", "keyUp"):
+                self.browser.send(
+                    "Input.dispatchKeyEvent",
+                    type=kind,
+                    key="ArrowRight",
+                    code="ArrowRight",
+                    windowsVirtualKeyCode=39,
+                )
+        self.wait("$('#side').offsetWidth === %d" % (before + 72))
+        self.open("#/demo/1")
+        self.assertEqual(self.run_js("$('#side').offsetWidth"), before + 72)
+
     # The terminal under the question
 
     def start_terminal(self):

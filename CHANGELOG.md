@@ -29,6 +29,9 @@ All notable changes to Tempo are listed here. The format follows
 - The terminal's Maximize button makes it fill the right-hand column, with the question
   list still on the left. Restore, Escape outside the shell, or picking a question puts it
   back under the question.
+- The question list on the left can be made wider or narrower by dragging its right edge
+  (or with the arrow keys), and collapsed to a thin strip that still shows the number of
+  open questions and the "something new" dot. The browser remembers both.
 
 ### Changed
 

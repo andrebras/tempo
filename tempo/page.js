@@ -207,6 +207,8 @@ async function loadList() {
   renderProjectBar(data.projects, counts, data.activity || {});
   state.opened = noteOpened(state.opened, data.projects, open.questions, state.project, current);
   try { localStorage.setItem("opened", JSON.stringify(state.opened)); } catch { /* just don't remember */ }
+  drawSideStrip(counts[state.project] || 0,
+    open.questions.some((q) => q.project === state.project && questionFresh(q, state.opened)));
   const words = $("#search").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (q) => words.every((word) =>
     `${q.label} ${q.title} ${q.context} ${q.goal || ""}`.toLowerCase().includes(word));
@@ -244,6 +246,73 @@ async function loadList() {
   }
   drawList($("#list"), list);
   return shown;
+}
+
+// The collapsed list's strip: how many questions are open here, and a dot when one has
+// something new. Redrawn only when it changes, like the list.
+function drawSideStrip(open, fresh) {
+  const strip = $(".side-strip");
+  const key = JSON.stringify([open, fresh]);
+  if (strip.dataset.key === key) return;
+  strip.dataset.key = key;
+  strip.title = `${count(open, "open question")}${fresh ? ", something new" : ""}`;
+  strip.replaceChildren(el("span", { class: "count" }, String(open)), newDot(fresh) || "");
+}
+
+// The list's width in pixels, kept between readable and leaving the question most of the room.
+function sideWidth(width, windowWidth) {
+  return Math.round(Math.min(Math.max(width, 220), Math.max(220, windowWidth * 0.6)));
+}
+
+function setSideWidth(width) {
+  $("main").style.setProperty("--side-width", `${sideWidth(width, innerWidth)}px`);
+}
+
+function setSideCollapsed(collapsed) {
+  $("main").classList.toggle("side-collapsed", collapsed);
+  const toggle = $("#side-toggle");
+  const words = collapsed ? "Expand the list" : "Collapse the list";
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  toggle.setAttribute("aria-label", words);
+  toggle.title = words;
+}
+
+// The list's width and whether it is collapsed are kept per browser, like the theme.
+function remember(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* just don't remember */ }
+}
+
+function startSide() {
+  const grip = $("#side .side-grip");
+  const keep = () => remember("side-width", String($("#side").offsetWidth));
+  try {
+    const saved = Number(localStorage.getItem("side-width"));
+    if (saved) setSideWidth(saved);
+    setSideCollapsed(localStorage.getItem("side-collapsed") === "true");
+  } catch { /* storage blocked: keep the defaults */ }
+  $("#side-toggle").addEventListener("click", () => {
+    const collapsed = !$("main").classList.contains("side-collapsed");
+    setSideCollapsed(collapsed);
+    remember("side-collapsed", String(collapsed));
+  });
+  grip.addEventListener("pointerdown", (event) => {
+    const startX = event.clientX;
+    const startWidth = $("#side").offsetWidth;
+    grip.setPointerCapture(event.pointerId);
+    const move = (moved) => setSideWidth(startWidth + moved.clientX - startX);
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("lostpointercapture", () => {
+      grip.removeEventListener("pointermove", move);
+      keep();
+    }, { once: true });
+  });
+  grip.addEventListener("keydown", (event) => {
+    const step = { ArrowRight: 24, ArrowLeft: -24 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    setSideWidth($("#side").offsetWidth + step);
+    keep();
+  });
 }
 
 // The timed refresh redraws the list only when it changed, so a click isn't swallowed,
@@ -1113,6 +1182,7 @@ function start() {
     });
   }
 
+  startSide();
   refresh(true);
   checkServer();
   setInterval(() => { refresh(false); checkServer(); }, 4000);
@@ -1120,6 +1190,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, terminalOffQuestion, terminalOffNotice, rewordNotice, state,
+  pathParts, projectRow, noteOpened, sideWidth, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, terminalOffQuestion, terminalOffNotice, rewordNotice, state,
 };
 else start();

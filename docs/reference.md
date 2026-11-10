@@ -170,6 +170,14 @@ The setting is kept in the database, so every session and project sees it. With 
   The Stop hook counts a question's number (such as Q5) in a sentence as pointing at it,
   where it would otherwise want the question's link.
 
+### The question list
+
+On a wide screen, drag the question list's right edge (or focus it and use the left and
+right arrow keys) to make the list wider or narrower. The button beside the search box
+collapses the list to a thin strip that still shows how many questions are open in the
+project, with a dot when one has something new; the same button opens it again. The browser
+remembers the width and whether the list is collapsed. On a phone the list stays as it is.
+
 ### The terminal
 
 The page can show a terminal in a project's folder, so you don't have to switch to your
