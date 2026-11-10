@@ -1,18 +1,23 @@
+import base64
 import http.client
 import io
 import json
 import os
 import tempfile
 import threading
+import time
 from http.server import ThreadingHTTPServer
 from unittest import mock
 
+from tempo import terminal
 from tempo.server import ROOT, make_handler
 from tempo.store import Store
 from tests.helpers import DatabaseTest
 
 
-class ServerTest(DatabaseTest):
+class ServerBase(DatabaseTest):
+    """A page server on a free port and the test's database, and requests to it."""
+
     def setUp(self):
         super().setUp()
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), None)
@@ -28,10 +33,17 @@ class ServerTest(DatabaseTest):
         self.add()
 
     def request(
-        self, method, path, body=None, host=None, origin="same", content_type="application/json"
+        self,
+        method,
+        path,
+        body=None,
+        host=None,
+        origin="same",
+        content_type="application/json",
+        headers=None,
     ):
         connection = http.client.HTTPConnection("127.0.0.1", self.port)
-        headers = {"Host": host or "127.0.0.1:%d" % self.port}
+        headers = {"Host": host or "127.0.0.1:%d" % self.port, **(headers or {})}
         if origin == "same":
             origin = "http://127.0.0.1:%d" % self.port
         if origin:
@@ -58,6 +70,8 @@ class ServerTest(DatabaseTest):
         connection.close()
         return response.status, json.loads(body)
 
+
+class ServerTest(ServerBase):
     def test_serves_the_page_and_the_list(self):
         status, page = self.request("GET", "/")
         self.assertEqual(status, 200)
@@ -323,6 +337,17 @@ class ServerTest(DatabaseTest):
                 self.assertIn("true or false", json.loads(data)["error"])
         self.assertTrue(self.store.start_page())
 
+    def test_turns_the_terminal_on_and_off(self):
+        _, data = self.request("GET", "/api/settings")
+        self.assertFalse(json.loads(data)["terminal"])
+        status, data = self.request("POST", "/api/settings/terminal", {"on": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(data)["terminal"])
+        self.assertTrue(self.store.terminal())
+        self.assertEqual(self.request("POST", "/api/settings/terminal", {"on": "on"})[0], 400)
+        self.request("POST", "/api/settings/terminal", {"on": False})
+        self.assertFalse(self.store.terminal())
+
     def test_reports_settings_errors(self):
         self.add(project="other")
         status, data = self.request("POST", "/api/projects/demo/rename", {"name": " "})
@@ -391,3 +416,190 @@ class ServerTest(DatabaseTest):
         for path in ("/api/questions", "/api/settings"):
             with self.subTest(path=path):
                 self.assertNotIn("renames", json.loads(self.request("GET", path)[1]))
+
+
+class TerminalTest(ServerBase):
+    """The page's terminal: a shell in the project's folder, behind a setting and a secret."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder = tempfile.mkdtemp()
+        self.addCleanup(os.rmdir, self.folder)
+        self.store.see_folder("demo", self.folder)
+        self.store.set_terminal(True)
+        # /bin/sh starts fast and the same everywhere, unlike the user's own shell.
+        shell = mock.patch.dict(os.environ, {"SHELL": "/bin/sh", "PS1": "$ "})
+        shell.start()
+        self.addCleanup(shell.stop)
+        self.addCleanup(terminal.SHELLS.close_all)
+        self.secret = self.server.RequestHandlerClass.terminal_secret
+
+    log = ServerTest.log
+
+    def terminal(self, path, body=None, secret=None, **options):
+        headers = {"X-Tempo-Secret": self.secret if secret is None else secret}
+        method = "GET" if body is None else "POST"
+        status, data = self.request(method, path, body, headers=headers, **options)
+        return status, json.loads(data)
+
+    def open(self):
+        status, data = self.terminal("/api/terminal", {"project": "demo"})
+        self.assertEqual(status, 200, data)
+        return data["id"]
+
+    def read(self, key):
+        """Start reading a shell's output: the connection and its response."""
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        headers = {"Host": "127.0.0.1:%d" % self.port, "X-Tempo-Secret": self.secret}
+        connection.request("GET", "/api/terminal/%s/output" % key, headers=headers)
+        self.addCleanup(connection.close)
+        return connection, connection.getresponse()
+
+    def until(self, response, text):
+        """The decoded output and the event lines, read until text appears or it ends."""
+        seen, events = b"", []
+        while text.encode() not in seen:
+            line = response.readline()
+            if not line:
+                break
+            events.append(line)
+            if line.startswith(b"data: "):
+                seen += base64.b64decode(line[6:].strip())
+        return seen, events
+
+    def ended(self, key, shell):
+        """Whether the shell's process ended and it is no longer listed, within 5 seconds."""
+        deadline = time.monotonic() + 5
+        while shell.process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return shell.process.poll() is not None and terminal.SHELLS.get(key) is None
+
+    def test_the_page_carries_a_new_secret_each_start(self):
+        _, page = self.request("GET", "/")
+        self.assertIn(b'<meta name="tempo-secret" content="%s">' % self.secret.encode(), page)
+        self.assertGreaterEqual(len(self.secret), 40)
+        self.assertNotEqual(make_handler(self.port).terminal_secret, self.secret)
+
+    def test_a_shell_runs_in_the_projects_folder_and_runs_what_is_typed(self):
+        key = self.open()
+        _, response = self.read(key)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Content-Type"), "text/event-stream")
+        resize = self.terminal("/api/terminal/%s/resize" % key, {"cols": 90, "rows": 20})
+        self.assertEqual(resize, (200, {}))
+        typed = {"data": "echo hi$((1+1)); pwd -P; stty size\n"}
+        self.assertEqual(self.terminal("/api/terminal/%s/input" % key, typed), (200, {}))
+        seen, _ = self.until(response, "20 90")
+        # The sum shows the shell ran the line, not only echoed the keys.
+        self.assertIn(b"hi2", seen)
+        self.assertIn(os.path.realpath(self.folder).encode(), seen)
+        self.assertIn(b"20 90", seen)
+
+    def test_each_request_needs_the_secret(self):
+        key = self.open()
+        for secret in ("", "wrong", self.secret[:-1]):
+            for path, body in [
+                ("/api/terminal", {"project": "demo"}),
+                ("/api/terminal/%s/input" % key, {"data": "echo x > made\n"}),
+                ("/api/terminal/%s/close" % key, {}),
+                ("/api/terminal/%s/output" % key, None),
+            ]:
+                with self.subTest(secret=secret, path=path):
+                    status, data = self.terminal(path, body, secret=secret)
+                    self.assertEqual(status, 403)
+                    self.assertIn("Only this page", data["error"])
+        self.assertEqual(list(terminal.SHELLS.shells), [key])
+        time.sleep(0.2)
+        self.assertEqual(os.listdir(self.folder), [])
+
+    def test_writes_need_this_pages_origin_and_host_even_with_the_secret(self):
+        body = {"project": "demo"}
+        self.assertEqual(
+            self.terminal("/api/terminal", body, origin="https://evil.example")[0], 403
+        )
+        self.assertEqual(self.terminal("/api/terminal", body, host="evil.example")[0], 403)
+        self.assertEqual(terminal.SHELLS.shells, {})
+
+    def test_with_the_setting_off_no_shell_starts(self):
+        self.store.set_terminal(False)
+        status, data = self.terminal("/api/terminal", {"project": "demo"})
+        self.assertEqual(status, 400)
+        self.assertIn("tempo config terminal on", data["error"])
+        self.assertEqual(terminal.SHELLS.shells, {})
+
+    def test_a_project_with_no_folder_on_disk_gets_no_shell(self):
+        self.store.see_folder("gone", "/nowhere/gone")
+        status, data = self.terminal("/api/terminal", {"project": "gone"})
+        self.assertEqual((status, data["error"]), (400, "No folder of gone is on this computer"))
+
+    def test_the_log_has_opening_and_ending_but_not_each_key(self):
+        key = self.open()
+        self.terminal("/api/terminal/%s/input" % key, {"data": "l"})
+        self.terminal("/api/terminal/%s/resize" % key, {"cols": 80, "rows": 24})
+        self.terminal("/api/terminal/%s/input" % key, {"data": "s"}, secret="wrong")
+        self.terminal("/api/terminal/%s/close" % key, {})
+        self.assertEqual(
+            self.log(),
+            [
+                "POST /api/terminal 200",
+                "POST /api/terminal/%s/input 403" % key,
+                "POST /api/terminal/%s/close 200" % key,
+            ],
+        )
+
+    def test_bad_sizes_and_unknown_shells_are_refused(self):
+        key = self.open()
+        for body in ({"cols": 0, "rows": 20}, {"cols": 80}, {"cols": 80, "rows": 5000}):
+            with self.subTest(body=body):
+                self.assertEqual(self.terminal("/api/terminal/%s/resize" % key, body)[0], 400)
+        status, data = self.terminal("/api/terminal/nope/input", {"data": "x"})
+        self.assertEqual((status, data["error"]), (404, "That terminal has ended"))
+
+    def test_only_one_page_reads_a_shell(self):
+        key = self.open()
+        self.read(key)
+        status, data = self.terminal("/api/terminal/%s/output" % key)
+        self.assertEqual(status, 409)
+        self.assertIn("another tab", data["error"])
+
+    def test_the_shell_stops_when_the_page_stops_reading(self):
+        key = self.open()
+        shell = terminal.SHELLS.get(key)
+        connection, response = self.read(key)
+        self.terminal("/api/terminal/%s/input" % key, {"data": "echo ready\n"})
+        self.until(response, "ready")
+        response.close()
+        connection.close()
+        # Noticed at the next write: new output, or the next "still here".
+        self.terminal("/api/terminal/%s/input" % key, {"data": "echo more\n"})
+        self.assertTrue(self.ended(key, shell))
+
+    def test_end_shell_stops_it_and_ends_the_output(self):
+        key = self.open()
+        shell = terminal.SHELLS.get(key)
+        _, response = self.read(key)
+        self.assertEqual(self.terminal("/api/terminal/%s/close" % key, {}), (200, {}))
+        _, events = self.until(response, "never printed")
+        self.assertEqual(events[-3:], [b"event: end\n", b"data:\n", b"\n"])
+        self.assertTrue(self.ended(key, shell))
+
+    def test_typing_exit_ends_the_output_and_the_shell(self):
+        key = self.open()
+        shell = terminal.SHELLS.get(key)
+        _, response = self.read(key)
+        self.terminal("/api/terminal/%s/input" % key, {"data": "exit\n"})
+        _, events = self.until(response, "never printed")
+        self.assertIn(b"event: end\n", events)
+        self.assertTrue(self.ended(key, shell))
+
+    def test_a_shell_nobody_reads_is_stopped(self):
+        with mock.patch.object(terminal, "ATTACH", 0.1):
+            key = self.open()
+            shell = terminal.SHELLS.get(key)
+        self.assertTrue(self.ended(key, shell))
+
+    def test_turning_the_terminal_off_in_settings_stops_every_shell(self):
+        shells = [terminal.SHELLS.get(self.open()) for _ in range(2)]
+        self.request("POST", "/api/settings/terminal", {"on": False})
+        self.assertEqual(terminal.SHELLS.shells, {})
+        self.assertTrue(all(shell.process.poll() is not None for shell in shells))
