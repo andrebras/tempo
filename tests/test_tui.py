@@ -1267,6 +1267,33 @@ class SidebarCommandTest(DatabaseTest):
         with Store(connect()) as store:
             self.assertEqual(store.tmux_side(), "left")
 
+    def test_whether_it_is_on_is_saved(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        for args, saved in [(["on"], True), (["off"], False), ([], True), ([], False)]:
+            self.run_sidebar(tmux, *args)
+            with Store(connect()) as store:
+                self.assertEqual(store.tmux_sidebar(), saved)
+
+    def test_restore_turns_it_back_on_quietly_when_it_was_on(self):
+        self.run_sidebar(FakeTmux({"@1": ["%1"]}), "on", "--side", "right")
+        # A fresh tmux server, as after a reboot; ~/.tmux.conf runs --restore outside a pane.
+        tmux = FakeTmux({"@1": ["%1"], "@2": ["%2"]})
+        self.assertEqual(self.run_sidebar(tmux, "--restore", env={"TMUX": ""}), (0, "", ""))
+        self.assertEqual((tmux.on, tmux.sidebars()), ("right", {"@1": ["%91"], "@2": ["%92"]}))
+        self.assertEqual([len(hooks) for hooks in tmux.hooks.values()], [1, 1, 1, 1])
+        # Run again, as when ~/.tmux.conf is reloaded, it leaves them as they are.
+        self.assertEqual(self.run_sidebar(tmux, "--restore"), (0, "", ""))
+        self.assertEqual(len(tmux.splits()), 2)
+
+    def test_restore_does_nothing_when_it_was_off(self):
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.assertEqual(self.run_sidebar(tmux, "--restore"), (0, "", ""))
+        self.run_sidebar(tmux, "on")
+        self.run_sidebar(tmux, "off")
+        self.assertEqual(self.run_sidebar(tmux, "--restore"), (0, "", ""))
+        self.assertEqual((tmux.on, tmux.sidebars()), ("", {"@1": []}))
+        self.assertEqual(len(tmux.splits()), 1)
+
     def test_outside_tmux_it_says_so(self):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("TMUX", None)
