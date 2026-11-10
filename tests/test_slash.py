@@ -165,6 +165,14 @@ class SkillFilesTest(unittest.TestCase):
             self.assertIn("never run `tempo answer` or `tempo reply`", words)
             self.assertIn("othing was recorded", words)
 
+    def test_install_runs_this_plugins_tempo_install(self):
+        text = self.read("install")
+        self.assertIn("disable-model-invocation: true", text)
+        self.assertIn(
+            'allowed-tools: Bash("${CLAUDE_PLUGIN_ROOT}"/bin/tempo install --slash)', text
+        )
+        self.assertIn('```!\n"${CLAUDE_PLUGIN_ROOT}"/bin/tempo install --slash\n```', text)
+
     def test_the_heredoc_hands_the_text_over_untouched(self):
         # The same shell lines the skill runs, with the text Claude Code puts in place.
         typed = '57 it\'s "odd" $(id) `id` ; echo no'

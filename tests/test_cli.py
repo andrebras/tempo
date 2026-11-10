@@ -1835,6 +1835,13 @@ class InstallTest(HomeTest):
         self.assertIn("`tempo uninstall` does", err)
         self.assertEqual(os.readlink(self.link), clone)
 
+    def test_for_the_slash_command_a_refusal_goes_to_stdout_and_exits_0(self):
+        os.makedirs(self.bin)
+        open(self.link, "w").close()
+        code, out, err = run("install", "--slash")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("%s is already there, a file" % self.link, out)
+
     def test_uninstall_removes_the_link(self):
         run("install")
         self.assertEqual(

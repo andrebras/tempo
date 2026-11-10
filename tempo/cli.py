@@ -276,6 +276,9 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
     install = commands.add_parser(
         "install", help="Put tempo on your shell's PATH: a link in ~/.local/bin to bin/tempo"
     )
+    # What /tempo:install runs: a refusal goes to stdout and exits 0, as `tempo slash` does,
+    # so the command goes on and Claude tells the user why.
+    install.add_argument("--slash", action="store_true", help=argparse.SUPPRESS)
     install.set_defaults(run=run_install)
     uninstall = commands.add_parser("uninstall", help="Remove the link `tempo install` made")
     uninstall.set_defaults(run=run_uninstall)
@@ -529,9 +532,9 @@ def run_install(args: argparse.Namespace) -> int:
         print(
             "tempo: %s is already there, %s, so it was left as it is. Remove it%s, then run"
             " `tempo install` again." % (link, _what_is(link), hint),
-            file=sys.stderr,
+            file=sys.stdout if args.slash else sys.stderr,
         )
-        return 1
+        return 0 if args.slash else 1
     else:
         if not os.path.isdir(folder):
             os.makedirs(folder)
