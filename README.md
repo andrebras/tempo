@@ -106,6 +106,10 @@ decision, it adds a question and links to it in chat. On the page you can:
   each session starts the page, and project names. Settings also lists the folders each
   project covers, and merges one project into another. A renamed or moved folder starts its
   own project: press Edit on the old project and use "Merge into…" to join it into the new one.
+- **Open a terminal** in the project's folder, under the question, with the button beside the
+  gear. It is off by default, because the page can then run any command as you: turn it on
+  under Terminal in Settings or with `tempo config terminal on`, on a computer only you use
+  (see [The terminal](docs/reference.md#the-terminal)).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/settings-dark.png">
