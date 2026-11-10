@@ -207,8 +207,7 @@ async function loadList() {
   renderProjectBar(data.projects, counts, data.activity || {});
   state.opened = noteOpened(state.opened, data.projects, open.questions, state.project, current);
   try { localStorage.setItem("opened", JSON.stringify(state.opened)); } catch { /* just don't remember */ }
-  drawSideStrip(counts[state.project] || 0,
-    open.questions.some((q) => q.project === state.project && questionFresh(q, state.opened)));
+  drawToggleDot(open.questions.some((q) => q.project === state.project && questionFresh(q, state.opened)));
   const words = $("#search").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = (q) => words.every((word) =>
     `${q.label} ${q.title} ${q.context} ${q.goal || ""}`.toLowerCase().includes(word));
@@ -248,15 +247,14 @@ async function loadList() {
   return shown;
 }
 
-// The collapsed list's strip: how many questions are open here, and a dot when one has
-// something new. Redrawn only when it changes, like the list.
-function drawSideStrip(open, fresh) {
-  const strip = $(".side-strip");
-  const key = JSON.stringify([open, fresh]);
-  if (strip.dataset.key === key) return;
-  strip.dataset.key = key;
-  strip.title = `${count(open, "open question")}${fresh ? ", something new" : ""}`;
-  strip.replaceChildren(el("span", { class: "count" }, String(open)), newDot(fresh) || "");
+// While the list is hidden, a dot on its button says a question here has something new.
+// Redrawn only when it changes, like the list.
+function drawToggleDot(fresh) {
+  const toggle = $("#side-toggle");
+  if (toggle.dataset.fresh === String(fresh)) return;
+  toggle.dataset.fresh = String(fresh);
+  toggle.querySelector(".dot")?.remove();
+  if (fresh) toggle.append(newDot(true));
 }
 
 // The list's width in pixels, kept between readable and leaving the question most of the room.
@@ -271,10 +269,10 @@ function setSideWidth(width) {
 function setSideCollapsed(collapsed) {
   $("main").classList.toggle("side-collapsed", collapsed);
   const toggle = $("#side-toggle");
-  const words = collapsed ? "Expand the list" : "Collapse the list";
+  const words = collapsed ? "Show the list" : "Hide the list";
   toggle.setAttribute("aria-expanded", String(!collapsed));
   toggle.setAttribute("aria-label", words);
-  toggle.title = words;
+  toggle.title = `${words} ( [ )`;
 }
 
 // The list's width and whether it is collapsed are kept per browser, like the theme.
@@ -290,10 +288,18 @@ function startSide() {
     if (saved) setSideWidth(saved);
     setSideCollapsed(localStorage.getItem("side-collapsed") === "true");
   } catch { /* storage blocked: keep the defaults */ }
-  $("#side-toggle").addEventListener("click", () => {
+  const toggle = () => {
     const collapsed = !$("main").classList.contains("side-collapsed");
     setSideCollapsed(collapsed);
     remember("side-collapsed", String(collapsed));
+  };
+  $("#side-toggle").addEventListener("click", toggle);
+  // [ shows or hides the list, unless the keys are going into a field or the terminal.
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "[" || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.target.closest("input, textarea, select, [contenteditable], #terminal")) return;
+    event.preventDefault();
+    toggle();
   });
   grip.addEventListener("pointerdown", (event) => {
     const startX = event.clientX;
@@ -841,7 +847,7 @@ async function keptOnScreen(current) {
 // The Tempo mark is a fermata: the sign that holds a note until the conductor releases it.
 function mark() {
   const holder = el("div");
-  holder.innerHTML = document.querySelector(".brand svg").outerHTML;
+  holder.innerHTML = document.querySelector(".brand > svg").outerHTML;
   return holder.firstChild;
 }
 
