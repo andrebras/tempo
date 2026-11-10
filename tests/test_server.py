@@ -434,6 +434,8 @@ class TerminalTest(ServerBase):
         self.addCleanup(terminal.SHELLS.close_all)
         self.secret = self.server.RequestHandlerClass.terminal_secret
 
+    log = ServerTest.log
+
     def terminal(self, path, body=None, secret=None, **options):
         headers = {"X-Tempo-Secret": self.secret if secret is None else secret}
         method = "GET" if body is None else "POST"
@@ -529,6 +531,21 @@ class TerminalTest(ServerBase):
         self.store.see_folder("gone", "/nowhere/gone")
         status, data = self.terminal("/api/terminal", {"project": "gone"})
         self.assertEqual((status, data["error"]), (400, "No folder of gone is on this computer"))
+
+    def test_the_log_has_opening_and_ending_but_not_each_key(self):
+        key = self.open()
+        self.terminal("/api/terminal/%s/input" % key, {"data": "l"})
+        self.terminal("/api/terminal/%s/resize" % key, {"cols": 80, "rows": 24})
+        self.terminal("/api/terminal/%s/input" % key, {"data": "s"}, secret="wrong")
+        self.terminal("/api/terminal/%s/close" % key, {})
+        self.assertEqual(
+            self.log(),
+            [
+                "POST /api/terminal 200",
+                "POST /api/terminal/%s/input 403" % key,
+                "POST /api/terminal/%s/close 200" % key,
+            ],
+        )
 
     def test_bad_sizes_and_unknown_shells_are_refused(self):
         key = self.open()

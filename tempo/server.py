@@ -179,12 +179,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
         """One line in server.log for each request that is not a plain GET: method,
-        path and status code. Never the body or the query, which may quote answers."""
+        path and status code. Never the body or the query, which may quote answers.
+        Nor each key typed in a terminal, or its new size: only opening, ending and any
+        refused request."""
         if self.command == "GET":
             return
         if isinstance(code, HTTPStatus):
             code = code.value
         path = urlparse(getattr(self, "path", "") or "").path
+        parts = _parts(path)
+        shell_path = parts[:2] == ["api", "terminal"] and parts[3:] in (["input"], ["resize"])
+        if shell_path and code == 200:
+            return
         log.write(self.command or "-", path or "-", code)
 
     def _trusted(self, write: bool) -> bool:
