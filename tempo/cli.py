@@ -268,7 +268,11 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
         help="Your settings: show them, or change one, such as `tempo config page off`",
     )
     config.add_argument(
-        "name", nargs="?", choices=["page"], help="page: start the page with each session"
+        "name",
+        nargs="?",
+        choices=["page", "install-hint"],
+        help="page: start the page with each session; install-hint: have sessions offer"
+        " /tempo:install while tempo isn't in your shell",
     )
     config.add_argument("value", nargs="?", choices=["on", "off"])
     config.set_defaults(run=run_config)
@@ -512,6 +516,11 @@ def run_status(args: argparse.Namespace) -> None:
 def run_config(args: argparse.Namespace) -> None:
     """Print the settings, or change the one named and print it."""
     store = _store()
+    if args.name == "install-hint":
+        if args.value is not None:
+            store.set_install_hint(args.value == "on")
+        _print_install_hint(store)
+        return
     if args.value is not None:
         store.set_start_page(args.value == "on")
     if store.start_page():
@@ -521,6 +530,15 @@ def run_config(args: argparse.Namespace) -> None:
             "page off: sessions don't start the page; `tempo serve --background` starts it."
             " Claude points you to the terminal (`tempo show`, `tempo answer`)."
         )
+    if args.name is None:
+        _print_install_hint(store)
+
+
+def _print_install_hint(store: Store) -> None:
+    if store.install_hint():
+        print("install-hint on: sessions offer /tempo:install while tempo isn't installed")
+    else:
+        print("install-hint off: sessions don't offer /tempo:install")
 
 
 # Where `tempo install` puts its link: a folder many shells already have on PATH.
@@ -556,6 +574,9 @@ def run_install(args: argparse.Namespace) -> int:
             " your shell's config, such as ~/.zshrc, then open a new terminal:\n\n"
             '    export PATH="$HOME/.local/bin:$PATH"' % folder
         )
+    # Done, so sessions stop offering /tempo:install.
+    with Store(connect()) as store:
+        store.set_install_hint(False)
     return _install_tmux(args) if args.tmux else 0
 
 
@@ -683,6 +704,12 @@ def _uninstall_tmux() -> None:
     with open(target, "w") as file:
         file.write("".join(lines[:start] + lines[end + 1 :]))
     print("Removed Tempo's lines from %s." % target)
+
+
+def tempo_linked() -> bool:
+    """Whether ~/.local/bin/tempo is a link to a Tempo bin/tempo. Only looks at the file
+    system, so the SessionStart hook can ask."""
+    return _tempo_link(os.path.join(os.path.expanduser(LOCAL_BIN), "tempo")) is not None
 
 
 def _tempo_link(link: str) -> str | None:
@@ -1171,6 +1198,7 @@ def session_note(project: str, port: int, limit: int | None = None) -> str:
     with Store(connect()) as store:
         on = store.start_page()
         questions = store.list(project, "open")
+        hint = store.install_hint() and not tempo_linked()
     if on:
         where = "at http://127.0.0.1:%d/" % port
     else:
@@ -1195,6 +1223,8 @@ def session_note(project: str, port: int, limit: int | None = None) -> str:
             else "the number, then the title, as in `- Q3 Pick a colour`."
         ),
     ]
+    if hint:
+        lines.insert(1, INSTALL_HINT)
     if questions:
         lines.append("Open questions in %s:" % project)
         listed = []
@@ -1206,6 +1236,14 @@ def session_note(project: str, port: int, limit: int | None = None) -> str:
             )
         lines = _fitting(lines, listed, limit, MORE_QUESTIONS)[0]
     return "\n".join(lines)
+
+
+# What sessions say while tempo isn't in the user's own shell, until it is or they say no.
+INSTALL_HINT = (
+    "- Tempo isn't in the user's own terminal yet. Tell them once, in a line of its own: "
+    '"To use Tempo in your terminal and tmux, type /tempo:install." If they say they don\'t'
+    " want it, run `tempo config install-hint off`, so sessions stop offering it."
+)
 
 
 # What a hook hands Claude at once, in characters. Claude Code caps a hook's

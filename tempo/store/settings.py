@@ -13,6 +13,9 @@ TMUX_SIDE = "tmux_side"
 # Whether `tempo sidebar` last turned the sidebar on, so `--restore` brings it back after
 # tmux restarts. Off unless the user turned it on.
 TMUX_SIDEBAR = "tmux_sidebar"
+# Whether the SessionStart hook has Claude point the user to /tempo:install while the
+# ~/.local/bin/tempo link is missing. On until `tempo install` works or the user says no.
+INSTALL_HINT = "install_hint"
 
 
 class SettingsStore(StoreBase):
@@ -54,4 +57,17 @@ class SettingsStore(StoreBase):
             self.db.execute(
                 "INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)",
                 (TMUX_SIDEBAR, "on" if on else "off"),
+            )
+
+    def install_hint(self) -> bool:
+        """Whether sessions offer /tempo:install while tempo isn't linked; on by default."""
+        row = self.db.execute("SELECT value FROM settings WHERE name = ?", (INSTALL_HINT,))
+        found = row.fetchone()
+        return found is None or found["value"] != "off"
+
+    def set_install_hint(self, on: bool) -> None:
+        with self._transaction():
+            self.db.execute(
+                "INSERT OR REPLACE INTO settings (name, value) VALUES (?, ?)",
+                (INSTALL_HINT, "on" if on else "off"),
             )
