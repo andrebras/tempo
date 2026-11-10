@@ -9,8 +9,10 @@ README's capture see exactly what the terminal shows, without a terminal.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Protocol
 
+from tempo.store import Question
 from tempo.tui.model import SETTINGS, Board, Rect, detail_lines, layout, waiting_on_claude
 from tempo.tui.text import Line, cell_width, clip, plain, wrap
 
@@ -152,6 +154,9 @@ def _questions(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
     if not rows:
         canvas.put(rect.top, rect.left, clip("Nothing open here.", rect.width), "dim")
         return
+    if board.sidebar:
+        _sidebar_questions(board, canvas, rect)
+        return
     selected = next(
         (
             i
@@ -173,10 +178,72 @@ def _questions(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
         if question["number"] == board.number:
             style = "selected" if focused else "current"
         end = "quick" if question["quick"] else ""
-        if board.sidebar:
-            # The page's dot for something new; the pane has no room for "quick".
-            end = "●" if board.fresh(question) else ""
         _row(canvas, rect.top + y, rect, text, style, end)
+
+
+def _sidebar_questions(board: Board, canvas: Canvas, rect: Rect) -> None:
+    """The sidebar's questions, as the page lists them: each in a block of a line with its
+    state mark, number, "quick" and age, then its title in up to two lines, and a blank
+    line after; a heading before each goal. The selected block is highlighted whole and
+    kept wholly on screen."""
+    lines: list[tuple[Line, str]] = []
+    block = (0, 0)
+    for row in board.rows():
+        question = row.question
+        if question is None:
+            lines.append(([(str(row.goal), "heading")], ""))
+            continue
+        start = len(lines)
+        style = "selected" if question["number"] == board.number else ""
+        mark, mark_style = _state_mark(board, question)
+        age = _age(question["created_at"])
+        head = "%s %s%s" % (mark, question["label"], " quick" if question["quick"] else "")
+        head = clip(head, max(1, rect.width - cell_width(age) - 1))
+        gap = " " * max(1, rect.width - cell_width(head) - cell_width(age))
+        lines.append(
+            ([(mark, mark_style), (head[len(mark) :], ""), (gap, ""), (age, "dim")], style)
+        )
+        title = wrap([(question["title"], "")], rect.width - 2)
+        if len(title) > 2:
+            # The rest of a long title is cut at the end of the second line.
+            title = [title[0], [(" ".join(plain(line) for line in title[1:]), "")]]
+        for line in title:
+            lines.append(([("  " + clip(plain(line), rect.width - 2), "")], style))
+        if style:
+            block = (start, len(lines))
+        lines.append(([], ""))
+    # Scrolled just enough that the selected block is whole.
+    top = max(0, block[1] - rect.height)
+    if block[0] < top:
+        top = block[0]
+    for y, (line, style) in enumerate(lines[top : top + rect.height]):
+        if style:
+            _row(canvas, rect.top + y, rect, plain(line), style)
+        else:
+            _spans(canvas, rect.top + y, rect.left, line, rect.width)
+
+
+def _state_mark(board: Board, question: Question) -> tuple[str, str]:
+    """A question's mark in the sidebar's state column, with the page's meanings. Only one
+    fits: something new wins, as it is what to read next; then waiting on Claude, as
+    nothing can be done meanwhile; then the goal's question to start with."""
+    if board.fresh(question):
+        return "●", "dot"
+    if waiting_on_claude(question):
+        return "…", "accent"
+    if question["start_here"]:
+        return "»", "letter"
+    return " ", ""
+
+
+def _age(created_at: str) -> str:
+    """How long a question has been open, short for a narrow pane: "4d", "3h", "12m"."""
+    created = datetime.strptime(created_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    minutes = max(1, int((datetime.now(timezone.utc) - created).total_seconds() // 60))
+    for size, unit in ((24 * 60, "d"), (60, "h"), (1, "m")):
+        if minutes >= size:
+            return "%d%s" % (minutes // size, unit)
+    return "1m"
 
 
 def _detail(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:

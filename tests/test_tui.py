@@ -452,9 +452,13 @@ class SidebarTest(BoardTest):
         self.assertEqual(lines[1], "shop 1")
         self.assertEqual(lines[2], "─" * 40)
         self.assertEqual(lines[3], "Release")
-        self.assertTrue(lines[4].startswith("»Q1 Left or right?"))
-        self.assertEqual(lines[5], "Other")
-        self.assertTrue(lines[6].startswith(" Q2 Which colour?"))
+        # A block per question: the state column, number and age, then the title.
+        self.assertEqual(lines[4], "» Q1" + " " * 34 + "1m")
+        self.assertEqual(lines[5], "  Left or right?")
+        self.assertEqual(lines[6], "")
+        self.assertEqual(lines[7], "Other")
+        self.assertTrue(lines[8].startswith("  Q2 ") and lines[8].endswith("1m"))
+        self.assertEqual(lines[9], "  Which colour?")
         self.assertTrue(all(cell_width(line) <= 40 for line in lines))
         self.assertTrue(lines[-1].startswith("Enter open  h/l project"))
 
@@ -497,9 +501,38 @@ class SidebarTest(BoardTest):
         board.changed()
         lines = self.screen(board)
         self.assertEqual(lines[1], "shop 1●")
-        self.assertTrue(lines[4].startswith(" Q2 New") and lines[4].endswith("●"))
+        self.assertTrue(lines[6].startswith("● Q2"))
+        self.assertEqual(lines[7], "  New")
         self.keys(board, "j", "enter", "h")
-        self.assertNotIn("●", self.screen(board)[4])
+        self.assertNotIn("●", self.screen(board)[6])
+
+    def test_a_long_title_takes_two_lines_and_is_cut_after_them(self):
+        self.add(title="A title long enough to need more than two lines in a narrow pane here")
+        lines = self.screen(self.sidebar(), width=30)
+        self.assertEqual(lines[4], "  A title long enough to need")
+        self.assertTrue(lines[5].startswith("  more than two") and lines[5].endswith("…"))
+        self.assertEqual(lines[6], "")
+
+    def test_the_state_column_shows_one_mark_new_first_then_waiting_then_start_here(self):
+        self.add(title="Start", goal="Release", start_here="unlocks the rest")
+        self.store.follow_up("demo", 1, "Why?")
+        board = self.sidebar()
+        # Waiting on Claude outranks start here.
+        self.assertTrue(self.screen(board)[4].startswith("… Q1"))
+        with mock.patch("tempo.store.common.now", return_value="2099-01-01T00:00:00Z"):
+            self.store.add_context("demo", 1, "Because")
+        board.changed()
+        self.assertTrue(self.screen(board)[4].startswith("● Q1"))
+
+    def test_the_selected_question_is_kept_wholly_on_screen(self):
+        for number in range(1, 7):
+            self.add(title="Question %d" % number)
+        board = self.sidebar()
+        self.keys(board, "j", "j", "j", "j", "j")
+        lines = self.screen(board, height=12)
+        # 12 rows: 3 on top, 1 for the keys, 8 for blocks of 3 lines each.
+        self.assertIn("  Question 6", lines)
+        self.assertTrue(lines[lines.index("  Question 6") - 1].startswith("  Q6"))
 
 
 class LayoutTest(unittest.TestCase):
