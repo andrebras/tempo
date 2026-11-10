@@ -4,6 +4,16 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `tempo tui --sidebar` is a compact view for a narrow pane beside Claude's, such as a tmux
+  split about 40 columns wide. It shows the project on top, with the other projects that
+  have something open, then its questions by goal with the page's marks: `»` start here,
+  `…` waiting on Claude, and a dot on what Claude changed since you last opened it. `h`
+  and `l` switch project, Enter opens a question over the list, and `h` or Esc goes back.
+
 ## [0.11.0] - 2026-11-10
 
 ### Changed

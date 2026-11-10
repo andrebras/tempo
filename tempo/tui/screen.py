@@ -181,12 +181,13 @@ def styles(color: bool) -> dict[str, int]:
     }
 
 
-def run(project: str) -> int:
-    """Show the screen on the terminal until the user quits; Ctrl-C quits too."""
+def run(project: str, sidebar: bool = False) -> int:
+    """Show the screen on the terminal until the user quits; Ctrl-C quits too. With
+    sidebar, the compact view for a narrow pane."""
     # Without the user's locale, curses draws box lines and accents as garbage.
     locale.setlocale(locale.LC_ALL, "")
     with Store(connect()) as store:
-        board = Board(store, project)
+        board = Board(store, project, sidebar)
         with contextlib.suppress(KeyboardInterrupt):
             curses.wrapper(_loop, board)
     return 0

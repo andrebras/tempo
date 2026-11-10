@@ -432,6 +432,76 @@ class BoardTest(DatabaseTest):
         self.assertIn("  (b) Right", lines)
 
 
+class SidebarTest(BoardTest):
+    """The compact view for a pane beside Claude's: `tempo tui --sidebar`."""
+
+    def sidebar(self, home="demo"):
+        return Board(self.board_store, home, sidebar=True)
+
+    def screen(self, board, width=40, height=16):
+        canvas = TextCanvas(height, width)
+        draw(board, canvas)
+        return canvas.text().split("\n")
+
+    def test_the_list_shows_the_project_its_neighbours_and_the_questions_by_goal(self):
+        self.add(title="Left or right?", goal="Release", start_here="unlocks the rest")
+        self.add(title="Which colour?")
+        self.add(project="shop", title="There")
+        lines = self.screen(self.sidebar())
+        self.assertEqual(lines[0], "◂ demo · 2 open ▸")
+        self.assertEqual(lines[1], "shop 1")
+        self.assertEqual(lines[2], "─" * 40)
+        self.assertEqual(lines[3], "Release")
+        self.assertTrue(lines[4].startswith("»Q1 Left or right?"))
+        self.assertEqual(lines[5], "Other")
+        self.assertTrue(lines[6].startswith(" Q2 Which colour?"))
+        self.assertTrue(all(cell_width(line) <= 40 for line in lines))
+        self.assertTrue(lines[-1].startswith("Enter open  h/l project"))
+
+    def test_h_and_l_switch_project_and_enter_opens_the_question(self):
+        self.add(title="Here")
+        self.add(project="shop", title="There")
+        board = self.sidebar()
+        self.keys(board, "l")
+        self.assertEqual((board.project, board.question["title"]), ("shop", "There"))
+        self.keys(board, "l")
+        self.assertEqual(board.project, "demo")
+        # Esc in the list must not close the pane.
+        self.assertTrue(board.press("esc"))
+        self.keys(board, "enter")
+        self.assertEqual(board.focus, "detail")
+        lines = self.screen(board)
+        self.assertIn("Q1 · h back", lines[0])
+        self.assertIn("(b) Right", "\n".join(lines))
+        self.keys(board, "esc")
+        self.assertEqual(board.focus, "questions")
+
+    def test_answering_an_open_question_goes_back_to_the_list(self):
+        self.add(title="One")
+        self.add(title="Two")
+        board = self.sidebar()
+        self.keys(board, "enter", "a", "enter")
+        self.assertEqual(self.store.get("demo", 1)["status"], "answered")
+        self.assertEqual((board.focus, board.number), ("questions", 2))
+
+    def test_a_dot_marks_what_claude_changed_until_it_is_opened(self):
+        self.add(title="Old")
+        self.add(project="shop", title="There")
+        board = self.sidebar()
+        # Open when the sidebar started: nothing is new yet.
+        self.assertNotIn("●", "\n".join(self.screen(board)))
+        # Stamped after the start, as a change made later would be.
+        with mock.patch("tempo.store.common.now", return_value="2099-01-01T00:00:00Z"):
+            self.add(title="New")
+            self.store.add_context("shop", 1, "More detail")
+        board.changed()
+        lines = self.screen(board)
+        self.assertEqual(lines[1], "shop 1●")
+        self.assertTrue(lines[4].startswith(" Q2 New") and lines[4].endswith("●"))
+        self.keys(board, "j", "enter", "h")
+        self.assertNotIn("●", self.screen(board)[4])
+
+
 class LayoutTest(unittest.TestCase):
     def test_wide_screens_show_three_panels_like_lazygit(self):
         panels = layout(80, 24, "questions", projects=3)
@@ -788,6 +858,13 @@ class CommandTest(DatabaseTest):
         ):
             self.assertEqual(cli.main(["tui"]), 0)
             self.assertEqual(cli.main(["tui", "--project", "shop"]), 0)
+            self.assertEqual(cli.main(["tui", "--sidebar"]), 0)
         # TEMPO_PROJECT is set to demo, as `tempo list` would read it.
-        self.assertEqual([call.args for call in run.call_args_list], [("demo",), ("shop",)])
+        self.assertEqual(
+            [call.args for call in run.call_args_list], [("demo",), ("shop",), ("demo",)]
+        )
+        self.assertEqual(
+            [call.kwargs for call in run.call_args_list],
+            [{"sidebar": False}, {"sidebar": False}, {"sidebar": True}],
+        )
         start.assert_not_called()
