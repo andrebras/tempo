@@ -10,16 +10,18 @@ decisions and keeps playing.
 
 Tempo is a [Claude Code](https://code.claude.com) plugin. When Claude needs a decision from
 you, it saves the question with all the context you need, instead of letting it scroll away
-in chat. You answer on a local page whenever it suits you, and Claude picks the answer up by
-itself.
+in chat. You answer in the terminal whenever it suits you, in a sidebar beside Claude in
+tmux or in a full-screen view, and Claude picks the answer up by itself. A local web page
+is there too if you want it; it is off unless you turn it on.
 
 - 🎬 [See it in action](#see-it-in-action)
 - 📦 [Install](#install)
 - 🔄 [Update and uninstall](#update-and-uninstall)
 - 🎛️ [Usage](#usage)
-- ⌨️ [From the terminal](#from-the-terminal): the `tempo` commands and the full-screen
-  `tempo tui`
-- 💬 [In the Claude Code session](#in-the-claude-code-session): slash commands
+  - 🗂️ [A sidebar in tmux](#a-sidebar-in-tmux): `tempo sidebar on`
+  - 🖥️ [Without tmux: `tempo tui`](#without-tmux-tempo-tui), the full-screen view
+  - ⌨️ [Commands](#commands) and [slash commands](#in-the-claude-code-session)
+  - 🌐 [The page (optional)](#the-page-optional)
 - ⚙️ [How it works](#how-it-works)
 - 🔒 [Security](#security)
 - 🤝 [Contributing](#contributing)
@@ -28,17 +30,22 @@ itself.
 
 ## See it in action
 
-Both recordings show the same steps, once on the local page and once in the terminal. You
-answer a question with a note, and Tempo moves on to the next one. There you ask for more
-context; Claude rewords the question, and its thread shows what you asked and what changed.
+All three recordings show the same steps: in the tmux sidebar, in `tempo tui` and on the
+page. You answer a question with a note, and Tempo moves on to the next one. There you ask
+for more context; Claude rewords the question, and its thread shows what you asked and what
+changed.
+
+**In tmux, with the sidebar**
+
+![The Tempo sidebar on the right of a tmux window, beside Claude's pane, listing the project's open questions by goal. Enter opens Q1 in a popup over the panes; option (b) is picked with a typed note and the popup closes, leaving four questions. Q2 opens in a popup, a follow-up is typed and the list marks Q2 as waiting on Claude; Claude rewords it, the list shows the new title with a dot, and the popup shows the thread.](docs/sidebar.gif)
+
+**Without tmux, with `tempo tui`**
+
+![The same steps in tempo tui, the full-screen terminal view: option (b) is picked with a typed note, the screen moves on to the next question, a follow-up is typed and the question shows "Waiting on Claude"; Claude rewords it and the thread shows both steps.](docs/tui.gif)
 
 **On the page**
 
 ![Answering on the Tempo page in dark colours: option (b) is picked, a note is typed and the answer is sent, and the page moves on to the next question. There, a follow-up is typed and "Ask for more context" is pressed; Claude rewords the question and the thread shows both steps.](docs/demo.gif)
-
-**In the terminal, with `tempo tui`**
-
-![The same steps in tempo tui, the full-screen terminal view: option (b) is picked with a typed note, the screen moves on to the next question, a follow-up is typed and the question shows "Waiting on Claude"; Claude rewords it and the thread shows both steps.](docs/tui.gif)
 
 The recordings use made-up questions; `bin/media` makes them again (see
 [CONTRIBUTING.md](CONTRIBUTING.md#screenshots-and-demo-gifs)).
@@ -82,17 +89,171 @@ Your questions stay in `~/.claude/tempo/`. Delete that folder if you want them g
 
 ## Usage
 
-There's nothing to run. When Claude needs a decision, it adds a question and tells you
-where to answer it. By default you answer from the terminal: in tmux, `tempo sidebar on` puts a
-sidebar with your questions beside every window, and one line in `~/.tmux.conf` brings it
-back after tmux restarts (see
-[A sidebar beside Claude](docs/reference.md#a-sidebar-beside-claude)).
+There's nothing to run. When Claude needs a decision, it adds a question and tells you how
+to answer it. You answer in the terminal: in the tmux sidebar, in `tempo tui`, with
+`tempo answer`, or with a slash command in the session. The page is optional, and off
+unless you turn it on.
 
-Tempo also has a page, at <http://127.0.0.1:2204/>. Run `tempo config page on` (or use the
-switch under Sessions in Settings) and each Claude Code session starts it; Claude then links
-to each question on it. If a Tempo page is already running there, it is kept, unless it comes
-from an older version of Tempo or no longer works; then Tempo replaces it (details in
-[The page server](docs/reference.md#the-page-server)). On the page you can:
+Every question has a number per project that is never reused, so answering "12b" in chat
+works too. Merging two projects renumbers the questions that move.
+
+### Use `tempo` in your own shell
+
+`tempo` is on Claude Code's `PATH` only inside a session. To use it in your own shell, add an
+alias, for example in `~/.zshrc`:
+
+```bash
+alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo
+```
+
+That path is Tempo's marketplace copy, which `claude plugin marketplace update tempo` keeps
+up to date. Sessions run the installed copy in `~/.claude/plugins/cache/tempo/tempo/<version>/`, so the marketplace path is the one that doesn't change. If
+you cloned Tempo yourself, use your clone's `bin/tempo` instead. The same goes for the
+paths in [tmux and the status line](docs/reference.md#tmux-and-the-status-line).
+
+### A sidebar in tmux
+
+In [tmux](https://github.com/tmux/tmux), run this once in any pane:
+
+```bash
+tempo sidebar on                  # a sidebar in every window, on the left
+tempo sidebar on --side right     # or on the right
+```
+
+Every tmux window gets a narrow column, the full height, with the open questions of the
+project its folder belongs to, grouped by goal. New windows and sessions get one too, and a
+sidebar closes with the last other pane of its window. `tempo sidebar off` closes them all,
+and a plain `tempo sidebar` toggles.
+
+| Key | What it does |
+| --- | --- |
+| `j` `k` | Move between questions |
+| `h` `l` | Show another project's questions (it only browses) |
+| `Enter` | Open the question in a popup over your panes: a letter answers, `r` asks Claude for more, `h` or `Esc` closes it |
+| `g` | Go to the project's Claude pane, in whichever tmux session it is |
+| `s`, `?` | Settings, and the keys |
+| `q` | Close this sidebar |
+
+The list itself never answers, so a stray key can't. A column on the left marks
+each question: a dot when a question is new or changed since you opened it, `…` while it waits on
+Claude, and `»` for the question to start with.
+
+tmux forgets its sidebars when it stops, after a reboot say. To have them come back, add
+this line to `~/.tmux.conf`:
+
+```tmux
+run-shell -b "~/.claude/plugins/marketplaces/tempo/bin/tempo sidebar --restore"
+```
+
+More, including a key to show or hide it, in
+[A sidebar beside Claude](docs/reference.md#a-sidebar-beside-claude).
+
+### Without tmux: `tempo tui`
+
+`tempo tui` shows the open questions full screen, with panels side by side as in lazygit,
+and you use it only with the keyboard. It needs nothing installed: it is drawn with
+curses, which comes with Python. Projects (top left) lists every project with open questions,
+plus the current folder's, with how many are open; a dot marks the ones with questions waiting
+for you. Questions (bottom left) lists the selected project's open questions, grouped by goal
+as on the page: `»` marks the goal's start-here question, `…` one waiting on Claude, and
+`quick` one that is quick to answer. Detail (right) shows the selected question: its context,
+the lettered options with the recommended one marked, and its thread. The bottom line shows the
+keys for the panel you are in.
+
+[The second recording above](#see-it-in-action) shows it at work.
+
+| Key | What it does |
+| --- | --- |
+| `j` `k`, `↓` `↑` | Move to the next or previous project or question; in Detail, scroll |
+| `h` `l`, `←` `→`, `Tab` `Shift-Tab` | Go to the previous or next panel |
+| `Enter` | Go from Projects to Questions, and from Questions to Detail |
+| `a`, `b`, `c`… | Answer the selected question with that option. The bottom line opens for an optional note: `Enter` sends, with or without one, and `Esc` cancels |
+| `A`, `B`, `C`… | The same. Use Shift for options `h`, `j`, `k`, `l`, `q`, `r` and `s`, since those letters also move, quit or open something |
+| `r` | Ask Claude for more (a follow-up): type it on the bottom line, `Enter` sends, `Esc` cancels |
+| `s` | Open Settings (see below); `Esc` goes back to the questions |
+| `PgDn` `PgUp`, `Ctrl-d` `Ctrl-u` | Scroll the detail by a page |
+| `?` | Show the keys |
+| `q`, `Esc` | Quit |
+
+Answers and follow-ups are saved exactly as the page and `tempo answer` save them, so Claude
+gets them the same way. The bottom line then says what was saved, or why it was refused (for
+example, when the question was answered on the page meanwhile). The screen follows changes by
+itself within a second or two: a question Claude adds or rewords, or an answer from the page.
+On a screen narrower than 60 characters or shorter than 10 lines it shows one panel at a time, and `h` and `l` go to
+the others. Set `NO_COLOR` to turn colors off. It never starts the page. For answered and
+archived questions, search, renaming a project and the other settings, use
+[the page](#the-page-optional).
+
+Settings (`s`) lists every project with its number of questions and the folders it covers.
+To merge one project into another, for example after a folder was renamed or moved and its
+new questions went to a new project, select the old project, press `m`, pick the project to
+merge it into with `j` and `k`, press `Enter`, then `y` to confirm (`n` or `Esc` cancels).
+Its questions and folders move over, as when you rename a project to another's name on the
+page: if both have questions, the moved ones get new numbers after the other's, and the bottom
+line says which, such as "Moved 5 questions from tempo to Tempo: now Q28–Q32."
+
+Text you paste goes into the note or follow-up you are writing, line breaks included (shown
+as `↵`). In a terminal with bracketed paste, which marks pasted text and which most have, a
+paste never acts as keys, so a newline in it doesn't send and a letter doesn't pick an option.
+Pasting anywhere else only shows a hint on the bottom line. Alt (Option on a Mac) with a key, such as
+Option+Left, is ignored too, rather than read as `Esc` and then a letter.
+
+To open it in a tmux popup, see [tmux and the status line](docs/reference.md#tmux-and-the-status-line).
+
+### Commands
+
+These commands are for you, not for Claude, and save exactly what the sidebar and the page
+save: Claude gets it through the same hooks and `tempo wait`.
+
+```bash
+tempo list                                # the project's open questions
+tempo show 12                             # one question, with its options and thread
+tempo answer 12 b                         # answer Q12 with option (b)
+tempo answer 61 yes                       # or name the option by its text
+tempo answer 12 b --note "Keep it small"  # with a note
+tempo reply 12 "What would (c) cost?"     # ask for more context (a follow-up)
+```
+
+They act on the project of the folder you run them in; add `--project NAME` for another one
+(`tempo list --all-projects` shows every project's questions).
+
+### In the Claude Code session
+
+The same, without leaving the session: type one of these slash commands in Claude Code. They
+are for you, not for Claude (Claude Code does not let Claude invoke them). They record your
+answer or follow-up before Claude reads anything, so it comes from you and reaches Claude
+once, right away.
+
+```text
+/tempo:list                          # the project's open questions
+/tempo:show 57                       # one question, with its options and thread
+/tempo:answer 57a                    # answer Q57 with option (a); also 57 a, Q57a, Q57 a)
+/tempo:answer 57a keep the old flag  # with a note
+/tempo:answer 61 yes                 # name the option by its text, in any case
+/tempo:dive 57                       # ask for more ("Tell me more.")
+/tempo:dive 57 why not b?            # ask something specific
+```
+
+After `/tempo:answer` Claude acts on the answer. After `/tempo:dive` Claude digs in and
+answers in the question itself, so the sidebar, `tempo tui` and the page show the new
+explanation. An unknown question or option records nothing and shows Tempo's error instead.
+
+### The page (optional)
+
+Tempo also has a local web page, at <http://127.0.0.1:2204/>, with the same questions and a
+few things the terminal doesn't do: answered and archived questions, search, and
+appearance settings. It is off by default. Turn it on with:
+
+```bash
+tempo config page on      # each Claude Code session starts the page, and Claude links to it
+tempo serve --background  # or start it just this once
+```
+
+`tempo config page off` turns it off again, and `tempo config` shows the current value.
+With the page on, Claude links each question on it. If a Tempo page is already running
+there, it is kept, unless it comes from an older version of Tempo or no longer works; then
+Tempo replaces it (details in [The page server](docs/reference.md#the-page-server)). On
+the page you can:
 
 - **Answer**: pick an option, add a note if you like, and send it. The page moves on to the
   next open question. If Claude rewords the question while you answer, the page refuses the
@@ -119,119 +280,10 @@ from an older version of Tempo or no longer works; then Tempo replaces it (detai
   <img alt="Settings on the Tempo page: the Appearance card with theme, font, text size and width, and the Sessions card with the On and Off switch for starting the page with each session." src="docs/settings-light.png" width="1280">
 </picture>
 
-Every question has a number per project that is never reused, so answering "12b" in chat
-works too. Merging two projects renumbers the questions that move.
-
-With the page off, the default, sessions don't start it, and Claude points you to
-`tempo show` and `tempo answer` instead of page links. `tempo serve --background` still starts
-the page when you want it, and `tempo config page off` brings back the default (`tempo config`
-shows the current value).
-
-## From the terminal
-
-You can also answer without opening the page. These commands are for you, not for Claude, and
-work like the page: Claude gets what you send through the same hooks and `tempo wait`.
-
-```bash
-tempo list                                # the project's open questions
-tempo show 12                             # one question, with its options and thread
-tempo answer 12 b                         # answer Q12 with option (b)
-tempo answer 61 yes                       # or name the option by its text
-tempo answer 12 b --note "Keep it small"  # with a note
-tempo reply 12 "What would (c) cost?"     # ask for more context, like the page's follow-up
-```
-
-They act on the project of the folder you run them in; add `--project NAME` for another one
-(`tempo list --all-projects` shows every project's questions).
-
-`tempo` is on Claude Code's `PATH` only inside a session. To use it in your own shell, add an
-alias, for example in `~/.zshrc`:
-
-```bash
-alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo
-```
-
-That path is Tempo's marketplace copy, which `claude plugin marketplace update tempo` keeps
-up to date. Sessions run the installed copy in `~/.claude/plugins/cache/tempo/tempo/<version>/`, so the marketplace path is the one that doesn't change. If
-you cloned Tempo yourself, use your clone's `bin/tempo` instead. The same goes for the
-paths in [tmux and the status line](docs/reference.md#tmux-and-the-status-line).
-
-### The full-screen view: `tempo tui`
-
-`tempo tui` shows the open questions, as the page does, in the terminal, with panels side
-by side as in lazygit, and you use it only with the keyboard. It needs nothing installed: it is drawn with
-curses, which comes with Python. Projects (top left) lists every project with open questions,
-plus the current folder's, with how many are open; a dot marks the ones with questions waiting
-for you. Questions (bottom left) lists the selected project's open questions, grouped by goal
-as on the page: `»` marks the goal's start-here question, `…` one waiting on Claude, and
-`quick` one that is quick to answer. Detail (right) shows the selected question: its context,
-the lettered options with the recommended one marked, and its thread. The bottom line shows the
-keys for the panel you are in.
-
-[The recording above](#see-it-in-action) shows it at work.
-
-| Key | What it does |
-| --- | --- |
-| `j` `k`, `↓` `↑` | Move to the next or previous project or question; in Detail, scroll |
-| `h` `l`, `←` `→`, `Tab` `Shift-Tab` | Go to the previous or next panel |
-| `Enter` | Go from Projects to Questions, and from Questions to Detail |
-| `a`, `b`, `c`… | Answer the selected question with that option. The bottom line opens for an optional note: `Enter` sends, with or without one, and `Esc` cancels |
-| `A`, `B`, `C`… | The same. Use Shift for options `h`, `j`, `k`, `l`, `q`, `r` and `s`, since those letters also move, quit or open something |
-| `r` | Ask Claude for more (a follow-up): type it on the bottom line, `Enter` sends, `Esc` cancels |
-| `s` | Open Settings (see below); `Esc` goes back to the questions |
-| `PgDn` `PgUp`, `Ctrl-d` `Ctrl-u` | Scroll the detail by a page |
-| `?` | Show the keys |
-| `q`, `Esc` | Quit |
-
-Answers and follow-ups are saved exactly as the page and `tempo answer` save them, so Claude
-gets them the same way. The bottom line then says what was saved, or why it was refused (for
-example, when the question was answered on the page meanwhile). The screen follows changes by
-itself within a second or two: a question Claude adds or rewords, or an answer from the page.
-On a screen narrower than 60 characters or shorter than 10 lines it shows one panel at a time, and `h` and `l` go to
-the others. Set `NO_COLOR` to turn colors off. It never starts the page. For answered and
-archived questions, search, renaming a project and the other settings, use the page.
-
-Settings (`s`) lists every project with its number of questions and the folders it covers.
-To merge one project into another, for example after a folder was renamed or moved and its
-new questions went to a new project, select the old project, press `m`, pick the project to
-merge it into with `j` and `k`, press `Enter`, then `y` to confirm (`n` or `Esc` cancels).
-Its questions and folders move over, as when you rename a project to another's name on the
-page: if both have questions, the moved ones get new numbers after the other's, and the bottom
-line says which, such as "Moved 5 questions from tempo to Tempo: now Q28–Q32."
-
-Text you paste goes into the note or follow-up you are writing, line breaks included (shown
-as `↵`). In a terminal with bracketed paste, which marks pasted text and which most have, a
-paste never acts as keys, so a newline in it doesn't send and a letter doesn't pick an option.
-Pasting anywhere else only shows a hint on the bottom line. Alt (Option on a Mac) with a key, such as
-Option+Left, is ignored too, rather than read as `Esc` and then a letter.
-
-To open it in a tmux popup, see [tmux and the status line](docs/reference.md#tmux-and-the-status-line).
-
-## In the Claude Code session
-
-The same, without leaving the session: type one of these slash commands in Claude Code. They
-are for you, not for Claude (Claude Code does not let Claude invoke them). They record your
-answer or follow-up before Claude reads anything, so it comes from you and reaches Claude
-once, right away.
-
-```text
-/tempo:list                          # the project's open questions
-/tempo:show 57                       # one question, with its options and thread
-/tempo:answer 57a                    # answer Q57 with option (a); also 57 a, Q57a, Q57 a)
-/tempo:answer 57a keep the old flag  # with a note
-/tempo:answer 61 yes                 # name the option by its text, in any case
-/tempo:dive 57                       # ask for more ("Tell me more.")
-/tempo:dive 57 why not b?            # ask something specific
-```
-
-After `/tempo:answer` Claude acts on the answer. After `/tempo:dive` Claude digs in and
-answers in the question itself, so the page shows the new explanation. An unknown question
-or option records nothing and shows Tempo's error instead.
-
 ## How it works
 
 ```
- Claude ──tempo add / context / reword──▶  SQLite  ◀──answer / follow-up── page / tui / tempo answer
+ Claude ──tempo add / context / reword──▶  SQLite  ◀──answer / follow-up── sidebar / tui / page / tempo answer
    ▲                                          │
    ├──── hook on your next message ───────────┤
    ├──── tempo wait (running in background) ──┤
@@ -243,8 +295,8 @@ uses three hooks: small commands that Claude Code runs at fixed moments of a ses
 start of every session, one tells Claude that every decision goes through Tempo and lists the
 project's open questions.
 
-Answers from the page, `tempo tui`, `tempo answer` or `tempo reply` reach Claude in one of
-three ways:
+Answers from the sidebar, `tempo tui`, the page, `tempo answer` or `tempo reply` reach
+Claude in one of three ways:
 
 - a hook adds them before Claude reads your next message;
 - a `tempo wait` that Claude keeps running in the background wakes it as soon as you answer;
@@ -258,7 +310,7 @@ the command's output.
 The hook that runs when a reply ends also keeps the loop going. If the reply asks you something
 (lettered options, a yes-or-no question or a request for permission) without a Tempo question,
 it sends Claude back to add one. If the project has open questions and no `tempo wait` is
-running, it sends Claude back to start one, so your answers from the page reach it without you
+running, it sends Claude back to start one, so your answers from the sidebar reach it without you
 writing in chat. More in [Hooks](docs/reference.md#hooks).
 
 Commands, settings and environment variables are listed in [docs/reference.md](docs/reference.md).
