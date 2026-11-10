@@ -27,5 +27,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+      # So the tests of the terminal's tmux sessions run too, instead of skipping.
+      - name: Install tmux
+        run: command -v tmux || { sudo apt-get update -q && sudo apt-get install -y -q tmux; }
       - name: Run bin/ci
         run: bin/ci
