@@ -322,11 +322,11 @@ class PageTest(DatabaseTest):
 
     def test_saving_in_settings_keeps_the_keyboard_on_the_button(self):
         self.open("#/settings", ready="$('#settings .segmented button')")
-        off = "[aria-label='Start the page with each session'] button:last-child"
-        self.click(off)
-        self.wait("$(%s).getAttribute('aria-pressed') === 'true'" % json.dumps("#settings " + off))
-        self.assertFalse(self.store.start_page())
-        self.assertEqual(self.run_js("document.activeElement.textContent"), "Off")
+        on = "[aria-label='Start the page with each session'] button:first-child"
+        self.click(on)
+        self.wait("$(%s).getAttribute('aria-pressed') === 'true'" % json.dumps("#settings " + on))
+        self.assertTrue(self.store.start_page())
+        self.assertEqual(self.run_js("document.activeElement.textContent"), "On")
         self.assertTrue(self.run_js("$('#settings').contains(document.activeElement)"))
 
     def test_merges_one_project_into_another_from_settings(self):

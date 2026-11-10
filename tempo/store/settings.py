@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from tempo.store.common import StoreBase
 
-# Whether the SessionStart hook starts the page. On unless the user turned it off.
+# Whether the SessionStart hook starts the page. Off unless the user turned it on.
 START_PAGE = "start_page"
 # Which side of each tmux window `tempo tmux` puts the sidebar on: left unless set.
 TMUX_SIDE = "tmux_side"
@@ -16,10 +16,10 @@ class SettingsStore(StoreBase):
     """The Store's settings methods."""
 
     def start_page(self) -> bool:
-        """Whether each session starts the page; on by default."""
+        """Whether each session starts the page; off by default."""
         row = self.db.execute("SELECT value FROM settings WHERE name = ?", (START_PAGE,))
         found = row.fetchone()
-        return found is None or found["value"] != "off"
+        return found is not None and found["value"] == "on"
 
     def set_start_page(self, on: bool) -> None:
         with self._transaction():

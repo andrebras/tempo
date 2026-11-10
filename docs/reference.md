@@ -21,7 +21,7 @@ Code's `PATH` while the plugin is enabled. Run `tempo <command> --help` for ever
 | `tempo status` | For you, not Claude: print `? 3` when the current folder's project has 3 open questions, nothing when it has none, for the tmux status bar (`--project NAME` counts one project, `--all` every project). It only reads the database: it never creates or changes it, and never starts the page |
 | `tempo tmux` | For you, not Claude: inside tmux, turn the questions' sidebar (`tempo tui --sidebar`) on in every window, 40 columns wide, or off again (`--side left` or `--side right` picks the side and is remembered) |
 | `tempo tui` | For you, not Claude: answer in a full-screen terminal view with Projects, Questions and Detail panels, keyboard only (`?` lists the keys; `--project NAME` starts on another project; `--sidebar` is a compact view for a narrow pane beside Claude's; `--question N` shows only that question and closes once it is answered; `s` opens Settings, which lists the projects with their folders and merges one into another). It saves answers and follow-ups as the page does, follows changes by itself, and never starts the page |
-| `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Turning the page off](#turning-the-page-off)) |
+| `tempo config`, `tempo config page on\|off` | For you, not Claude: show your settings, or turn on or off whether each session starts the page (see [Starting the page with each session](#starting-the-page-with-each-session)) |
 | `tempo serve [--background]` | Run the page; works whether or not sessions start it (`--port` picks another port) |
 | `tempo hook <event>` | Run by Claude Code's hooks (`session-start`, `user-prompt-submit`, `stop`); not for direct use (see [Hooks](#hooks)) |
 | `tempo slash <name>` | Run by the slash commands below, with the typed text on stdin; not for direct use |
@@ -64,8 +64,8 @@ Hooks are small commands that Claude Code runs at fixed moments of a session. Te
 three, each a call to `tempo hook …`:
 
 - **SessionStart**, when a session starts: starts the page (see
-  [The page server](#the-page-server)), unless you turned that off (see
-  [Turning the page off](#turning-the-page-off)), and tells Claude how to use Tempo: every decision
+  [The page server](#the-page-server)) if you turned that on (it is off by default, see
+  [Starting the page with each session](#starting-the-page-with-each-session)), and tells Claude how to use Tempo: every decision
   goes in Tempo, each question gets a goal, and every update ends with the project's open
   questions. It then lists those open questions.
 - **UserPromptSubmit**, when you send a message: adds the answers and follow-ups Claude
@@ -151,14 +151,15 @@ been replaced (its `pid` or `started` changed), usually after an update, the pag
 itself, so its code always matches the server's. A note you were typing and the option you
 picked are kept through the reload.
 
-### Turning the page off
+### Starting the page with each session
 
-If you answer from the terminal, you can stop sessions from starting the page, with the
-switch under Sessions in the page's Settings or from the terminal:
+By default, sessions don't start the page: you answer from the terminal, with the tmux
+sidebar (`tempo tmux`), `tempo tui`, or `tempo show` and `tempo answer`. To have each session
+start the page, use the switch under Sessions in the page's Settings, or the terminal:
 
 ```bash
-tempo config page off   # sessions no longer start the page
-tempo config page on    # back to the default
+tempo config page on    # each session starts the page
+tempo config page off   # back to the default
 tempo config            # show the current value
 ```
 
@@ -251,7 +252,7 @@ The gear button at the top right of the page opens Settings.
   size, and width: how many characters fit on a line of a question (Narrow 68, Medium 80 or
   Wide 100). These are kept in your browser, not in the database.
 - **Sessions**: "Start the page with each session", On or Off. It is the same setting as
-  `tempo config page on|off` (see [Turning the page off](#turning-the-page-off)) and is kept
+  `tempo config page on|off` (see [Starting the page with each session](#starting-the-page-with-each-session)) and is kept
   in the database.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes

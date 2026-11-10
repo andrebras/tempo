@@ -306,22 +306,22 @@ class ServerTest(DatabaseTest):
         self.assertEqual([p["name"] for p in json.loads(data)["projects"]], ["demo", "tempo"])
         self.assertEqual([folder["path"] for folder in self.store.folders()], [here])
 
-    def test_turns_the_page_off_and_on_for_new_sessions(self):
+    def test_turns_the_page_on_and_off_for_new_sessions(self):
         _, data = self.request("GET", "/api/settings")
-        self.assertTrue(json.loads(data)["start_page"])
-        status, data = self.request("POST", "/api/settings/page", {"on": False})
-        self.assertEqual(status, 200)
         self.assertFalse(json.loads(data)["start_page"])
-        self.assertFalse(self.store.start_page())
         status, data = self.request("POST", "/api/settings/page", {"on": True})
+        self.assertEqual(status, 200)
         self.assertTrue(json.loads(data)["start_page"])
         self.assertTrue(self.store.start_page())
+        status, data = self.request("POST", "/api/settings/page", {"on": False})
+        self.assertFalse(json.loads(data)["start_page"])
+        self.assertFalse(self.store.start_page())
         for body in ({}, {"on": "off"}, {"on": 0}):
             with self.subTest(body=body):
                 status, data = self.request("POST", "/api/settings/page", body)
                 self.assertEqual(status, 400)
                 self.assertIn("true or false", json.loads(data)["error"])
-        self.assertTrue(self.store.start_page())
+        self.assertFalse(self.store.start_page())
 
     def test_reports_settings_errors(self):
         self.add(project="other")
@@ -363,14 +363,14 @@ class ServerTest(DatabaseTest):
         self.store.see_folder("onzehq")
         for path, body in [
             ("/api/projects/demo/rename", {"name": "Hijacked"}),
-            ("/api/settings/page", {"on": False}),
+            ("/api/settings/page", {"on": True}),
         ]:
             with self.subTest(path=path):
                 status, _ = self.request("POST", path, body, origin="https://evil.example")
                 self.assertEqual(status, 403)
         self.assertEqual(self.store.projects(), ["demo"])
         self.assertEqual(self.store.project_for("onzehq"), "onzehq")
-        self.assertTrue(self.store.start_page())
+        self.assertFalse(self.store.start_page())
 
     def test_threads_are_gone(self):
         for method, path in [

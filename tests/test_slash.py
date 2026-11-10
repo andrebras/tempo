@@ -83,6 +83,7 @@ class SlashCommandTest(DatabaseTest):
         self.assertNotIn("Elsewhere", out)
 
     def test_show_takes_a_number_or_a_code(self):
+        self.store.set_start_page(True)
         code, out, _ = self.slash("show", "1b")
         self.assertEqual(code, 0)
         self.assertIn("(b) Right", out)

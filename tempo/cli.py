@@ -1670,13 +1670,13 @@ def _store() -> Store:
 
 def page_on() -> bool:
     """Whether sessions start the page (the user's `tempo config page` setting). Any
-    problem reading it counts as on, which is how Tempo worked before the setting."""
+    problem reading it counts as off, the setting's default."""
     try:
         with Store(connect()) as store:
             return store.start_page()
     except Exception as error:
         print("tempo: page setting not read: %s" % error, file=sys.stderr)
-        return True
+        return False
 
 
 def _pointer(question: Question, page: bool | None = None) -> str:
