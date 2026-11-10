@@ -10,7 +10,18 @@
 # Python runs tempo/__main__.py as a file, not `python -m tempo`: -m puts the current
 # folder first on Python's search path, so from inside another Tempo checkout (or any
 # folder with a tempo/ package) that folder's code would run instead of this one's.
-root="$(cd "$(dirname "$0")/.." && pwd)"
+#
+# Run through a symlink, such as the ~/.local/bin/tempo that `tempo install` makes, $0 is
+# the link, so it is followed to the real bin/tempo first.
+self="$0"
+while [ -L "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in
+    /*) self="$link" ;;
+    *) self="$(dirname "$self")/$link" ;;
+  esac
+done
+root="$(cd "$(dirname "$self")/.." && pwd)"
 probe='import sys; sys.version_info >= (3, 9) and print(sys.executable)'
 for python in python3 /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
   found="$(cd "$root" && "$python" -c "$probe" 2>/dev/null)" || found=""

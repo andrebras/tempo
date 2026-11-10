@@ -99,17 +99,22 @@ works too. Merging two projects renumbers the questions that move.
 
 ### Use `tempo` in your own shell
 
-`tempo` is on Claude Code's `PATH` only inside a session. To use it in your own shell, add an
-alias, for example in `~/.zshrc`:
+`tempo` is on Claude Code's `PATH` (the list of folders your shell looks in for commands)
+only inside a session. To use it in your own shell, run this once, or type `/tempo:install`
+in a Claude session:
 
 ```bash
-alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo
+~/.claude/plugins/marketplaces/tempo/bin/tempo install
 ```
 
-That path is Tempo's marketplace copy, which `claude plugin marketplace update tempo` keeps
-up to date. Sessions run the installed copy in `~/.claude/plugins/cache/tempo/tempo/<version>/`, so the marketplace path is the one that doesn't change. If
-you cloned Tempo yourself, use your clone's `bin/tempo` instead. The same goes for the
-paths in [tmux and the status line](docs/reference.md#tmux-and-the-status-line).
+It makes `~/.local/bin/tempo`, a symlink (a small file that points at another) to Tempo's
+marketplace copy, which `claude plugin marketplace update tempo` keeps up to date. Sessions
+run the installed copy in `~/.claude/plugins/cache/tempo/tempo/<version>/`, so the
+marketplace path is the one that doesn't change. From a clone of Tempo, it links to your
+clone's `bin/tempo` instead. It never replaces anything already at `~/.local/bin/tempo`, and
+when `~/.local/bin` is not on your `PATH` it prints the line to add to your shell's config.
+`tempo uninstall` removes the link. If you'd rather not have the link, an alias such as
+`alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo` in `~/.zshrc` works too.
 
 ### A sidebar in tmux
 
@@ -142,8 +147,12 @@ tmux forgets its sidebars when it stops, after a reboot say. To have them come b
 this line to `~/.tmux.conf`:
 
 ```tmux
-run-shell -b "~/.claude/plugins/marketplaces/tempo/bin/tempo sidebar --restore"
+run-shell -b "~/.local/bin/tempo sidebar --restore"
 ```
+
+It is `tempo sidebar --restore`, with the full path of the link `tempo install` makes:
+tmux's `run-shell` may not see the `PATH` your shell sets, so a plain `tempo` may not be
+found there.
 
 More, including a key to show or hide it, in
 [A sidebar beside Claude](docs/reference.md#a-sidebar-beside-claude).

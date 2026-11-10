@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -1723,3 +1724,150 @@ class WaitProcessesTest(unittest.TestCase):
         plain = {k: v for k, v in os.environ.items() if not k.endswith("_PROJECT")}
         other = self.start(env=plain)
         self.assertIsNone(cli._process_project_setting(other.pid))
+
+
+class HomeTest(unittest.TestCase):
+    """A temporary HOME with Claude Code's plugin folders, so nothing touches the real one."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = os.path.realpath(tmp.name)
+        plugins = os.path.join(self.home, ".claude", "plugins")
+        self.cache = os.path.join(plugins, "cache", "tempo", "tempo", "0.11.0")
+        self.marketplace = os.path.join(plugins, "marketplaces", "tempo")
+        self.clone = os.path.join(self.home, "code", "tempo")
+        for root in (self.cache, self.marketplace, self.clone):
+            os.makedirs(os.path.join(root, "bin"))
+            os.makedirs(os.path.join(root, "tempo"))
+            for name in ("bin/tempo", "tempo/__main__.py"):
+                open(os.path.join(root, name), "w").close()
+        os.mkdir(os.path.join(self.clone, ".git"))
+        patch = mock.patch.dict(os.environ, {"HOME": self.home})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def code_in(self, root):
+        patch = mock.patch.object(cli, "CODE_ROOT", root)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+
+class StableTempoTest(HomeTest):
+    def test_the_plugin_cache_names_the_marketplace_copy(self):
+        self.code_in(self.cache)
+        self.assertEqual(cli.stable_tempo(), os.path.join(self.marketplace, "bin", "tempo"))
+
+    def test_the_marketplace_names_itself_though_it_is_a_git_clone(self):
+        os.mkdir(os.path.join(self.marketplace, ".git"))
+        self.code_in(self.marketplace)
+        self.assertEqual(cli.stable_tempo(), os.path.join(self.marketplace, "bin", "tempo"))
+
+    def test_a_clone_names_its_own(self):
+        self.code_in(self.clone)
+        self.assertEqual(cli.stable_tempo(), os.path.join(self.clone, "bin", "tempo"))
+
+    def test_the_cache_without_a_marketplace_copy_names_its_own(self):
+        os.remove(os.path.join(self.marketplace, "bin", "tempo"))
+        self.code_in(self.cache)
+        self.assertEqual(cli.stable_tempo(), os.path.join(self.cache, "bin", "tempo"))
+
+
+class InstallTest(HomeTest):
+    """`tempo install` links ~/.local/bin/tempo to the stable bin/tempo; uninstall undoes it."""
+
+    def setUp(self):
+        super().setUp()
+        self.code_in(self.cache)
+        self.bin = os.path.join(self.home, ".local", "bin")
+        self.link = os.path.join(self.bin, "tempo")
+        self.target = os.path.join(self.marketplace, "bin", "tempo")
+        self.on_path(True)
+
+    def on_path(self, on):
+        path = (self.bin + os.pathsep if on else "") + "/usr/bin:/bin"
+        patch = mock.patch.dict(os.environ, {"PATH": path})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_a_fresh_install_makes_the_folder_and_the_link(self):
+        self.assertEqual(
+            run("install"),
+            (0, "Made %s.\nLinked %s to %s.\n" % (self.bin, self.link, self.target), ""),
+        )
+        self.assertEqual(os.readlink(self.link), self.target)
+
+    def test_from_a_clone_it_links_the_clones_own(self):
+        self.code_in(self.clone)
+        self.assertEqual(run("install")[0], 0)
+        self.assertEqual(os.readlink(self.link), os.path.join(self.clone, "bin", "tempo"))
+
+    def test_installing_twice_changes_nothing_and_says_so(self):
+        run("install")
+        self.assertEqual(
+            run("install"),
+            (0, "Already installed: %s links to %s.\n" % (self.link, self.target), ""),
+        )
+
+    def test_off_path_it_prints_the_line_to_add(self):
+        self.on_path(False)
+        code, out, _ = run("install")
+        self.assertEqual(code, 0)
+        self.assertIn("%s is not on your PATH" % self.bin, out)
+        self.assertIn('export PATH="$HOME/.local/bin:$PATH"', out)
+
+    def test_a_file_already_there_is_left_alone(self):
+        os.makedirs(self.bin)
+        with open(self.link, "w") as file:
+            file.write("mine")
+        code, out, err = run("install")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("%s is already there, a file" % self.link, err)
+        with open(self.link) as file:
+            self.assertEqual(file.read(), "mine")
+
+    def test_a_link_elsewhere_is_left_alone(self):
+        os.makedirs(self.bin)
+        clone = os.path.join(self.clone, "bin", "tempo")
+        os.symlink(clone, self.link)
+        code, _, err = run("install")
+        self.assertEqual(code, 1)
+        self.assertIn("a link to %s" % clone, err)
+        self.assertIn("`tempo uninstall` does", err)
+        self.assertEqual(os.readlink(self.link), clone)
+
+    def test_for_the_slash_command_a_refusal_goes_to_stdout_and_exits_0(self):
+        os.makedirs(self.bin)
+        open(self.link, "w").close()
+        code, out, err = run("install", "--slash")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("%s is already there, a file" % self.link, out)
+
+    def test_uninstall_removes_the_link(self):
+        run("install")
+        self.assertEqual(
+            run("uninstall"),
+            (0, "Removed %s, which linked to %s.\n" % (self.link, self.target), ""),
+        )
+        self.assertFalse(os.path.lexists(self.link))
+        self.assertEqual(
+            run("uninstall"), (0, "Nothing to remove: %s isn't there.\n" % self.link, "")
+        )
+
+    def test_uninstall_removes_a_link_to_a_tempo_that_is_gone(self):
+        os.makedirs(self.bin)
+        os.symlink(os.path.join(self.cache, "bin", "tempo"), self.link)
+        shutil.rmtree(self.cache)
+        self.assertEqual(run("uninstall")[0], 0)
+        self.assertFalse(os.path.lexists(self.link))
+
+    def test_uninstall_leaves_a_file_or_a_link_to_something_else(self):
+        os.makedirs(self.bin)
+        open(self.link, "w").close()
+        code, _, err = run("uninstall")
+        self.assertEqual(code, 1)
+        self.assertIn("%s is a file, not a link to Tempo's bin/tempo" % self.link, err)
+        os.remove(self.link)
+        os.symlink("/usr/bin/true", self.link)
+        self.assertEqual(run("uninstall")[0], 1)
+        self.assertEqual(os.readlink(self.link), "/usr/bin/true")

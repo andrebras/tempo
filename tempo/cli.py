@@ -273,6 +273,16 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
     config.add_argument("value", nargs="?", choices=["on", "off"])
     config.set_defaults(run=run_config)
 
+    install = commands.add_parser(
+        "install", help="Put tempo on your shell's PATH: a link in ~/.local/bin to bin/tempo"
+    )
+    # What /tempo:install runs: a refusal goes to stdout and exits 0, as `tempo slash` does,
+    # so the command goes on and Claude tells the user why.
+    install.add_argument("--slash", action="store_true", help=argparse.SUPPRESS)
+    install.set_defaults(run=run_install)
+    uninstall = commands.add_parser("uninstall", help="Remove the link `tempo install` made")
+    uninstall.set_defaults(run=run_uninstall)
+
 
 def _run_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Run by Claude Code and by Tempo itself: the hooks and the page."""
@@ -506,6 +516,80 @@ def run_config(args: argparse.Namespace) -> None:
         )
 
 
+# Where `tempo install` puts its link: a folder many shells already have on PATH.
+LOCAL_BIN = "~/.local/bin"
+
+
+def run_install(args: argparse.Namespace) -> int:
+    """Link ~/.local/bin/tempo to the stable bin/tempo, so any shell can run tempo. Never
+    replaces something already there."""
+    folder = os.path.normpath(os.path.expanduser(LOCAL_BIN))
+    link, target = os.path.join(folder, "tempo"), stable_tempo()
+    if os.path.islink(link) and os.readlink(link) == target:
+        print("Already installed: %s links to %s." % (link, target))
+    elif os.path.lexists(link):
+        hint = " (`tempo uninstall` does)" if _tempo_link(link) else ""
+        print(
+            "tempo: %s is already there, %s, so it was left as it is. Remove it%s, then run"
+            " `tempo install` again." % (link, _what_is(link), hint),
+            file=sys.stdout if args.slash else sys.stderr,
+        )
+        return 0 if args.slash else 1
+    else:
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
+            print("Made %s." % folder)
+        os.symlink(target, link)
+        print("Linked %s to %s." % (link, target))
+    path = os.environ.get("PATH", "").split(os.pathsep)
+    if not any(os.path.normpath(os.path.expanduser(p)) == folder for p in path if p):
+        print(
+            "%s is not on your PATH, so your shell won't find tempo yet. Add this line to"
+            " your shell's config, such as ~/.zshrc, then open a new terminal:\n\n"
+            '    export PATH="$HOME/.local/bin:$PATH"' % folder
+        )
+    return 0
+
+
+def run_uninstall(args: argparse.Namespace) -> int:
+    """Remove ~/.local/bin/tempo, but only when it is a link to a Tempo bin/tempo."""
+    link = os.path.join(os.path.expanduser(LOCAL_BIN), "tempo")
+    if not os.path.lexists(link):
+        print("Nothing to remove: %s isn't there." % link)
+        return 0
+    target = _tempo_link(link)
+    if not target:
+        print(
+            "tempo: %s is %s, not a link to Tempo's bin/tempo, so it was left as it is."
+            % (link, _what_is(link)),
+            file=sys.stderr,
+        )
+        return 1
+    os.remove(link)
+    print("Removed %s, which linked to %s." % (link, target))
+    return 0
+
+
+def _tempo_link(link: str) -> str | None:
+    """Where link points, when it is a symlink to a Tempo's bin/tempo, or to a bin/tempo
+    that is gone, such as a cache copy Claude Code removed; None otherwise."""
+    if not os.path.islink(link):
+        return None
+    target = os.path.normpath(os.path.join(os.path.dirname(link), os.readlink(link)))
+    root = os.path.dirname(os.path.dirname(target))
+    if not target.endswith(os.sep + os.path.join("bin", "tempo")):
+        return None
+    if os.path.lexists(target) and not os.path.exists(os.path.join(root, "tempo", "__main__.py")):
+        return None
+    return target
+
+
+def _what_is(path: str) -> str:
+    if os.path.islink(path):
+        return "a link to %s" % os.readlink(path)
+    return "a folder" if os.path.isdir(path) else "a file"
+
+
 def run_tui(args: argparse.Namespace) -> int:
     """The page's questions in the terminal (tempo/tui). It never starts the page."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
@@ -530,6 +614,20 @@ SIDEBAR_HOOKS = ("after-new-window", "after-new-session")
 TIDY_HOOKS = ("pane-exited", "after-kill-pane")
 # What every hook of ours runs, which tells them from the user's own.
 OUR_FLAGS = ("--window", "--tidy")
+# Where Claude Code keeps plugins, and the marketplace copy of Tempo it keeps up to date.
+PLUGINS = "~/.claude/plugins"
+MARKETPLACE_TEMPO = "~/.claude/plugins/marketplaces/tempo/bin/tempo"
+
+
+def stable_tempo() -> str:
+    """The bin/tempo to run from outside this process, which still works after an update.
+    Sessions run a copy in the plugin cache that has the version in its path, so the
+    plugin's code names the marketplace copy instead; a clone names its own."""
+    plugins = os.path.realpath(os.path.expanduser(PLUGINS))
+    marketplace = os.path.expanduser(MARKETPLACE_TEMPO)
+    if os.path.realpath(CODE_ROOT).startswith(plugins + os.sep) and os.path.exists(marketplace):
+        return marketplace
+    return os.path.join(CODE_ROOT, "bin", "tempo")
 
 
 def run_sidebar(args: argparse.Namespace) -> int:
@@ -599,9 +697,7 @@ def _sidebars_on(side: str) -> None:
     windows one and close one left alone; any sidebars already there go first."""
     _sidebars_off()
     _tmux("set-option", "-g", SIDEBAR_SIDE, side)
-    ensure = shlex.join(
-        ["env", "TEMPO_DB=%s" % db_path(), os.path.join(CODE_ROOT, "bin", "tempo"), "sidebar"]
-    )
+    ensure = shlex.join(["env", "TEMPO_DB=%s" % db_path(), stable_tempo(), "sidebar"])
     for hook in SIDEBAR_HOOKS:
         command = "run-shell -b %s" % shlex.quote(ensure + " --window #{window_id}")
         _tmux("set-hook", "-ag", hook, command)
@@ -619,7 +715,7 @@ def _add_sidebar(window: str, side: str) -> None:
         return
     path = _tmux("display-message", "-p", "-t", window, "#{pane_current_path}").strip()
     command = [
-        os.path.join(CODE_ROOT, "bin", "tempo"), "tui", "--sidebar",
+        stable_tempo(), "tui", "--sidebar",
         "--project", project_name(path or os.getcwd()),
     ]  # fmt: skip
     place = "-hbfd" if side == "left" else "-hfd"
