@@ -654,6 +654,25 @@ class ProjectsTest(DatabaseTest):
         # Nothing more to forget: the database isn't written again.
         self.assertEqual(self.store.forget_gone_folders(), 0)
 
+    def test_a_folder_in_a_temporary_folder_is_not_remembered(self):
+        scratchpad = os.path.join(tempfile.gettempdir(), "claude", "scratchpad", "fork")
+        with mock.patch("tempo.store.projects.TEMPORARY", ("/tmp",)):
+            self.assertFalse(self.store.see_folder("fork", "/tmp/claude/scratchpad/fork"))
+            self.assertTrue(self.store.see_folder("tmpfiles", "/tmpfiles"))
+        self.assertEqual([p["name"] for p in self.store.project_summaries()], ["tmpfiles"])
+        # Its questions still go to a project named after it, as anywhere else.
+        self.assertEqual(self.store.project_for("fork", scratchpad), "fork")
+
+    def test_an_empty_project_in_a_temporary_folder_is_forgotten_though_it_is_there(self):
+        here = tempfile.mkdtemp()
+        self.addCleanup(os.rmdir, here)
+        self.store.see_folder("fork", here)
+        self.add(project="kept")
+        self.store.see_folder("kept", os.path.join(here, "kept"))
+        with mock.patch("tempo.store.projects.TEMPORARY", (os.path.dirname(here),)):
+            self.assertEqual(self.store.forget_gone_folders(), 1)
+        self.assertEqual([p["name"] for p in self.store.project_summaries()], ["kept"])
+
     def test_projects_with_questions_numbering_or_a_folder_left_are_kept(self):
         here = tempfile.mkdtemp()
         self.addCleanup(os.rmdir, here)
