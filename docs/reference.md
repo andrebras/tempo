@@ -252,9 +252,21 @@ A shell stops when you end it with **End shell**, when you type `exit`, when the
 turned off in the page's Settings, and, without tmux, when the server stops. End shell with
 tmux also ends the session. Turning the terminal off in Settings ends every shell and every
 tmux session Tempo started (by their names), also those an earlier server left, and no
-other. Turning it off with `tempo config terminal off` only refuses new shells; the running
-ones stop with End shell or Settings, the server (without tmux), or
-`tmux kill-session -t <name>`. Each project has one shell, and the server runs at most 32.
+other. With terminals running, Settings first asks, under the switch: "Turning the terminal
+off ends 2 running terminals; anything running in them stops.", with **Turn off** and
+**Cancel** (or Esc). Afterwards it says how many it ended. Each project has one shell, and
+the server runs at most 32.
+
+`tempo config terminal off` cannot reach a running page server, so it ends only the tmux
+sessions Tempo started, matched by the same names, and says which:
+
+```
+Terminal is off. Ended 2 tmux sessions Tempo started (tempo-app-3f9a1c, tempo-web-91be02); anything running in them was stopped.
+Terminal is off. No terminal sessions were running.
+```
+
+Without tmux, the shells a running page server keeps stop when that server stops, or when
+you turn the terminal off in its Settings, and the command says so.
 
 ## Projects in the header
 
@@ -340,7 +352,8 @@ The gear button at the top right of the page opens Settings.
 - **Terminal**: "Terminal in the project's folder", On or Off (off by default), the terminal's
   font and its size. They are the same settings as `tempo config terminal`,
   `terminal-font` and `terminal-size` (see [The terminal](#the-terminal)), kept in the
-  database. Turning it off here also stops every open shell.
+  database. Turning it off here also stops every open shell, after asking first when any
+  run (see [Hidden terminals keep running](#hidden-terminals-keep-running)).
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
   as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
   its questions, their numbers and its folders along.
