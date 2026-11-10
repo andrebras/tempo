@@ -1,0 +1,16 @@
+[package]
+name = "tempo-desktop"
+version = "0.1.0"
+description = "Tempo's page in a window of its own"
+license = "MIT"
+edition = "2024"
+rust-version = "1.90"
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.5", features = [] }
+# The system calls for signals: SIGTERM stops the page server so it ends its shells first,
+# and the app waits for Ctrl-C or SIGTERM itself so it can stop the server before it quits.
+libc = "0.2"
