@@ -1,9 +1,8 @@
 // The terminal under the question: a shell in the shown project's folder, so the user doesn't
 // have to switch to their terminal app. Drawn by xterm.js, which ships with Tempo
-// (tempo/vendor/xterm) and loads only once the terminal setting is on. Each project has its
-// own shell, and the page reads its output only while it is shown: a hidden terminal holds
-// no connection, as browsers allow only about six to one server. Its shell keeps running,
-// in tmux or on the page server, and showing it again picks up where it was.
+// (tempo/vendor/xterm) and loads only once the terminal setting is on. Each project keeps
+// its own shell while the page is open; the server stops a shell when the page stops
+// reading its output, so closing the tab leaves nothing running.
 // Node loads this file only to test the functions it exports.
 
 const terminals = {};
@@ -130,72 +129,36 @@ function loadXterm() {
   return xtermLoading;
 }
 
-// Why a terminal stopped reading, by the last event the server sent.
-const STOPPED = {
-  end: "The shell ended. Hide and show the terminal for a new one.",
-  moved: "This terminal is shown in another tab now. Hide and show it to bring it back.",
-  lost: "The page server went away. Hide and show the terminal to reconnect.",
-};
-
-function newTerminal(project) {
+async function openTerminal(project) {
   const holder = Object.assign(document.createElement("div"), { className: "term" });
   $("#terminal .screens").append(holder);
   const term = new Terminal({ ...terminalFont(terminalSettings), theme: pageTheme(), cursorBlink: true, scrollback: 5000 });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(holder);
-  // received: the bytes of output shown, so coming back asks only for the rest.
-  const entry = { project, holder, term, fit, id: null, folder: "", session: null, received: 0, reading: null };
+  const entry = { project, holder, term, fit, id: null, folder: "" };
   terminals[project] = entry;
-  term.onData((data) => sendTerminal(entry, "input", { data }));
-  term.onResize(({ cols, rows }) => sendTerminal(entry, "resize", { cols, rows }));
+  try {
+    Object.assign(entry, await terminalPost("/api/terminal", { project }));
+  } catch (error) {
+    term.write(`${error.message}\r\n`);
+    return entry;
+  }
+  const send = (path, body) => terminalPost(`/api/terminal/${entry.id}/${path}`, body).catch(() => {});
+  term.onData((data) => send("input", { data }));
+  term.onResize(({ cols, rows }) => send("resize", { cols, rows }));
+  fitTerminal(entry);
+  send("resize", { cols: term.cols, rows: term.rows });
+  readOutput(entry);
   return entry;
 }
 
-function sendTerminal(entry, path, body) {
-  if (entry.id) terminalPost(`/api/terminal/${entry.id}/${path}`, body).catch(() => {});
-}
-
-// Gets the project's shell from the server, the running one or a new one, and reads its
-// output. A new shell, or a new tmux client after a server restart, starts on a clean screen.
-async function attachTerminal(entry) {
-  const reading = new AbortController();
-  entry.reading = reading;
-  let shell;
+// Reads the shell's output until it ends. fetch, not EventSource, because every request
+// must send the secret in a header, and because a dropped stream must not reconnect: the
+// server has stopped that shell.
+async function readOutput(entry) {
   try {
-    shell = await terminalPost("/api/terminal", { project: entry.project });
-  } catch (error) {
-    if (entry.reading === reading) entry.reading = null;
-    entry.term.write(`${error.message}\r\n`);
-    return;
-  }
-  if (entry.reading !== reading) return; // hidden in the meantime
-  if (shell.id !== entry.id) {
-    if (entry.id) entry.term.reset();
-    entry.received = 0;
-  }
-  Object.assign(entry, { id: shell.id, folder: shell.folder, session: shell.session });
-  readOutput(entry, reading);
-  fitTerminal(entry);
-  sendTerminal(entry, "resize", { cols: entry.term.cols, rows: entry.term.rows });
-}
-
-// Stops reading a hidden terminal's output, which frees its connection; the shell goes on.
-function detachTerminal(entry) {
-  const reading = entry.reading;
-  entry.reading = null;
-  reading?.abort();
-}
-
-// Reads the shell's output after what is shown already, until the page hides it or it
-// stops. fetch, not EventSource, because every request must send the secret in a header,
-// and because the page decides when to read again: when the terminal is shown.
-async function readOutput(entry, reading) {
-  let last = "lost";
-  try {
-    const response = await fetch(`/api/terminal/${entry.id}/output?since=${entry.received}`, {
-      headers: { "X-Tempo-Secret": terminalSecret() }, signal: reading.signal,
-    });
+    const response = await fetch(`/api/terminal/${entry.id}/output`, { headers: { "X-Tempo-Secret": terminalSecret() } });
     if (!response.ok) throw new Error((await response.json()).error);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -205,27 +168,12 @@ async function readOutput(entry, reading) {
       if (done) break;
       const parsed = sseEvents(rest + decoder.decode(value, { stream: true }));
       rest = parsed.rest;
-      for (const { event, data } of parsed.events) {
-        if (event !== "message") {
-          last = event;
-          continue;
-        }
-        const bytes = decodeOutput(data);
-        entry.received += bytes.length;
-        entry.term.write(bytes);
-      }
+      for (const { event, data } of parsed.events) if (event === "message") entry.term.write(decodeOutput(data));
     }
-  } catch { /* hidden, or the server went away */ }
-  if (entry.reading !== reading) return; // hidden, or reading again
-  entry.reading = null;
-  if (terminals[entry.project] === entry) entry.term.write(`\r\n[${STOPPED[last] || STOPPED.lost}]\r\n`);
-}
-
-// Where the shell lives, for the bar: a tmux session the user can attach to from their own
-// terminal too, or the page server, which keeps it until it is ended.
-function terminalMode(entry) {
-  if (!entry.id) return "";
-  return entry.session ? `tmux: ${entry.session} · tmux attach -t ${entry.session}` : "kept alive by the page server";
+  } catch { /* the server went away: it stopped the shell too */ }
+  if (terminals[entry.project] === entry) {
+    entry.term.write("\r\n[The shell ended. End shell, then open the terminal again for a new one.]\r\n");
+  }
 }
 
 function fitTerminal(entry) {
@@ -233,7 +181,6 @@ function fitTerminal(entry) {
 }
 
 function setTerminalButton(open) {
-  if (!open) for (const entry of Object.values(terminals)) detachTerminal(entry);
   $("#terminal").hidden = !open;
   $("#terminal-toggle").setAttribute("aria-pressed", String(open));
 }
@@ -241,16 +188,10 @@ function setTerminalButton(open) {
 async function showTerminal() {
   setTerminalButton(true);
   const project = state.project;
-  for (const entry of Object.values(terminals)) {
-    entry.holder.hidden = entry.project !== project;
-    if (entry.project !== project) detachTerminal(entry);
-  }
+  for (const entry of Object.values(terminals)) entry.holder.hidden = entry.project !== project;
   $("#terminal .name").textContent = project;
-  const entry = terminals[project] || newTerminal(project);
-  if (!entry.reading) await attachTerminal(entry);
-  if (state.project !== project) return; // another project was picked meanwhile
+  const entry = terminals[project] || await openTerminal(project);
   $("#terminal .where").textContent = entry.folder;
-  $("#terminal .mode").textContent = terminalMode(entry);
   fitTerminal(entry);
   entry.term.focus();
 }
@@ -259,8 +200,7 @@ function endTerminal() {
   const entry = terminals[state.project];
   if (entry) {
     delete terminals[state.project];
-    detachTerminal(entry);
-    sendTerminal(entry, "close", {});
+    if (entry.id) terminalPost(`/api/terminal/${entry.id}/close`, {}).catch(() => {});
     entry.term.dispose();
     entry.holder.remove();
   }
@@ -285,7 +225,7 @@ function rethemeTerminals() {
 async function applyTerminalSettings(data) {
   Object.assign(terminalSettings, { on: data.terminal, font: data.terminal_font, size: data.terminal_size });
   if (!data.terminal) {
-    for (const entry of Object.values(terminals)) { detachTerminal(entry); entry.term.dispose(); entry.holder.remove(); }
+    for (const entry of Object.values(terminals)) { entry.term.dispose(); entry.holder.remove(); }
     for (const project of Object.keys(terminals)) delete terminals[project];
     setTerminalButton(false);
   }
@@ -317,5 +257,5 @@ function startTerminal() {
   fetch("/api/settings").then((response) => response.json()).then(applyTerminalSettings).catch(() => {});
 }
 
-if (typeof module === "object") module.exports = { sseEvents, decodeOutput, terminalTheme, terminalFont, terminalHeight, terminalMode, MONO };
+if (typeof module === "object") module.exports = { sseEvents, decodeOutput, terminalTheme, terminalFont, terminalHeight, MONO };
 else startTerminal();

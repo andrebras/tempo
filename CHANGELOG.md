@@ -10,19 +10,14 @@ All notable changes to Tempo are listed here. The format follows
 
 - The page server can open a shell in a project's folder, for a terminal on the page. It is
   off unless you run `tempo config terminal on`, because the page can then run any command
-  as you. Each request needs a secret that the server puts only in the page it serves.
+  as you. Each request needs a secret that the server puts only in the page it serves, and
+  each shell stops when its page goes away or the server stops.
 - A terminal on the page: with the terminal setting on, a button beside the gear opens a
-  shell in the shown project's folder, under the question. Each project has its own shell.
-  Its colours follow the page's light or dark theme, and a Terminal card in Settings turns
-  it on or off and sets its font and size (also `tempo config terminal-font` and
-  `terminal-size`). xterm.js, which draws it, ships with Tempo, so the page loads nothing
-  from the internet.
-- A hidden terminal holds no connection to the page server, so many open project terminals
-  don't stall the page's own updates. Its shell keeps running, and showing it again brings
-  it back as it was. With tmux installed, each project's shell runs in a tmux session named
-  `tempo-<folder>-<hash>`, which survives a server restart and which you can attach to from
-  your own terminal; without tmux, the page server keeps the shell and its latest output
-  until you end it or the server stops.
+  shell in the shown project's folder, under the question. Each project keeps its own shell
+  while the page is open. Its colours follow the page's light or dark theme, and a Terminal
+  card in Settings turns it on or off and sets its font and size (also
+  `tempo config terminal-font` and `terminal-size`). xterm.js, which draws it, ships with
+  Tempo, so the page loads nothing from the internet.
 
 ### Changed
 

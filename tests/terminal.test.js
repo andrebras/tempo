@@ -1,10 +1,9 @@
 // Tests for the terminal's helpers in tempo/terminal.js, run with `node --test`: reading the
-// shell's output as Server-Sent Events, decoding it, the colours and font xterm.js gets, and
-// where the bar says the shell lives.
+// shell's output as Server-Sent Events, decoding it, and the colours and font xterm.js gets.
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { sseEvents, decodeOutput, terminalTheme, terminalFont, terminalHeight, terminalMode, MONO } = require("../tempo/terminal.js");
+const { sseEvents, decodeOutput, terminalTheme, terminalFont, terminalHeight, MONO } = require("../tempo/terminal.js");
 
 test("complete events are read and an unfinished one is kept for the next chunk", () => {
   const { events, rest } = sseEvents("data: aGk=\n\n: still here\n\nevent: end\ndata:\n\ndata: bW9y");
@@ -56,11 +55,4 @@ test("the dragged height stays between a few lines and most of the window", () =
   assert.equal(terminalHeight(300, 1000), 300);
   assert.equal(terminalHeight(40, 1000), 120);
   assert.equal(terminalHeight(2000, 1000), 850);
-});
-
-test("the bar says where the shell lives: its tmux session, or the page server", () => {
-  const tmux = "tmux: tempo-app-1a2b3c · tmux attach -t tempo-app-1a2b3c";
-  assert.equal(terminalMode({ id: "k", session: "tempo-app-1a2b3c" }), tmux);
-  assert.equal(terminalMode({ id: "k", session: null }), "kept alive by the page server");
-  assert.equal(terminalMode({ id: null, session: null }), "");
 });

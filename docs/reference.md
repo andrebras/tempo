@@ -185,10 +185,10 @@ tempo config terminal-size 14                     # in pixels, 8 to 32; 13 by de
 ```
 
 With it on, a Terminal button appears beside the gear. It opens a shell for the project
-shown, at the bottom of the question's pane. Each project has its own shell, and the panel
-follows the project you pick in the header. **Hide** keeps the shell running; **End shell**
-stops it. Drag the panel's top edge (or focus it and use the up and down arrow keys) to
-change its height, which the browser remembers. The terminal uses the page's colours, light or dark, and
+shown, at the bottom of the question's pane. Each project keeps its own shell while the page
+is open, and the panel follows the project you pick in the header. **Hide** keeps the shell
+running; **End shell** stops it. Drag the panel's top edge (or focus it and use the up and
+down arrow keys) to change its height, which the browser remembers. The terminal uses the page's colours, light or dark, and
 the font and size from Settings. If the font you name isn't installed, the terminal falls
 back to the system's monospace font, so the columns still line up. It is drawn by [xterm.js](https://xtermjs.org) 6.0.0 and its
 fit addon 0.11.0, which ship with Tempo in `tempo/vendor/xterm` (MIT licence), so the page
@@ -212,49 +212,11 @@ pseudo-terminal (PTY), so full-screen programs such as `claude` work. The page r
 server writes to as output comes) and sends keys and the terminal's size as separate
 requests. None of this uses the database.
 
-#### Hidden terminals keep running
-
-The page reads a terminal's output only while it is shown. When you hide it, pick another
-project, or close or reload the tab, the page lets go of that connection, and the shell
-keeps running. Browsers allow only about six connections at once to one server, so this
-keeps the page's own updates moving however many projects have a shell. When you show the
-terminal again, the page gets the same shell back, with what happened while it was hidden.
-The bar above the terminal says where the shell lives.
-
-**With [tmux](https://github.com/tmux/tmux) installed** (found on your `PATH`), each
-project's shell runs in a tmux session. tmux is a terminal multiplexer: a program that keeps
-shells running on its own, so you can leave them and come back. The session is named
-`tempo-`, then the folder's name (with dots, colons and other signs turned into `-`), then
-six letters and digits from the folder's full path, so two folders with the same name get
-two sessions: for example `tempo-my-app-3f9a1c`. The page's PTY runs only a tmux client
-attached to that session (`tmux new-session -A`, which attaches or creates). Hiding the
-terminal ends the client, and tmux keeps the shell; showing it attaches again, and tmux
-draws the screen as it was. The shell also survives a restart of the page server: the new
-server attaches to the same session. Inside tmux, the shell is the one tmux starts (your
-login shell unless your tmux config says otherwise), with tmux's own environment.
-
-You can attach to the same shell from your own terminal, as the bar shows:
-
-```bash
-tmux attach -t tempo-my-app-3f9a1c    # the page and your terminal then show the same shell
-tmux ls                               # every session, Tempo's among them
-```
-
-Tempo uses your usual tmux server, so these sessions are listed with yours, and it never
-changes your tmux config. Scrolling back is tmux's own (with your prefix key, then `[`).
-
-**Without tmux**, the page server keeps the shell itself, and keeps its latest output, up to
-about 1 MB, for the page to read when it comes back. A page that comes back asks only for
-what it hasn't shown yet; a new tab or a reloaded page gets all that is kept. If the same
-terminal is shown in two tabs, the latest one takes it over, and the other says so.
-
-A shell stops when you end it with **End shell**, when you type `exit`, when the terminal is
-turned off in the page's Settings, and, without tmux, when the server stops. End shell with
-tmux also ends the session. Turning the terminal off in Settings ends every shell and every
-tmux session Tempo started (by their names), also those an earlier server left, and no
-other. Turning it off with `tempo config terminal off` only refuses new shells; the running
-ones stop with End shell or Settings, the server (without tmux), or
-`tmux kill-session -t <name>`. Each project has one shell, and the server runs at most 32.
+A shell stops when the page stops reading its output (the tab closed or reloaded), when
+nothing starts reading it within 30 seconds of opening, when you end it, when the terminal
+is turned off in the page's Settings, and when the server stops. Turning it off with
+`tempo config terminal off` only refuses new shells; the open ones stop with their page or
+the server.
 
 ## Projects in the header
 

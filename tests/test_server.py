@@ -3,12 +3,9 @@ import http.client
 import io
 import json
 import os
-import shutil
-import subprocess
 import tempfile
 import threading
 import time
-import unittest
 from http.server import ThreadingHTTPServer
 from unittest import mock
 
@@ -454,8 +451,8 @@ class ServerTest(ServerBase):
                 self.assertNotIn("renames", json.loads(self.request("GET", path)[1]))
 
 
-class TerminalBase(ServerBase):
-    """A shell for the project demo, in a throwaway folder, and requests to it."""
+class TerminalTest(ServerBase):
+    """The page's terminal: a shell in the project's folder, behind a setting and a secret."""
 
     def setUp(self):
         super().setUp()
@@ -467,14 +464,9 @@ class TerminalBase(ServerBase):
         shell = mock.patch.dict(os.environ, {"SHELL": "/bin/sh", "PS1": "$ "})
         shell.start()
         self.addCleanup(shell.stop)
-        # Without tmux, the server keeps the shells itself; TmuxTerminalTest runs them in tmux.
-        tmux = mock.patch.object(terminal, "TMUX", self.tmux)
-        tmux.start()
-        self.addCleanup(tmux.stop)
         self.addCleanup(terminal.SHELLS.close_all)
         self.secret = self.server.RequestHandlerClass.terminal_secret
 
-    tmux = None
     log = ServerTest.log
 
     def terminal(self, path, body=None, secret=None, **options):
@@ -483,20 +475,16 @@ class TerminalBase(ServerBase):
         status, data = self.request(method, path, body, headers=headers, **options)
         return status, json.loads(data)
 
-    def open(self, project="demo"):
-        status, data = self.terminal("/api/terminal", {"project": project})
+    def open(self):
+        status, data = self.terminal("/api/terminal", {"project": "demo"})
         self.assertEqual(status, 200, data)
         return data["id"]
 
-    def type(self, key, text):
-        self.assertEqual(self.terminal("/api/terminal/%s/input" % key, {"data": text}), (200, {}))
-
-    def read(self, key, since=0):
+    def read(self, key):
         """Start reading a shell's output: the connection and its response."""
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         headers = {"Host": "127.0.0.1:%d" % self.port, "X-Tempo-Secret": self.secret}
-        path = "/api/terminal/%s/output?since=%d" % (key, since)
-        connection.request("GET", path, headers=headers)
+        connection.request("GET", "/api/terminal/%s/output" % key, headers=headers)
         self.addCleanup(connection.close)
         return connection, connection.getresponse()
 
@@ -518,16 +506,6 @@ class TerminalBase(ServerBase):
         while shell.process.poll() is None and time.monotonic() < deadline:
             time.sleep(0.05)
         return shell.process.poll() is not None and terminal.SHELLS.get(key) is None
-
-    def hide(self, connection, response):
-        """What the page does when it hides a terminal: stop reading its output."""
-        response.close()
-        connection.close()
-
-
-class TerminalTest(TerminalBase):
-    """The page's terminal: a shell in the project's folder, behind a setting and a secret.
-    Without tmux, the server keeps each shell itself."""
 
     def test_the_page_carries_a_new_secret_each_start(self):
         _, page = self.request("GET", "/")
@@ -610,56 +588,24 @@ class TerminalTest(TerminalBase):
         status, data = self.terminal("/api/terminal/nope/input", {"data": "x"})
         self.assertEqual((status, data["error"]), (404, "That terminal has ended"))
 
-    def test_a_newer_page_takes_the_output_over(self):
+    def test_only_one_page_reads_a_shell(self):
         key = self.open()
-        _, first = self.read(key)
-        _, second = self.read(key)
-        _, events = self.until(first, "never printed")
-        self.assertEqual(events[-3:], [b"event: moved\n", b"data:\n", b"\n"])
-        self.type(key, "echo a$((1+1))\n")
-        self.assertIn(b"a2", self.until(second, "a2")[0])
+        self.read(key)
+        status, data = self.terminal("/api/terminal/%s/output" % key)
+        self.assertEqual(status, 409)
+        self.assertIn("another tab", data["error"])
 
-    def test_opening_a_project_again_gives_its_running_shell(self):
-        key = self.open()
-        self.assertEqual(self.open(), key)
-        self.assertEqual(len(terminal.SHELLS.shells), 1)
-
-    def test_without_tmux_the_shell_outlives_the_page_and_its_output_is_replayed(self):
+    def test_the_shell_stops_when_the_page_stops_reading(self):
         key = self.open()
         shell = terminal.SHELLS.get(key)
-        self.assertIsNone(shell.session)
         connection, response = self.read(key)
-        self.type(key, 'KEPT=ab; echo re""ady\n')
-        seen, _ = self.until(response, "ready")
-        self.hide(connection, response)
+        self.terminal("/api/terminal/%s/input" % key, {"data": "echo ready\n"})
+        self.until(response, "ready")
+        response.close()
+        connection.close()
         # Noticed at the next write: new output, or the next "still here".
-        self.type(key, "echo hidden$((1+1))\n")
-        time.sleep(0.3)
-        self.assertIs(terminal.SHELLS.get(key), shell)
-        self.assertIsNone(shell.process.poll())
-        # Coming back with what it has gets only the rest, output while hidden included.
-        self.assertEqual(self.open(), key)
-        _, response = self.read(key, since=len(seen))
-        self.type(key, 'echo "$KEPT"cd\n')
-        rest, _ = self.until(response, "abcd")
-        self.assertIn(b"hidden2", rest)
-        self.assertNotIn(b"ready", rest)
-        # A new page, which has nothing, gets all the output kept.
-        _, response = self.read(key)
-        self.assertIn(b"ready", self.until(response, "abcd")[0])
-
-    def test_without_tmux_only_the_latest_output_is_kept(self):
-        with mock.patch.object(terminal, "KEEP", 1000):
-            key = self.open()
-            shell = terminal.SHELLS.get(key)
-            _, response = self.read(key)
-            self.type(key, "i=0; while [ $i -lt 300 ]; do echo line$i; i=$((i+1)); done\n")
-            self.until(response, "line299")
-            self.assertLessEqual(len(shell.kept), 1000)
-            self.assertGreater(shell.start, 0)
-            _, response = self.read(key)
-            seen, _ = self.until(response, "line299")
-            self.assertNotIn(b"line0\r\n", seen)
+        self.terminal("/api/terminal/%s/input" % key, {"data": "echo more\n"})
+        self.assertTrue(self.ended(key, shell))
 
     def test_end_shell_stops_it_and_ends_the_output(self):
         key = self.open()
@@ -679,106 +625,14 @@ class TerminalTest(TerminalBase):
         self.assertIn(b"event: end\n", events)
         self.assertTrue(self.ended(key, shell))
 
+    def test_a_shell_nobody_reads_is_stopped(self):
+        with mock.patch.object(terminal, "ATTACH", 0.1):
+            key = self.open()
+            shell = terminal.SHELLS.get(key)
+        self.assertTrue(self.ended(key, shell))
+
     def test_turning_the_terminal_off_in_settings_stops_every_shell(self):
-        other = tempfile.mkdtemp()
-        self.addCleanup(os.rmdir, other)
-        self.store.see_folder("other", other)
-        shells = [terminal.SHELLS.get(self.open(project)) for project in ("demo", "other")]
+        shells = [terminal.SHELLS.get(self.open()) for _ in range(2)]
         self.request("POST", "/api/settings/terminal", {"on": False})
         self.assertEqual(terminal.SHELLS.shells, {})
         self.assertTrue(all(shell.process.poll() is not None for shell in shells))
-
-    def test_a_folders_tmux_session_is_named_for_it_without_dots_or_colons(self):
-        name = terminal.session_name("/somewhere/my.app:v2")
-        self.assertRegex(name, r"^tempo-my-app-v2-[0-9a-f]{6}$")
-        self.assertNotEqual(terminal.session_name("/elsewhere/my.app:v2"), name)
-
-
-def tmux_sessions(tmux):
-    listed = subprocess.run([*tmux, "list-sessions", "-F", "#{session_name}"], **QUIET)
-    return sorted(listed.stdout.split())
-
-
-QUIET = {"capture_output": True, "text": True, "check": False}
-
-
-@unittest.skipUnless(terminal.TMUX, "tmux is not installed")
-class TmuxTerminalTest(TerminalBase):
-    """With tmux, each folder's shell runs in a tmux session that outlives the page and the
-    server. The tests use a tmux server of their own, never the user's."""
-
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        # Its own socket and no tmux config, so the user's sessions and settings play no part.
-        folder = tempfile.mkdtemp()
-        cls.addClassCleanup(shutil.rmtree, folder)
-        cls.tmux = [*terminal.TMUX, "-S", os.path.join(folder, "tmux"), "-f", os.devnull]
-        cls.addClassCleanup(subprocess.run, [*cls.tmux, "kill-server"], **QUIET)
-        prefix = mock.patch.object(terminal, "PREFIX", "tempo-test-")
-        prefix.start()
-        cls.addClassCleanup(prefix.stop)
-
-    def tearDown(self):
-        # Each test leaves no session behind: those it ended itself, the rest ended here.
-        terminal.SHELLS.close_all()
-        terminal.end_sessions()
-        self.assertEqual(tmux_sessions(self.tmux), [])
-
-    def ready(self, key):
-        """Read the shell's output until it has run a first command: the connection, the
-        response and the output so far."""
-        connection, response = self.read(key)
-        self.type(key, 'KEPT=ab; echo re""ady\n')
-        return connection, response, self.until(response, "ready")[0]
-
-    def test_hiding_ends_the_client_and_showing_attaches_to_the_same_shell(self):
-        key = self.open()
-        shell = terminal.SHELLS.get(key)
-        self.assertEqual(shell.session, terminal.session_name(self.folder))
-        self.assertTrue(shell.session.startswith("tempo-test-"))
-        connection, response, _ = self.ready(key)
-        self.hide(connection, response)
-        # Noticed at the next write: new output, or the next "still here".
-        self.type(key, "echo more\n")
-        self.assertTrue(self.ended(key, shell))
-        self.assertEqual(tmux_sessions(self.tmux), [shell.session])
-        again = self.open()
-        self.assertNotEqual(again, key)
-        _, response = self.read(again)
-        self.type(again, 'echo "$KEPT"cd\n')
-        self.assertIn(b"abcd", self.until(response, "abcd")[0])
-
-    def test_the_shell_outlives_a_server_restart(self):
-        key = self.open()
-        session = terminal.SHELLS.get(key).session
-        self.ready(key)
-        terminal.SHELLS.close_all()
-        self.assertEqual(tmux_sessions(self.tmux), [session])
-        key = self.open()
-        _, response = self.read(key)
-        self.type(key, 'echo "$KEPT"cd\n')
-        self.assertIn(b"abcd", self.until(response, "abcd")[0])
-
-    def test_end_shell_ends_its_session(self):
-        key = self.open()
-        shell = terminal.SHELLS.get(key)
-        _, response, _ = self.ready(key)
-        self.assertEqual(self.terminal("/api/terminal/%s/close" % key, {}), (200, {}))
-        _, events = self.until(response, "never printed")
-        self.assertIn(b"event: end\n", events)
-        self.assertTrue(self.ended(key, shell))
-        self.assertEqual(tmux_sessions(self.tmux), [])
-
-    def test_turning_the_terminal_off_ends_every_tempo_session_and_no_other(self):
-        key = self.open()
-        shell = terminal.SHELLS.get(key)
-        self.ready(key)
-        # One that a server which has since stopped left behind, and one the user started.
-        left = terminal.session_name(tempfile.gettempdir())
-        for name in (left, "tempo-test-mine"):
-            subprocess.run([*self.tmux, "new-session", "-d", "-s", name], check=True)
-        self.request("POST", "/api/settings/terminal", {"on": False})
-        self.assertTrue(self.ended(key, shell))
-        self.assertEqual(tmux_sessions(self.tmux), ["tempo-test-mine"])
-        subprocess.run([*self.tmux, "kill-session", "-t", "=tempo-test-mine"], check=True)

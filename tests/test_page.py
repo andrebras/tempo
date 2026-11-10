@@ -341,10 +341,6 @@ class PageTest(DatabaseTest):
         shell = mock.patch.dict(os.environ, {"SHELL": "/bin/sh", "PS1": "$ "})
         shell.start()
         self.addCleanup(shell.stop)
-        # The server keeps the shells itself, so no tmux session is started.
-        tmux = mock.patch.object(terminal, "TMUX", None)
-        tmux.start()
-        self.addCleanup(tmux.stop)
         self.addCleanup(terminal.SHELLS.close_all)
         return folder
 
@@ -376,38 +372,6 @@ class PageTest(DatabaseTest):
         self.wait("$('#terminal').hidden && !$('#terminal .term')")
         self.assertEqual(shell.process.wait(timeout=5), shell.process.returncode)
         self.assertEqual(terminal.SHELLS.shells, {})
-
-    def test_a_hidden_terminal_lets_go_of_its_connection_and_comes_back_as_it_was(self):
-        self.start_terminal()
-        garden = tempfile.mkdtemp()
-        self.addCleanup(os.rmdir, garden)
-        self.add(project="garden", title="Frost warnings on?")
-        self.store.see_folder("garden", garden)
-        self.open("#/demo/1", ready=LOADED + " && !$('#terminal-toggle').hidden")
-        self.click("#terminal-toggle")
-        self.wait("$('#terminal .mode').textContent === 'kept alive by the page server'")
-        self.wait("document.activeElement.classList.contains('xterm-helper-textarea')")
-        self.type('KEPT=ab; echo re""ady')
-        self.press_enter()
-        rows = "terminals.demo.holder.querySelector('.xterm-rows').textContent"
-        self.wait("%s.includes('ready')" % rows)
-        [key] = terminal.SHELLS.shells
-        self.run_js("location.hash = '#/garden/1'")
-        self.wait("$('#terminal .name').textContent === 'garden' && terminals.garden.id")
-        # Only the terminal shown reads its output; demo's shell runs on without a reader.
-        self.assertFalse(self.run_js("Boolean(terminals.demo.reading)"))
-        self.assertIsNone(terminal.SHELLS.get(key).process.poll())
-        self.run_js("location.hash = '#/demo/1'")
-        self.wait("$('#terminal .name').textContent === 'demo' && terminals.demo.reading")
-        self.assertFalse(self.run_js("Boolean(terminals.garden.reading)"))
-        self.wait("terminals.demo.holder.contains(document.activeElement)")
-        self.type('echo "$KEPT"cd')
-        self.press_enter()
-        self.wait("%s.includes('abcd')" % rows)
-        # The output from before is still there, once: coming back asked only for the rest.
-        self.assertEqual(self.run_js("%s.split('ready').length - 1" % rows), 1)
-        self.click("#terminal .hide")
-        self.wait("$('#terminal').hidden && !terminals.demo.reading")
 
     def test_the_terminal_takes_the_pages_colours_and_font(self):
         self.start_terminal()
