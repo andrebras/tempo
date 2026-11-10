@@ -13,6 +13,7 @@ All notable changes to Tempo are listed here. The format follows
   have something open, then its questions by goal with the page's marks: `»` start here,
   `…` waiting on Claude, and a dot on what Claude changed since you last opened it. `h`
   and `l` switch project, Enter opens a question over the list, and `h` or Esc goes back.
+  The list only browses: you answer once the question is open, where all of it shows.
 - Inside tmux, the sidebar opens a question in a popup over the panes, which closes once
   you answer or follow up. `tempo tui --question N` shows one question that way anywhere.
 - `tempo sidebar on` turns the sidebar on in every tmux window, as workmux does with its
