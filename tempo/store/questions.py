@@ -346,14 +346,16 @@ class QuestionStore(StoreBase):
         return rows if status in ("answered", "archived") else _by_goal(rows)
 
     def project_activity(self) -> dict[str, str]:
-        """Each project's latest news for the user: when a question was last asked or
-        reworded, or Claude last added context (its reply to a follow-up)."""
+        """Each project's latest news for the user: when an open question was last asked
+        or reworded, or Claude last added context to one (its reply to a follow-up). Only
+        open questions count, so a project with nothing open has no news to show."""
         rows = self.db.execute(
             "SELECT q.project, MAX(MAX(q.created_at), MAX(COALESCE(v.created_at, '')),"
             " MAX(COALESCE(e.created_at, ''))) AS latest FROM questions q"
             " LEFT JOIN versions v ON v.question_id = q.id"
             " LEFT JOIN entries e ON e.question_id = q.id AND e.author = 'claude'"
             " AND e.kind IN ('context', 'reword')"
+            " WHERE q.status = 'open'"
             " GROUP BY q.project"
         )
         return {row["project"]: row["latest"] for row in rows}

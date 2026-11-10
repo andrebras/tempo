@@ -1,14 +1,21 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from tempo.store import Store, connect
 
 
 class DatabaseTest(unittest.TestCase):
-    """Points TEMPO_DB at a fresh temporary database for each test."""
+    """Points TEMPO_DB at a fresh temporary database for each test.
+
+    Tests make their folders in the temporary folder, so for them it counts as an ordinary
+    place; tests about temporary folders patch TEMPORARY back."""
 
     def setUp(self):
+        patch = mock.patch("tempo.store.projects.TEMPORARY", ())
+        patch.start()
+        self.addCleanup(patch.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         path = os.path.join(self.tmp.name, "questions.db")

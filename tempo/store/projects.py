@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import tempfile
 
 from tempo.store import common
 from tempo.store.common import (
@@ -29,6 +30,20 @@ def shown_path(path: str | None) -> str | None:
     return path
 
 
+# The system's folders for temporary files. A session that runs in one, such as an agent's
+# scratchpad or a test, is thrown away with it, so it is never a project of its own. The
+# paths are only compared with, never written to.
+SYSTEM_TEMPORARY = ("/tmp", "/var/tmp")  # noqa: S108  # nosec B108
+TEMPORARY = tuple(
+    sorted({os.path.realpath(path) for path in (tempfile.gettempdir(), *SYSTEM_TEMPORARY)})
+)
+
+
+def temporary(path: str) -> bool:
+    """Whether path is inside one of the system's temporary folders."""
+    return any(path == root or path.startswith(root + os.sep) for root in TEMPORARY)
+
+
 class ProjectStore(QuestionStore):
     """The Store's project and folder methods."""
 
@@ -43,9 +58,12 @@ class ProjectStore(QuestionStore):
         A folder is matched by its path first, then by a row of the same name that has no
         path yet (from before paths were stored), which then gets this path. Returns True
         when the folder is new. A folder that was renamed or moved has a new path, so it
-        is a new folder: its project starts empty.
+        is a new folder: its project starts empty. A folder inside a temporary folder is
+        not remembered; its project is listed only once it has a question.
         """
         folder = _required(folder, "folder")
+        if path and temporary(path):
+            return False
         with self._transaction():
             row = self._folder_row(folder, path)
             if row is not None:
@@ -134,7 +152,8 @@ class ProjectStore(QuestionStore):
 
         A session's folder is remembered before its first question, so a throwaway folder
         leaves an empty project behind. Such a project's folders are forgotten once every
-        one of them is gone from disk; the project then is no longer listed. A project
+        one of them is gone from disk or inside a temporary folder; the project then is no
+        longer listed. A project
         with questions or a numbering is never touched, nor a folder still on disk or
         one whose path isn't known. Returns how many folders were forgotten.
 
@@ -161,7 +180,7 @@ class ProjectStore(QuestionStore):
         return [
             rowid
             for folders in places.values()
-            if all(path and not os.path.exists(path) for _, path in folders)
+            if all(path and (temporary(path) or not os.path.exists(path)) for _, path in folders)
             for rowid, _ in folders
         ]
 

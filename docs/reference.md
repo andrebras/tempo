@@ -293,7 +293,8 @@ The project you are on always has a chip, highlighted, even with nothing open. C
 to switch to that project.
 
 A dot on a chip means something arrived since you last viewed that project: a new question,
-a reworded question, or Claude's reply to a follow-up. Viewing the project clears the dot.
+a reworded question, or Claude's reply to a follow-up. Only open questions count, so a
+project with nothing open never has a dot. Viewing the project clears the dot.
 When you last viewed each project is kept in your browser, not in the database; on a
 browser's first visit nothing counts as new yet.
 
@@ -397,6 +398,9 @@ The gear button at the top right of the page opens Settings.
   throwaway folder in `/tmp`, Tempo forgets them the next time it lists the projects, and
   the project leaves Settings, the page's project list and `tempo tui`. Projects with
   questions are always listed, and their folders are kept.
+  A folder inside the system's temporary folders (`/tmp`, `/var/tmp`, and macOS's
+  per-user one), such as an agent's scratchpad, is never remembered: its project is listed
+  only once it has a question, and an empty one remembered before is forgotten.
 - **Renamed or moved folders**: Tempo knows a folder by its path, so a folder that was
   renamed or moved is a new one to it and starts its own empty project. Tempo never guesses
   that it is an old one. To bring the old project's questions along, merge the old project
