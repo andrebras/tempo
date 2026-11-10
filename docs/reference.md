@@ -321,7 +321,8 @@ The gear button at the top right of the page opens Settings.
   number, such as "Moved from tempo Q2 when tempo joined Tempo.", so old references can
   still be traced.
   Under each project, Settings lists the folders it covers, with their paths, read-only.
-  A long path wraps only after a `/`. A folder that no longer exists is marked "folder
+  A long path wraps after a `/`, and inside a folder's name only when that name alone is
+  wider than the line. A folder that no longer exists is marked "folder
   gone"; one remembered before Tempo stored paths is hidden but not deleted.
   A project is listed from the first session in its folder, before its first question. A
   project with no questions, and no numbering set with `tempo set-next`, is listed only
