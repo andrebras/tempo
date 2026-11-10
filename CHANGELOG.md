@@ -19,6 +19,9 @@ All notable changes to Tempo are listed here. The format follows
   `/tmp` where a session once ran, no longer stays in Settings and the project list
   forever. Tempo forgets its folders once they are all gone. Projects with questions are
   always kept.
+- A session in a temporary folder, such as an agent's scratchpad in `/tmp`, no longer adds
+  an empty project to Settings and the project list, and such projects already listed are
+  forgotten. A question asked there still gets its own project.
 
 ## [0.10.0] - 2026-11-09
 

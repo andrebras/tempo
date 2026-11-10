@@ -278,6 +278,9 @@ The gear button at the top right of the page opens Settings.
   throwaway folder in `/tmp`, Tempo forgets them the next time it lists the projects, and
   the project leaves Settings, the page's project list and `tempo tui`. Projects with
   questions are always listed, and their folders are kept.
+  A folder inside the system's temporary folders (`/tmp`, `/var/tmp`, and macOS's
+  per-user one), such as an agent's scratchpad, is never remembered: its project is listed
+  only once it has a question, and an empty one remembered before is forgotten.
 - **Renamed or moved folders**: Tempo knows a folder by its path, so a folder that was
   renamed or moved is a new one to it and starts its own empty project. Tempo never guesses
   that it is an old one. To bring the old project's questions along, merge the old project
