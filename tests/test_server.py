@@ -278,7 +278,7 @@ class ServerTest(DatabaseTest):
         self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
         self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
 
-    def test_settings_hide_folders_that_are_gone_or_have_no_path(self):
+    def test_settings_mark_folders_that_are_gone_and_hide_those_with_no_path(self):
         here = tempfile.mkdtemp()
         self.addCleanup(os.rmdir, here)
         self.store.see_folder("tempo", here)
@@ -288,7 +288,10 @@ class ServerTest(DatabaseTest):
         self.store.rename_project("open-questions", "tempo")
         _, data = self.request("GET", "/api/settings")
         [tempo] = [p for p in json.loads(data)["projects"] if p["name"] == "tempo"]
-        self.assertEqual([folder["path"] for folder in tempo["folders"]], [here])
+        self.assertEqual(
+            [(folder["path"], folder["gone"]) for folder in tempo["folders"]],
+            [("/nowhere/old", True), (here, False)],
+        )
         # Hidden, not deleted.
         self.assertEqual(len(self.store.folders()), 3)
 
