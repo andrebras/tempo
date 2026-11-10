@@ -530,6 +530,20 @@ SIDEBAR_HOOKS = ("after-new-window", "after-new-session")
 TIDY_HOOKS = ("pane-exited", "after-kill-pane")
 # What every hook of ours runs, which tells them from the user's own.
 OUR_FLAGS = ("--window", "--tidy")
+# Where Claude Code keeps plugins, and the marketplace copy of Tempo it keeps up to date.
+PLUGINS = "~/.claude/plugins"
+MARKETPLACE_TEMPO = "~/.claude/plugins/marketplaces/tempo/bin/tempo"
+
+
+def stable_tempo() -> str:
+    """The bin/tempo to run from outside this process, which still works after an update.
+    Sessions run a copy in the plugin cache that has the version in its path, so the
+    plugin's code names the marketplace copy instead; a clone names its own."""
+    plugins = os.path.realpath(os.path.expanduser(PLUGINS))
+    marketplace = os.path.expanduser(MARKETPLACE_TEMPO)
+    if os.path.realpath(CODE_ROOT).startswith(plugins + os.sep) and os.path.exists(marketplace):
+        return marketplace
+    return os.path.join(CODE_ROOT, "bin", "tempo")
 
 
 def run_sidebar(args: argparse.Namespace) -> int:
@@ -599,9 +613,7 @@ def _sidebars_on(side: str) -> None:
     windows one and close one left alone; any sidebars already there go first."""
     _sidebars_off()
     _tmux("set-option", "-g", SIDEBAR_SIDE, side)
-    ensure = shlex.join(
-        ["env", "TEMPO_DB=%s" % db_path(), os.path.join(CODE_ROOT, "bin", "tempo"), "sidebar"]
-    )
+    ensure = shlex.join(["env", "TEMPO_DB=%s" % db_path(), stable_tempo(), "sidebar"])
     for hook in SIDEBAR_HOOKS:
         command = "run-shell -b %s" % shlex.quote(ensure + " --window #{window_id}")
         _tmux("set-hook", "-ag", hook, command)
@@ -619,7 +631,7 @@ def _add_sidebar(window: str, side: str) -> None:
         return
     path = _tmux("display-message", "-p", "-t", window, "#{pane_current_path}").strip()
     command = [
-        os.path.join(CODE_ROOT, "bin", "tempo"), "tui", "--sidebar",
+        stable_tempo(), "tui", "--sidebar",
         "--project", project_name(path or os.getcwd()),
     ]  # fmt: skip
     place = "-hbfd" if side == "left" else "-hfd"

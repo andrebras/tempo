@@ -1723,3 +1723,50 @@ class WaitProcessesTest(unittest.TestCase):
         plain = {k: v for k, v in os.environ.items() if not k.endswith("_PROJECT")}
         other = self.start(env=plain)
         self.assertIsNone(cli._process_project_setting(other.pid))
+
+
+class HomeTest(unittest.TestCase):
+    """A temporary HOME with Claude Code's plugin folders, so nothing touches the real one."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = os.path.realpath(tmp.name)
+        plugins = os.path.join(self.home, ".claude", "plugins")
+        self.cache = os.path.join(plugins, "cache", "tempo", "tempo", "0.11.0")
+        self.marketplace = os.path.join(plugins, "marketplaces", "tempo")
+        self.clone = os.path.join(self.home, "code", "tempo")
+        for root in (self.cache, self.marketplace, self.clone):
+            os.makedirs(os.path.join(root, "bin"))
+            os.makedirs(os.path.join(root, "tempo"))
+            for name in ("bin/tempo", "tempo/__main__.py"):
+                open(os.path.join(root, name), "w").close()
+        os.mkdir(os.path.join(self.clone, ".git"))
+        patch = mock.patch.dict(os.environ, {"HOME": self.home})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def code_in(self, root):
+        patch = mock.patch.object(cli, "CODE_ROOT", root)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+
+class StableTempoTest(HomeTest):
+    def test_the_plugin_cache_names_the_marketplace_copy(self):
+        self.code_in(self.cache)
+        self.assertEqual(cli.stable_tempo(), os.path.join(self.marketplace, "bin", "tempo"))
+
+    def test_the_marketplace_names_itself_though_it_is_a_git_clone(self):
+        os.mkdir(os.path.join(self.marketplace, ".git"))
+        self.code_in(self.marketplace)
+        self.assertEqual(cli.stable_tempo(), os.path.join(self.marketplace, "bin", "tempo"))
+
+    def test_a_clone_names_its_own(self):
+        self.code_in(self.clone)
+        self.assertEqual(cli.stable_tempo(), os.path.join(self.clone, "bin", "tempo"))
+
+    def test_the_cache_without_a_marketplace_copy_names_its_own(self):
+        os.remove(os.path.join(self.marketplace, "bin", "tempo"))
+        self.code_in(self.cache)
+        self.assertEqual(cli.stable_tempo(), os.path.join(self.cache, "bin", "tempo"))

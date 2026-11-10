@@ -1267,6 +1267,24 @@ class SidebarCommandTest(DatabaseTest):
         with Store(connect()) as store:
             self.assertEqual(store.tmux_side(), "left")
 
+    def test_from_the_plugin_cache_hooks_and_panes_run_the_marketplace_copy(self):
+        # The cache copy has the version in its path, so it breaks after an update.
+        home = os.path.join(self.tmp.name, "home")
+        plugins = os.path.join(home, ".claude", "plugins")
+        cache = os.path.join(plugins, "cache", "tempo", "tempo", "0.11.0")
+        marketplace = os.path.join(plugins, "marketplaces", "tempo", "bin", "tempo")
+        os.makedirs(cache)
+        os.makedirs(os.path.dirname(marketplace))
+        open(marketplace, "w").close()
+        tmux = FakeTmux({"@1": ["%1"]})
+        with mock.patch.object(cli, "CODE_ROOT", cache):
+            self.run_sidebar(tmux, "on", env={"HOME": home})
+        self.assertTrue(tmux.splits()[0][-1].startswith(marketplace + " tui --sidebar"))
+        for hook in cli.SIDEBAR_HOOKS + cli.TIDY_HOOKS:
+            (command,) = tmux.hooks[hook].values()
+            self.assertIn(" %s sidebar --" % marketplace, command)
+            self.assertIn("TEMPO_DB=%s" % os.environ["TEMPO_DB"], command)
+
     def test_whether_it_is_on_is_saved(self):
         tmux = FakeTmux({"@1": ["%1"]})
         for args, saved in [(["on"], True), (["off"], False), ([], True), ([], False)]:
