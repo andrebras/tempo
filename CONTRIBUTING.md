@@ -77,18 +77,21 @@ found on its own. GitHub's Ubuntu runners have Chrome, so they always run there.
 ## Screenshots and demo GIFs
 
 `bin/media` makes the README's pictures again from made-up questions in throwaway
-databases, so run it after a change to the page or to `tempo tui`:
+databases, so run it after a change to the sidebar, `tempo tui` or the page:
 
-- `docs/settings-light.png` and `docs/settings-dark.png`: Settings;
-- `docs/demo.gif`, in dark colours: answering on the page and asking for more;
-- `docs/tui.gif`, in dark colours: the same steps in `tempo tui`.
+- `docs/sidebar.gif`, in dark colours: answering in the tmux sidebar's popup and asking
+  for more;
+- `docs/tui.gif`, in dark colours: the same steps in `tempo tui`;
+- `docs/demo.gif`, in dark colours: the same steps on the page;
+- `docs/settings-light.png` and `docs/settings-dark.png`: the page's Settings.
 
 It needs Google Chrome, [ffmpeg](https://ffmpeg.org) (`brew install ffmpeg`), which makes
-the GIFs, and [ttyd](https://github.com/tsl0922/ttyd) (`brew install ttyd`), which shows
-`tempo tui` as a web page so Chrome can record it in the terminal's real colours. It never
-touches your own questions or the real page's port: ttyd and `tempo tui` use ports from
-22100 to 22999. `bin/media --keep DIR` also keeps the databases, the frames and the logs in
-`DIR`.
+the GIFs, [ttyd](https://github.com/tsl0922/ttyd) (`brew install ttyd`), which shows a
+terminal as a web page so Chrome can record it in the terminal's real colours, and tmux
+(`brew install tmux`). It never touches your own questions, your own tmux or the real
+page's port: ttyd and `tempo tui` use ports from 22100 to 22999, and the sidebar runs on a
+tmux server of its own, with no config of yours. `bin/media --keep DIR` also keeps the
+databases, the frames and the logs in `DIR`.
 
 ## Layout
 

@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """Make the README's pictures: docs/settings-light.png and docs/settings-dark.png (Settings),
-and docs/demo.gif (the page) and docs/tui.gif (`tempo tui`), which show the same story in
-dark colours: answer a question with a note, ask for more on the next, and Claude rewords it.
+and docs/sidebar.gif (the tmux sidebar), docs/tui.gif (`tempo tui`) and docs/demo.gif (the
+page), which show the same story in dark colours: answer a question with a note, ask for
+more on the next, and Claude rewords it.
 
 It fills a throwaway database with made-up questions for three invented projects, runs the
 page from this checkout on a free port, and drives headless Google Chrome through the Chrome
 DevTools Protocol (CDP, the commands Chrome takes over a pipe), so the pictures come out the
 same way every time. For tui.gif, ttyd runs `tempo tui` on a second throwaway database and
-shows it as a web page, which the same Chrome records with the terminal's real colours. Your
-own questions are never touched, and nothing uses the real page's port.
+shows it as a web page, which the same Chrome records with the terminal's real colours. For
+sidebar.gif, ttyd runs a throwaway tmux server of its own, with no config of yours. Your own
+questions and your own tmux are never touched, and nothing uses the real page's port.
 
 Needs Python 3.9 or newer, Google Chrome, ffmpeg (`brew install ffmpeg`), which turns the
-recorded frames into the GIFs, and ttyd (`brew install ttyd`). Set CHROME to the browser's
-path if it isn't installed in /Applications.
+recorded frames into the GIFs, ttyd (`brew install ttyd`) and tmux (`brew install tmux`).
+Set CHROME to the browser's path if it isn't installed in /Applications.
 
-    bin/media              # all four files
+    bin/media              # all five files
     bin/media --keep DIR   # also keep the databases, the frames and the logs in DIR
 """
 
@@ -50,6 +52,9 @@ GIF_LIMIT = 1_000_000
 # colours of Ghostty's default theme. Its GIF may be larger: a terminal changes in bursts.
 TUI_WIDTH, TUI_HEIGHT = 1040, 620
 TUI_LIMIT = 2_000_000
+# The sidebar's window is wider, 121 by 33 characters, so its popup, 80% of the window, fits
+# a follow-up on one line.
+SIDEBAR_WIDTH, SIDEBAR_HEIGHT = 1240, 680
 TUI_THEME = {"background": "#282c34", "foreground": "#ffffff", "cursor": "#ffffff"}
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -199,6 +204,8 @@ def main() -> int:
         return fail("ffmpeg is missing: install it with 'brew install ffmpeg'")
     if not shutil.which("ttyd"):
         return fail("ttyd is missing: install it with 'brew install ttyd'")
+    if not shutil.which("tmux"):
+        return fail("tmux is missing: install it with 'brew install tmux'")
     if not chrome:
         return fail("Google Chrome is missing: install it, or set CHROME to its path")
     if args.keep:
@@ -210,7 +217,7 @@ def main() -> int:
     else:
         with tempfile.TemporaryDirectory(prefix="tempo-media-") as folder:
             make(Path(folder), chrome)
-    names = ["demo.gif", "tui.gif", "settings-light.png", "settings-dark.png"]
+    names = ["sidebar.gif", "tui.gif", "demo.gif", "settings-light.png", "settings-dark.png"]
     for name in names:
         print("Wrote docs/%s (%d KB)" % (name, (DOCS / name).stat().st_size // 1000))
     return 0
@@ -272,6 +279,7 @@ def make(work: Path, chrome: str) -> None:
                 demo.gif()
                 demo.settings()
                 Tui(work / "tui", browser).record()
+                Sidebar(work / "sidebar", browser).record()
         finally:
             server.terminate()
             server.wait()
@@ -554,6 +562,8 @@ class Tui(Demo):
     """tempo tui on its own throwaway database, shown by ttyd and recorded in Chrome, telling
     the same story as the page's GIF."""
 
+    width, height = TUI_WIDTH, TUI_HEIGHT
+
     def __init__(self, work: Path, browser: Browser) -> None:
         work.mkdir()
         env = {k: v for k, v in os.environ.items() if not k.startswith(("TEMPO_", "OQ_"))}
@@ -562,6 +572,10 @@ class Tui(Demo):
         super().__init__(work, env, free_tempo_port())
         self.browser = browser
         self.ttyd_port = int(self.url.rsplit(":", 1)[1].strip("/"))
+
+    def program(self) -> list[str]:
+        """What ttyd runs once the browser connects."""
+        return [str(ROOT / "bin" / "tempo"), "tui", "--project", "acme-shop"]
 
     def record(self) -> None:
         self.fill()
@@ -577,7 +591,7 @@ class Tui(Demo):
             "disableLeaveAlert=true",
         ):
             command += ["--client-option", option]
-        command += [str(ROOT / "bin" / "tempo"), "tui", "--project", "acme-shop"]
+        command += self.program()
         with open(self.work / "ttyd.log", "w") as log:
             server = subprocess.Popen(  # noqa: S603
                 command, env=self.env, cwd=self.work, stdout=log, stderr=subprocess.STDOUT
@@ -586,8 +600,8 @@ class Tui(Demo):
                 self.wait_for_ttyd()
                 self.browser.send(
                     "Emulation.setDeviceMetricsOverride",
-                    width=TUI_WIDTH,
-                    height=TUI_HEIGHT,
+                    width=self.width,
+                    height=self.height,
                     deviceScaleFactor=1,
                     mobile=False,
                 )
@@ -598,6 +612,7 @@ class Tui(Demo):
             finally:
                 server.terminate()
                 server.wait()
+                self.stop()
                 self.browser.send(
                     "Emulation.setDeviceMetricsOverride",
                     width=WIDTH,
@@ -605,6 +620,9 @@ class Tui(Demo):
                     deviceScaleFactor=1,
                     mobile=False,
                 )
+
+    def stop(self) -> None:
+        """Ends what the program left running once ttyd is gone."""
 
     def wait_for_ttyd(self) -> None:
         for _ in range(100):
@@ -637,6 +655,8 @@ class Tui(Demo):
         press: dict[str, Any]
         if key == "enter":
             press = {"key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13, "text": "\r"}
+        elif key == "esc":
+            press = {"key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27, "text": "\x1b"}
         else:
             press = {"key": key, "text": key, "unmodifiedText": key}
         self.browser.send("Input.dispatchKeyEvent", type="keyDown", **press)
@@ -672,6 +692,111 @@ class Tui(Demo):
         self.until("Added what accounting", timeout=8)
         self.frame(3500)
         encode(self.frames, self.work / "frames.txt", DOCS / "tui.gif", TUI_WIDTH, TUI_LIMIT)
+
+
+class Sidebar(Tui):
+    """The tmux sidebar beside a stand-in for Claude's pane, on a tmux server of its own,
+    shown by ttyd and recorded in Chrome, telling the same story in the sidebar's popup."""
+
+    width, height = SIDEBAR_WIDTH, SIDEBAR_HEIGHT
+
+    def __init__(self, work: Path, browser: Browser) -> None:
+        super().__init__(work, browser)
+        # A socket path must stay short, so the server's folder isn't under work.
+        self.sockets = Path(tempfile.mkdtemp(prefix="tempo-tmux-"))
+        self.folder = work / "acme-shop"
+        self.folder.mkdir()
+        self.config = work / "tmux.conf"
+        self.config.write_text(
+            "set -g status off\n"
+            "set -g default-terminal xterm-256color\n"
+            "set -g pane-border-style fg=colour238\n"
+            "set -g pane-active-border-style fg=colour238\n"
+            "set -g popup-border-lines rounded\n"
+        )
+        # The tmux server is the sessions' own, never the one this may run in.
+        for name in ("TMUX", "TMUX_PANE"):
+            self.env.pop(name, None)
+        self.env["TMUX_TMPDIR"] = str(self.sockets)
+
+    def program(self) -> list[str]:
+        # Claude's pane: only what it says while it waits on you, so nothing in it moves.
+        claude = (
+            "printf '\\n  \\033[1macme-shop\\033[0m\\n\\n"
+            "  Claude asked you 5 questions.\\n"
+            "  Answer them in the sidebar \\342\\206\\222\\n'; exec cat >/dev/null"
+        )
+        tmux = shutil.which("tmux") or "tmux"
+        return [
+            tmux, "-f", str(self.config), "new-session", "-s", "demo",
+            "-c", str(self.folder), "sh", "-c", claude,
+        ]  # fmt: skip
+
+    def tmux(self, *args: str) -> str:
+        done = subprocess.run(  # noqa: S603
+            [shutil.which("tmux") or "tmux", *args],
+            env=self.env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return done.stdout
+
+    def until_gone(self, words: str, timeout: float = 5) -> None:
+        end = time.monotonic() + timeout
+        while words in self.screen():
+            if time.monotonic() > end:
+                raise SystemExit("bin/media: the sidebar's popup never closed")
+            time.sleep(0.05)
+        time.sleep(0.3)
+
+    def stop(self) -> None:
+        subprocess.run(  # noqa: S603
+            [shutil.which("tmux") or "tmux", "kill-server"], env=self.env, capture_output=True
+        )
+        shutil.rmtree(self.sockets, ignore_errors=True)
+
+    def story(self) -> None:
+        self.frames_folder = self.work / "frames"
+        self.until("Answer them in the sidebar")
+        # Turned on as a key binding would, from inside the session.
+        socket = self.tmux("display-message", "-p", "#{socket_path}").strip()
+        inside = dict(self.env, TMUX="%s,0,0" % socket)
+        subprocess.run(  # noqa: S603
+            [str(ROOT / "bin" / "tempo"), "sidebar", "on", "--side", "right"],
+            env=inside,
+            cwd=self.folder,
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        self.until("acme-shop · 5 open")
+        self.frame(1400)
+        self.tmux("select-pane", "-t", "demo:0.1")
+        self.frame(400)
+        self.key("j", "", 500)
+        self.key("k", "", 600)
+        # Answer Q1 with (b) and a note in its popup, which closes; the list moves on.
+        self.key("enter", 'In a "More" menu', 1200)
+        self.key("b", "Note for (b)", 1000)
+        self.write(ANSWER_NOTE)
+        self.key("enter", "acme-shop · 4 open", 1800)
+        # Ask for more on Q2, in its popup.
+        self.key("enter", "Which columns", 1000)
+        self.key("r", "Enter sends", 500)
+        self.write(FOLLOWUP)
+        # Sent, the popup closes and the list marks Q2 as waiting on Claude.
+        self.key("enter", "", 0)
+        self.until_gone("Follow-up on Q2")
+        self.frame(1600)
+        # Claude rewords the question, the way a session does; the list follows by itself,
+        # and its popup shows the new wording and the thread.
+        args = ["reword", "2", "--project", "acme-shop", "--note", REWORD["note"]]
+        self.tempo(*args, "--title", REWORD["title"], "--context", REWORD["context"])
+        self.until("for the accountant", timeout=8)
+        self.frame(1600)
+        self.key("enter", "Added what accounting", 3500)
+        self.key("esc", "acme-shop · 4 open", 1500)
+        encode(self.frames, self.work / "frames.txt", DOCS / "sidebar.gif", TUI_WIDTH, TUI_LIMIT)
 
 
 def high(fd: int) -> int:
