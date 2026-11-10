@@ -1095,8 +1095,15 @@ class FakeTmux:
         elif name == "list-windows":
             return "".join(window + "\n" for window in self.windows)
         elif name == "list-panes" and args[1] == "-a":
-            panes = [pane for panes in self.windows.values() for pane in panes]
-            return "".join("%s\t%s\n" % (p, "1" if p in self.marked else "") for p in panes)
+            return "".join(
+                args[3]
+                .replace("#{pane_id}", p)
+                .replace("#{window_panes}", str(len(panes)))
+                .replace("#{@tempo-sidebar}", "1" if p in self.marked else "")
+                + "\n"
+                for panes in self.windows.values()
+                for p in panes
+            )
         elif name == "list-panes":
             return "".join("1\n" if p in self.marked else "\n" for p in self.windows[args[2]])
         elif name == "display-message":
@@ -1107,9 +1114,7 @@ class FakeTmux:
             self.windows[args[2]].append(pane)
             return pane + "\n"
         elif name == "kill-pane":
-            for panes in self.windows.values():
-                if args[2] in panes:
-                    panes.remove(args[2])
+            self.close(args[2])
             self.marked.discard(args[2])
         elif name == "show-hooks":
             return "".join(
@@ -1122,6 +1127,14 @@ class FakeTmux:
             hook, index = args[2].rstrip("]").split("[")
             del self.hooks[hook][int(index)]
         return ""
+
+    def close(self, pane):
+        """A pane goes, and its window with it once it has none left, as in tmux."""
+        for window, panes in list(self.windows.items()):
+            if pane in panes:
+                panes.remove(pane)
+            if not panes:
+                del self.windows[window]
 
     def sidebars(self):
         return {w: [p for p in panes if p in self.marked] for w, panes in self.windows.items()}
@@ -1160,6 +1173,26 @@ class SidebarCommandTest(DatabaseTest):
             (command,) = tmux.hooks[hook].values()
             self.assertTrue(command.startswith("run-shell -b 'env TEMPO_DB="))
             self.assertTrue(command.endswith(" sidebar --window #{window_id}'"))
+        # And a pane closing tidies up a sidebar left alone.
+        for hook in cli.TIDY_HOOKS:
+            (command,) = tmux.hooks[hook].values()
+            self.assertTrue(command.startswith("run-shell -b 'env TEMPO_DB="))
+            self.assertTrue(command.endswith(" sidebar --tidy'"))
+
+    def test_a_sidebar_left_alone_in_its_window_closes_and_the_others_stay(self):
+        tmux = FakeTmux({"@1": ["%1"], "@2": ["%2", "%3"]})
+        self.run_sidebar(tmux, "on")
+        tmux.close("%1")
+        tmux.close("%2")
+        self.assertEqual(self.run_sidebar(tmux, "--tidy", env={"TMUX": ""})[0], 0)
+        # @1 closes with its sidebar; @2 keeps %3 and the sidebar beside it.
+        self.assertEqual(tmux.windows, {"@2": ["%3", "%92"]})
+
+    def test_tidy_leaves_a_sidebar_run_by_hand_alone(self):
+        # No mark: a `tempo tui --sidebar` the user started in a window of its own.
+        tmux = FakeTmux({"@1": ["%1"]})
+        self.run_sidebar(tmux, "--tidy")
+        self.assertEqual(tmux.windows, {"@1": ["%1"]})
 
     def test_a_new_window_gets_one_while_it_is_on_and_only_one(self):
         tmux = FakeTmux({"@1": ["%1"]}, on="left")
@@ -1181,7 +1214,8 @@ class SidebarCommandTest(DatabaseTest):
         self.assertEqual(tmux.on, "")
         self.assertEqual(tmux.sidebars(), {"@1": [], "@2": []})
         self.assertEqual(tmux.hooks["after-new-window"], {0: "run-shell mine"})
-        self.assertEqual(tmux.hooks["after-new-session"], {})
+        for hook in ("after-new-session", *cli.TIDY_HOOKS):
+            self.assertEqual(tmux.hooks[hook], {})
 
     def test_toggle_says_nothing_so_a_key_binding_shows_no_output(self):
         tmux = FakeTmux({"@1": ["%1"]})
@@ -1198,7 +1232,7 @@ class SidebarCommandTest(DatabaseTest):
         )
         self.assertEqual(tmux.sidebars(), {"@1": ["%91"], "@2": ["%92"]})
         self.assertEqual(len(tmux.splits()), 2)
-        self.assertEqual([len(hooks) for hooks in tmux.hooks.values()], [1, 1])
+        self.assertEqual([len(hooks) for hooks in tmux.hooks.values()], [1, 1, 1, 1])
 
     def test_on_with_the_other_side_moves_every_sidebar(self):
         tmux = FakeTmux({"@1": ["%1"]})

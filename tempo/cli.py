@@ -251,6 +251,8 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
     )
     # What tmux's hooks run for a new window, so it gets a sidebar too.
     sidebar.add_argument("--window", help=argparse.SUPPRESS)
+    # What tmux's hooks run when a pane closes, so a sidebar left alone closes too.
+    sidebar.add_argument("--tidy", action="store_true", help=argparse.SUPPRESS)
     sidebar.set_defaults(run=run_sidebar)
 
 
@@ -518,6 +520,11 @@ SIDEBAR_SIDE = "@tempo-sidebar-side"
 SIDES = ("left", "right")
 # The tmux hooks that give each new window and session a sidebar while it is on.
 SIDEBAR_HOOKS = ("after-new-window", "after-new-session")
+# The tmux hooks that close a sidebar left alone in its window once every other pane there
+# has closed: by its program ending, or by kill-pane.
+TIDY_HOOKS = ("pane-exited", "after-kill-pane")
+# What every hook of ours runs, which tells them from the user's own.
+OUR_FLAGS = ("--window", "--tidy")
 
 
 def run_sidebar(args: argparse.Namespace) -> int:
@@ -527,8 +534,11 @@ def run_sidebar(args: argparse.Namespace) -> int:
     session; the keyboard stays where it is. Off, every sidebar closes and the hooks go.
     toggle flips it, quietly, for a key binding; on and off say what they did, and do
     nothing when it already is so. With --side while on, the sidebars move to that side.
-    `q` closes just one."""
+    `q` closes just one, and a sidebar left alone in its window closes with it."""
     try:
+        if args.tidy:
+            _tidy_sidebars()
+            return 0
         if args.window:
             side = _tmux("show-options", "-gqv", SIDEBAR_SIDE).strip()
             if side in SIDES:
@@ -562,6 +572,8 @@ def run_sidebar(args: argparse.Namespace) -> int:
         for hook in SIDEBAR_HOOKS:
             command = "run-shell -b %s" % shlex.quote(ensure + " --window #{window_id}")
             _tmux("set-hook", "-ag", hook, command)
+        for hook in TIDY_HOOKS:
+            _tmux("set-hook", "-ag", hook, "run-shell -b %s" % shlex.quote(ensure + " --tidy"))
         for window in _tmux("list-windows", "-a", "-F", "#{window_id}").split():
             _add_sidebar(window, side)
         if args.action == "on":
@@ -593,19 +605,30 @@ def _add_sidebar(window: str, side: str) -> None:
 
 def _sidebars_off() -> None:
     """Close every sidebar, and remove Tempo's hooks and switch; the user's own hooks on the
-    same events stay."""
+    same events stay. The hooks go first, so closing the sidebars doesn't run them."""
+    for hook in SIDEBAR_HOOKS + TIDY_HOOKS:
+        # Each line is "after-new-window[2] run-shell ..."; only ours are removed.
+        for line in _tmux("show-hooks", "-g", hook).splitlines():
+            name, _, command = line.partition(" ")
+            if "tempo" in command and any("sidebar " + flag in command for flag in OUR_FLAGS):
+                _tmux("set-hook", "-gu", name)
     listing = _tmux("list-panes", "-a", "-F", "#{pane_id}\t#{%s}" % SIDEBAR_MARK)
     for line in listing.splitlines():
         pane, _, mark = line.partition("\t")
         if mark == "1":
             _tmux("kill-pane", "-t", pane)
-    for hook in SIDEBAR_HOOKS:
-        # Each line is "after-new-window[2] run-shell ..."; only ours are removed.
-        for line in _tmux("show-hooks", "-g", hook).splitlines():
-            name, _, command = line.partition(" ")
-            if "tempo" in command and "sidebar --window" in command:
-                _tmux("set-hook", "-gu", name)
     _tmux("set-option", "-gu", SIDEBAR_SIDE)
+
+
+def _tidy_sidebars() -> None:
+    """Close each sidebar that is the only pane left in its window, which closes the window,
+    as it would have closed without the sidebar. A `tempo tui --sidebar` run by hand has no
+    mark, so it stays."""
+    listing = _tmux("list-panes", "-a", "-F", "#{pane_id}\t#{window_panes}\t#{%s}" % SIDEBAR_MARK)
+    for line in listing.splitlines():
+        pane, panes, mark = line.split("\t")
+        if panes == "1" and mark == "1":
+            _tmux("kill-pane", "-t", pane)
 
 
 def _tmux(*args: str) -> str:
