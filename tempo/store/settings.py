@@ -8,7 +8,7 @@ from tempo.store.common import StoreBase
 
 # Whether the SessionStart hook starts the page. Off unless the user turned it on.
 START_PAGE = "start_page"
-# Which side of each tmux window `tempo tmux` puts the sidebar on: left unless set.
+# Which side of each tmux window `tempo sidebar` puts the sidebar on: left unless set.
 TMUX_SIDE = "tmux_side"
 
 
