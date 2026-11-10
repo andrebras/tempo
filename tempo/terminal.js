@@ -13,8 +13,10 @@ let xtermLoading = null;
 // fallback after the one Settings names, so a font that isn't installed still gives a grid.
 const MONO = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace';
 
+// In the desktop app (desktop/), the app's window sets tempoAppToken before the page loads,
+// and its server leaves the page's secret empty: there the terminal needs the token instead.
 function terminalSecret() {
-  return document.querySelector('meta[name="tempo-secret"]').content;
+  return window.tempoAppToken || document.querySelector('meta[name="tempo-secret"]').content;
 }
 
 async function terminalPost(path, body) {
