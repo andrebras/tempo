@@ -279,8 +279,15 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
     # What /tempo:install runs: a refusal goes to stdout and exits 0, as `tempo slash` does,
     # so the command goes on and Claude tells the user why.
     install.add_argument("--slash", action="store_true", help=argparse.SUPPRESS)
+    install.add_argument(
+        "--tmux",
+        action="store_true",
+        help="Also have tmux bring the sidebar back when it starts, and turn the sidebar on",
+    )
     install.set_defaults(run=run_install)
-    uninstall = commands.add_parser("uninstall", help="Remove the link `tempo install` made")
+    uninstall = commands.add_parser(
+        "uninstall", help="Remove the link and the tmux lines `tempo install` added"
+    )
     uninstall.set_defaults(run=run_uninstall)
 
 
@@ -522,7 +529,8 @@ LOCAL_BIN = "~/.local/bin"
 
 def run_install(args: argparse.Namespace) -> int:
     """Link ~/.local/bin/tempo to the stable bin/tempo, so any shell can run tempo. Never
-    replaces something already there."""
+    replaces something already there. With --tmux, then add TMUX_BLOCK to the tmux config
+    and turn the sidebar on."""
     folder = os.path.normpath(os.path.expanduser(LOCAL_BIN))
     link, target = os.path.join(folder, "tempo"), stable_tempo()
     if os.path.islink(link) and os.readlink(link) == target:
@@ -548,11 +556,92 @@ def run_install(args: argparse.Namespace) -> int:
             " your shell's config, such as ~/.zshrc, then open a new terminal:\n\n"
             '    export PATH="$HOME/.local/bin:$PATH"' % folder
         )
+    return _install_tmux(args) if args.tmux else 0
+
+
+# The lines `tempo install --tmux` adds to the tmux config and `tempo uninstall` removes.
+# They run the link's full path: tmux's run-shell may not see the PATH the shell sets.
+TMUX_BLOCK = (
+    "# tempo: bring the sidebar back when tmux starts",
+    'run-shell -b "~/.local/bin/tempo sidebar --restore"',
+    "# end tempo",
+)
+
+
+def _install_tmux(args: argparse.Namespace) -> int:
+    """Add TMUX_BLOCK to the end of the tmux config, unless it, or a line of its own that
+    restores the sidebar, is already there; then turn the sidebar on. The config is never
+    reloaded: the block matters only when tmux starts."""
+    conf = tmux_conf()
+    target, refusal = _tmux_conf_target(conf)
+    if target is None:
+        print(
+            "tempo: %s is %s, so it was left as it is. To bring the sidebar back when tmux"
+            " starts, add these lines to your tmux config:\n\n%s"
+            % (conf, refusal, "\n".join("    " + line for line in TMUX_BLOCK)),
+            file=sys.stdout if args.slash else sys.stderr,
+        )
+        return 0 if args.slash else 1
+    text = ""
+    if os.path.exists(target):
+        with open(target) as file:
+            text = file.read()
+    via = " (%s links to it)" % conf if target != conf else ""
+    if "tempo sidebar --restore" in text:
+        print("%s%s already brings the sidebar back when tmux starts." % (target, via))
+    else:
+        with open(target, "a") as file:
+            file.write(("\n" if text and not text.endswith("\n") else "") + _block_text())
+        print(
+            "Added to %s%s the lines that bring the sidebar back when tmux starts." % (target, via)
+        )
+    if os.environ.get("TMUX"):
+        on = argparse.Namespace(action="on", side=None, window=None, tidy=False, restore=False)
+        return run_sidebar(on)
+    # Saved as on, so the block turns it on when tmux next starts.
+    _save_sidebar(True)
+    print(
+        "The sidebar comes on when tmux next starts. In a tmux that is already running, run"
+        " `tempo sidebar on` there."
+    )
     return 0
 
 
+def _block_text() -> str:
+    return "".join(line + "\n" for line in TMUX_BLOCK)
+
+
+def tmux_conf() -> str:
+    """The user's tmux config: the first of the places tmux looks that is there, else
+    ~/.tmux.conf. Making ~/.tmux.conf beside a ~/.config/tmux/tmux.conf would hide it."""
+    home = os.path.expanduser("~/.tmux.conf")
+    config = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    for place in (home, os.path.join(config, "tmux", "tmux.conf")):
+        if os.path.lexists(place):
+            return place
+    return home
+
+
+def _tmux_conf_target(conf: str) -> tuple[str | None, str]:
+    """The file to edit for the tmux config at conf: conf itself, or when it is a symlink,
+    the file it points to, but only when that is a regular file. None, and what conf is,
+    when it can't be edited."""
+    if os.path.islink(conf):
+        target = os.path.realpath(conf)
+        if os.path.isfile(target):
+            return target, ""
+        if not os.path.exists(target):
+            return None, "a link to %s, which is missing" % os.readlink(conf)
+        return None, "a link to %s, which is not a regular file" % os.readlink(conf)
+    if os.path.lexists(conf) and not os.path.isfile(conf):
+        return None, "not a regular file"
+    return conf, ""
+
+
 def run_uninstall(args: argparse.Namespace) -> int:
-    """Remove ~/.local/bin/tempo, but only when it is a link to a Tempo bin/tempo."""
+    """Remove TMUX_BLOCK from the tmux config, then ~/.local/bin/tempo, but only when it is
+    a link to a Tempo bin/tempo."""
+    _uninstall_tmux()
     link = os.path.join(os.path.expanduser(LOCAL_BIN), "tempo")
     if not os.path.lexists(link):
         print("Nothing to remove: %s isn't there." % link)
@@ -568,6 +657,32 @@ def run_uninstall(args: argparse.Namespace) -> int:
     os.remove(link)
     print("Removed %s, which linked to %s." % (link, target))
     return 0
+
+
+def _uninstall_tmux() -> None:
+    """Remove TMUX_BLOCK, from its first line to its last, from the tmux config; every other
+    line stays as it is. A block with no end is left, and the user told."""
+    conf = tmux_conf()
+    target = _tmux_conf_target(conf)[0]
+    if target is None or not os.path.exists(target):
+        return
+    with open(target) as file:
+        lines = file.read().splitlines(keepends=True)
+    marks = [line.strip() for line in lines]
+    if TMUX_BLOCK[0] not in marks:
+        return
+    start = marks.index(TMUX_BLOCK[0])
+    if TMUX_BLOCK[-1] not in marks[start:]:
+        print(
+            "tempo: %s has Tempo's first line (%s) but not its last, so it was left as it"
+            " is. Remove Tempo's lines from it yourself." % (target, TMUX_BLOCK[0]),
+            file=sys.stderr,
+        )
+        return
+    end = marks.index(TMUX_BLOCK[-1], start)
+    with open(target, "w") as file:
+        file.write("".join(lines[:start] + lines[end + 1 :]))
+    print("Removed Tempo's lines from %s." % target)
 
 
 def _tempo_link(link: str) -> str | None:
