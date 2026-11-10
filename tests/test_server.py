@@ -292,6 +292,17 @@ class ServerTest(DatabaseTest):
         # Hidden, not deleted.
         self.assertEqual(len(self.store.folders()), 3)
 
+    def test_empty_projects_whose_folders_are_gone_are_no_longer_listed(self):
+        here = tempfile.mkdtemp()
+        self.addCleanup(os.rmdir, here)
+        self.store.see_folder("fork", "/nowhere/scratchpad/fork")
+        self.store.see_folder("tempo", here)
+        _, data = self.request("GET", "/api/questions?status=open")
+        self.assertEqual(json.loads(data)["projects"], ["demo", "tempo"])
+        _, data = self.request("GET", "/api/settings")
+        self.assertEqual([p["name"] for p in json.loads(data)["projects"]], ["demo", "tempo"])
+        self.assertEqual([folder["path"] for folder in self.store.folders()], [here])
+
     def test_turns_the_page_off_and_on_for_new_sessions(self):
         _, data = self.request("GET", "/api/settings")
         self.assertTrue(json.loads(data)["start_page"])

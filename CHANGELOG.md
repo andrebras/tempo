@@ -4,6 +4,15 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- An empty project left by a folder that no longer exists, such as a throwaway folder in
+  `/tmp` where a session once ran, no longer stays in Settings and the project list
+  forever. Tempo forgets its folders once they are all gone. Projects with questions are
+  always kept.
+
 ## [0.10.0] - 2026-11-09
 
 ### Added

@@ -636,6 +636,37 @@ class ProjectsTest(DatabaseTest):
         self.assertEqual(self.store.folders()[0]["shown"], "~/Lab/tempo")
         self.assertEqual(self.store.project_summaries()[0]["folders"][0]["shown"], "~/Lab/tempo")
 
+    def test_an_empty_project_whose_folders_are_gone_is_forgotten(self):
+        here = tempfile.mkdtemp()
+        self.addCleanup(os.rmdir, here)
+        self.store.see_folder("fork", "/nowhere/scratchpad/fork")
+        self.store.see_folder("proj", "/nowhere/harpexp/proj")
+        self.store.see_folder("tempo", here)
+        self.assertEqual(self.store.forget_gone_folders(), 2)
+        self.assertEqual([p["name"] for p in self.store.project_summaries()], ["tempo"])
+        # Nothing more to forget: the database isn't written again.
+        self.assertEqual(self.store.forget_gone_folders(), 0)
+
+    def test_projects_with_questions_numbering_or_a_folder_left_are_kept(self):
+        here = tempfile.mkdtemp()
+        self.addCleanup(os.rmdir, here)
+        self.add(project="asked")
+        self.store.see_folder("asked", "/nowhere/asked")
+        self.store.set_next("numbered", 30)
+        self.store.see_folder("numbered", "/nowhere/numbered")
+        # One of two folders is still on disk.
+        self.store.see_folder("api", "/nowhere/api")
+        self.store.see_folder("api-new", here)
+        self.store.rename_project("api-new", "api")
+        # A folder whose path isn't known can't be checked.
+        self.store.see_folder("legacy")
+        self.assertEqual(self.store.forget_gone_folders(), 0)
+        self.assertEqual(len(self.store.folders()), 5)
+        self.assertEqual(
+            [p["name"] for p in self.store.project_summaries()],
+            ["api", "asked", "legacy", "numbered"],
+        )
+
     def test_renaming_a_never_seen_project_twice_keeps_one_folder_row(self):
         self.add(project="onzehq")
         self.store.rename_project("onzehq", "ONZE HQ")

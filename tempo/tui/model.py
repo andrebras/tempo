@@ -113,6 +113,7 @@ class Board:
             self.scroll = 0
         self.question = self.store.get(self.project, self.number) if self.number else None
         if self.mode in SETTINGS:
+            self.store.forget_gone_folders()
             self.summaries = self.store.project_summaries()
             listed = [str(project["name"]) for project in self.summaries]
             if self.into is not None and not {self.chosen, self.into} <= set(listed):

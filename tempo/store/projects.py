@@ -129,6 +129,42 @@ class ProjectStore(QuestionStore):
             for name in sorted(set(counts) | set(folders), key=str.lower)
         ]
 
+    def forget_gone_folders(self) -> int:
+        """Forget the folders of projects that have nothing in them and nowhere to be.
+
+        A session's folder is remembered before its first question, so a throwaway folder
+        leaves an empty project behind. Such a project's folders are forgotten once every
+        one of them is gone from disk; the project then is no longer listed. A project
+        with questions or a numbering is never touched, nor a folder still on disk or
+        one whose path isn't known. Returns how many folders were forgotten.
+
+        Only the folders of empty projects are checked, a handful of paths, and the
+        database is written only when one has to go, so listing projects stays cheap.
+        """
+        if not self._gone_folders():
+            return 0
+        with self._transaction():
+            # Checked again under the lock: a question may have arrived meanwhile.
+            gone = self._gone_folders()
+            self.db.executemany("DELETE FROM folders WHERE rowid = ?", [(row,) for row in gone])
+        return len(gone)
+
+    def _gone_folders(self) -> list[int]:
+        """The rowids of the folders forget_gone_folders forgets."""
+        places: dict[str, list[tuple[int, str | None]]] = {}
+        for row in self.db.execute(
+            "SELECT rowid, project, path FROM folders f"
+            " WHERE NOT EXISTS (SELECT 1 FROM questions q WHERE q.project = f.project)"
+            " AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.name = f.project)"
+        ):
+            places.setdefault(str(row["project"]), []).append((row["rowid"], row["path"]))
+        return [
+            rowid
+            for folders in places.values()
+            if all(path and not os.path.exists(path) for _, path in folders)
+            for rowid, _ in folders
+        ]
+
     def rename_project(self, old: str, new: str | None) -> Moves:
         """Give a project a new name: its questions, numbering and folders move with it.
 
