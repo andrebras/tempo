@@ -9,6 +9,7 @@ current code, and runs the old `tempo add`, `list` and `hook user-prompt-submit`
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -71,8 +72,9 @@ class PreviousReleaseTest(unittest.TestCase):
             store.add(project="demo", title="Open?", context="C", options=["Yes", "No"])
         self.addCleanup(os.remove, self.db)
 
-    def old_tempo(self, *args, stdin="", project="demo"):
+    def old_tempo(self, *args, stdin="", project="demo", **extra):
         env = dict(os.environ, TEMPO_DB=self.db, TEMPO_PROJECT=project, TEMPO_PORT=str(TEST_PORT))
+        env.update(extra)
         env.pop("PYTHONPATH", None)
         env.pop("TEMPO_IN_THREAD", None)
         # Run from the temporary folder: `python -m` puts the working folder first on the
@@ -119,9 +121,22 @@ class PreviousReleaseTest(unittest.TestCase):
         out = self.old_tempo("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x"}))
         self.assertIn("demo Q1 (Left?) answered (b) Right", out)
         # With no project set, the old prompt hook records its folder as it always has.
-        folder = os.path.join(self.tmp.name, "web")
-        os.makedirs(folder, exist_ok=True)
-        self.old_tempo("hook", "user-prompt-submit", stdin=json.dumps({"cwd": folder}), project="")
+        # Releases since 0.11.0 never record a folder under the temporary folders, so the
+        # folder sits in this checkout, with git told not to look above it, and the old code
+        # gets a temporary folder of its own: bin/release runs these tests from a copy under
+        # the system's temporary folder.
+        parent = tempfile.mkdtemp(prefix=".test-folder-", dir=CODE_ROOT)
+        self.addCleanup(shutil.rmtree, parent)
+        folder = os.path.join(parent, "web")
+        os.makedirs(folder)
+        self.old_tempo(
+            "hook",
+            "user-prompt-submit",
+            stdin=json.dumps({"cwd": folder}),
+            project="",
+            TMPDIR=self.tmp.name,
+            GIT_CEILING_DIRECTORIES=parent,
+        )
         with Store(connect(self.db)) as store:
             version = store.db.execute("PRAGMA user_version").fetchone()[0]
             self.assertEqual(version, len(MIGRATIONS))
