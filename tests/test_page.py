@@ -340,10 +340,12 @@ class PageTest(DatabaseTest):
             "%s.dispatchEvent(new KeyboardEvent('keydown', {key: '[', bubbles: true}))" % target
         )
 
-    def test_the_list_hides_from_a_button_by_the_name_and_the_browser_remembers_it(self):
+    def test_the_list_hides_from_a_button_in_the_header_and_the_browser_remembers_it(self):
         self.open("#/demo/1", ready=LOADED + " && $('#side-toggle').offsetWidth")
-        # The button sits in the header, left of the name, whether the list shows or not.
-        self.assertTrue(self.run_js("$('.brand').contains($('#side-toggle'))"))
+        # The button sits with the header's tools, next to the terminal and Settings, not by
+        # the name, whether the list shows or not.
+        self.assertTrue(self.run_js("$('.tools').contains($('#side-toggle'))"))
+        self.assertFalse(self.run_js("$('.brand').contains($('#side-toggle'))"))
         self.assertEqual(self.run_js("$('#side-toggle').getAttribute('aria-expanded')"), "true")
         before = self.run_js("$('#detail').offsetWidth")
         self.click("#side-toggle")
