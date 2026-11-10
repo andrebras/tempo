@@ -102,24 +102,6 @@ class ServerTest(ServerBase):
         self.assertRegex(health["started"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
         self.assertEqual(health["db"], self.env["TEMPO_DB"])
 
-    def test_serves_xterm_from_the_plugin(self):
-        for path, kind, text in [
-            ("/vendor/xterm.js", "text/javascript; charset=utf-8", b"Terminal"),
-            ("/vendor/addon-fit.js", "text/javascript; charset=utf-8", b"FitAddon"),
-            ("/vendor/xterm.css", "text/css; charset=utf-8", b".xterm"),
-        ]:
-            with self.subTest(path=path):
-                connection = http.client.HTTPConnection("127.0.0.1", self.port)
-                connection.request("GET", path, headers={"Host": "127.0.0.1:%d" % self.port})
-                response = connection.getresponse()
-                self.assertEqual(response.status, 200)
-                self.assertEqual(response.getheader("Content-Type"), kind)
-                self.assertIn(text, response.read())
-                connection.close()
-        for path in ("/vendor/LICENSE", "/vendor/..%2Fserver.py", "/vendor/xterm/xterm.js"):
-            with self.subTest(path=path):
-                self.assertEqual(self.request("GET", path)[0], 404)
-
     def test_health_and_page_files_are_read_when_the_server_starts(self):
         # A checkout updated under a running server must not make it claim the new
         # version, which would stop a newer session from replacing it, nor serve the
@@ -365,21 +347,6 @@ class ServerTest(ServerBase):
         self.assertEqual(self.request("POST", "/api/settings/terminal", {"on": "on"})[0], 400)
         self.request("POST", "/api/settings/terminal", {"on": False})
         self.assertFalse(self.store.terminal())
-
-    def test_saves_the_terminals_font_and_size(self):
-        _, data = self.request("GET", "/api/settings")
-        self.assertEqual(json.loads(data)["terminal_font"], "")
-        self.assertEqual(json.loads(data)["terminal_size"], 13)
-        body = {"font": "Menlo", "size": 15}
-        status, data = self.request("POST", "/api/settings/terminal", body)
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(data)["terminal_font"], "Menlo")
-        self.assertEqual(json.loads(data)["terminal_size"], 15)
-        self.assertFalse(self.store.terminal())
-        for body in ({"size": 100}, {"size": "15"}, {"font": "a;b"}, {"font": 5}):
-            with self.subTest(body=body):
-                self.assertEqual(self.request("POST", "/api/settings/terminal", body)[0], 400)
-        self.assertEqual((self.store.terminal_font(), self.store.terminal_size()), ("Menlo", 15))
 
     def test_reports_settings_errors(self):
         self.add(project="other")

@@ -34,16 +34,6 @@ PAGE = os.path.join(HERE, "page.html")
 SCRIPT = os.path.join(HERE, "page.js")
 # The largest request body the page sends is a note; a megabyte leaves plenty of room.
 MAX_BODY = 1_000_000
-# The page's other files, by their path on the server, and their type. The terminal is drawn
-# by xterm.js 6.0.0 and its fit addon 0.11.0, copied unchanged from npm (@xterm/xterm and
-# @xterm/addon-fit) into vendor/xterm, so the page loads no code from the internet.
-JS, CSS = "text/javascript; charset=utf-8", "text/css; charset=utf-8"
-FILES = {
-    "terminal.js": ("terminal.js", JS),
-    "vendor/xterm.js": ("vendor/xterm/xterm.js", JS),
-    "vendor/xterm.css": ("vendor/xterm/xterm.css", CSS),
-    "vendor/addon-fit.js": ("vendor/xterm/addon-fit.js", JS),
-}
 # Where page.html gets the terminal's secret.
 SECRET_PLACE = b"{{terminal-secret}}"
 
@@ -60,10 +50,6 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
         page_html = file.read().replace(SECRET_PLACE, secret.encode())
     with open(SCRIPT, "rb") as file:
         page_script = file.read()
-    page_files = {}
-    for path, (source, kind) in FILES.items():
-        with open(os.path.join(HERE, source), "rb") as file:
-            page_files[path] = (file.read(), kind)
 
     class PortHandler(Handler):
         allowed_hosts = hosts
@@ -71,7 +57,6 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
         about = started
         page = page_html
         script = page_script
-        files = page_files
         terminal_secret = secret
 
     return PortHandler
@@ -89,7 +74,6 @@ class Handler(BaseHTTPRequestHandler):
     about: ClassVar[dict[str, Any]]
     page: ClassVar[bytes] = b""
     script: ClassVar[bytes] = b""
-    files: ClassVar[dict[str, tuple[bytes, str]]] = {}
     terminal_secret: ClassVar[str] = ""
 
     def do_GET(self) -> None:
@@ -252,15 +236,6 @@ def _script(request: Handler, store: Store, args: list[str], body: dict[str, Any
     request._send(200, request.script, "text/javascript; charset=utf-8")
 
 
-def _file(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
-    """One of FILES, or 404."""
-    found = request.files.get("/".join(_parts(urlparse(request.path).path)))
-    if found is None:
-        request._json(404, {"error": "Not found"})
-    else:
-        request._send(200, *found)
-
-
 def _questions(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
     query = parse_qs(urlparse(request.path).query)
     status = query.get("status", ["open"])[0]
@@ -325,23 +300,15 @@ def _start_page(request: Handler, store: Store, args: list[str], body: dict[str,
 def _terminal_setting(
     request: Handler, store: Store, args: list[str], body: dict[str, Any]
 ) -> None:
-    """Settings' Terminal card: the switch, the same as `tempo config terminal`, and the
-    font and its size. Turning it off here also stops the open shells; off from the
-    command, it only refuses new ones."""
+    """Settings' Terminal switch, the same as `tempo config terminal`. Turning it off here
+    also stops the open shells; off from the command, it only refuses new ones."""
 
     def change(on: bool) -> None:
         store.set_terminal(on)
         if not on:
             terminal.SHELLS.close_all()
 
-    def run() -> dict[str, Any]:
-        if "font" in body:
-            store.set_terminal_font(_text(body, "font", ""))
-        if "size" in body:
-            store.set_terminal_size(_number(body, "size") or 0)
-        return _switch(change, body) if "on" in body else {}
-
-    request._save_setting(store, run)
+    request._save_setting(store, lambda: _switch(change, body))
 
 
 def _terminal_open(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
@@ -441,8 +408,6 @@ ANY = None
 ROUTES: list[tuple[str, tuple[str | None, ...], Run]] = [
     ("GET", (), _page),
     ("GET", ("page.js",), _script),
-    ("GET", ("terminal.js",), _file),
-    ("GET", ("vendor", ANY), _file),
     ("GET", ("api", "questions"), _questions),
     ("GET", ("api", "questions", ANY, ANY), _question),
     ("GET", ("api", "settings"), _get_settings),
@@ -558,8 +523,6 @@ def _settings(store: Store) -> dict[str, Any]:
         "projects": projects,
         "start_page": store.start_page(),
         "terminal": store.terminal(),
-        "terminal_font": store.terminal_font(),
-        "terminal_size": store.terminal_size(),
     }
 
 

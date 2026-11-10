@@ -13,8 +13,6 @@ function storedProject() {
 function chooseProject(name) {
   state.project = name;
   try { localStorage.setItem("project", name); } catch { /* private window: just don't remember */ }
-  // terminal.js, when the page loaded it: an open terminal follows the project.
-  if (typeof followTerminal === "function") followTerminal();
 }
 
 // When the user last looked at each project: the project's activity time then, as the
@@ -304,7 +302,6 @@ const display = [
 function setDisplay(key, value, isDefault) {
   if (isDefault) delete document.documentElement.dataset[key];
   else document.documentElement.dataset[key] = value;
-  if (key === "theme" && typeof rethemeTerminals === "function") rethemeTerminals();
   try {
     if (isDefault) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
@@ -348,41 +345,6 @@ function renderSessions(data) {
         [[true, "On"], [false, "Off"]].map(([on, name]) =>
           el("button", { "aria-pressed": String(on === data.start_page), onclick: () => choose(on) }, name))),
       error));
-}
-
-// The terminal under the question, kept in the database like `tempo config terminal`. Off by
-// default: with it on, the page can run any command as the user. Its font and size apply to
-// open terminals at once.
-function renderTerminal(data) {
-  const error = el("p", { class: "error", hidden: true });
-  const save = (body) => api("/api/settings/terminal", body);
-  const choose = (on) => save({ on }).then(renderSettings, (problem) => {
-    error.textContent = problem.message;
-    error.hidden = false;
-  });
-  const font = el("input", { value: data.terminal_font, placeholder: "System monospace", "aria-label": "Terminal font" });
-  const size = el("input", {
-    type: "number", min: 8, max: 32, value: data.terminal_size, "aria-label": "Terminal font size",
-  });
-  return el("section", { class: "card" },
-    el("h3", {}, "Terminal"),
-    el("p", {}, "Saved in the database, the same as ", el("code", {}, "tempo config terminal"), "."),
-    el("div", { class: "row" },
-      el("div", {}, el("strong", {}, "Terminal in the project's folder"),
-        el("span", { class: "meta" }, "On: a Terminal button opens a shell there. The page can then run any command as you.")),
-      el("div", { class: "segmented", role: "group", "aria-label": "Terminal in the project's folder" },
-        [[true, "On"], [false, "Off"]].map(([on, name]) =>
-          el("button", { "aria-pressed": String(on === data.terminal), onclick: () => choose(on) }, name))),
-      error),
-    el("div", { class: "row" },
-      el("div", {}, el("strong", {}, "Terminal font"),
-        el("span", { class: "meta" }, "Font names, such as \"JetBrains Mono\", monospace. Empty: the system's monospace font.")),
-      saveForm(font, () => (font.value.trim() !== data.terminal_font ? font.value.trim() : null),
-        (value) => save({ font: value }))),
-    el("div", { class: "row" },
-      el("div", {}, el("strong", {}, "Font size"), el("span", { class: "meta" }, "In pixels, from 8 to 32.")),
-      saveForm(size, () => (size.value !== "" && Number(size.value) !== data.terminal_size ? Number(size.value) : null),
-        (value) => save({ size: value }))));
 }
 
 // A small Settings form that saves one value, and the line for its errors. read() returns
@@ -593,7 +555,6 @@ function renderSettings(data) {
   const active = document.activeElement;
   const focused = $("#settings").contains(active) && controlKey(active);
   drawSettings(data);
-  if (typeof applyTerminalSettings === "function") applyTerminalSettings(data);
   for (const field of fields()) {
     if (!typed.has(field.getAttribute("aria-label"))) continue;
     field.value = typed.get(field.getAttribute("aria-label"));
@@ -620,7 +581,6 @@ function drawSettings(data) {
     el("h2", {}, "Settings"),
     renderAppearance(),
     renderSessions(data),
-    renderTerminal(data),
     renderProjects(data),
     // Placeholder: what belongs here is still to be decided.
     el("section", { class: "card" },
@@ -1075,6 +1035,6 @@ function start() {
 
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, rewordNotice, state,
+  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
 };
 else start();
