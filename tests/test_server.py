@@ -366,7 +366,9 @@ class ServerTest(ServerBase):
         self.assertTrue(json.loads(data)["terminal"])
         self.assertTrue(self.store.terminal())
         self.assertEqual(self.request("POST", "/api/settings/terminal", {"on": "on"})[0], 400)
-        self.request("POST", "/api/settings/terminal", {"on": False})
+        # Off ends Tempo's tmux sessions: without tmux here, the user's own are never reached.
+        with mock.patch.object(terminal, "TMUX", None):
+            self.request("POST", "/api/settings/terminal", {"on": False})
         self.assertFalse(self.store.terminal())
 
     def test_saves_the_terminals_font_and_size(self):
