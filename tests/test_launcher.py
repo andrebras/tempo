@@ -76,6 +76,24 @@ class LauncherTest(unittest.TestCase):
         self.assertNotIn("the wrong tempo ran", result.stdout)
         self.assertIn("No open questions", result.stdout)
 
+    def test_it_runs_through_a_symlink_to_it(self):
+        # What `tempo install` makes in ~/.local/bin, here through a relative link too.
+        bin_ = os.path.join(self.folder, "bin")
+        os.mkdir(bin_)
+        os.symlink(LAUNCHER, os.path.join(bin_, "real"))
+        os.symlink("real", os.path.join(bin_, "tempo"))
+        result = subprocess.run(
+            [os.path.join(bin_, "tempo"), "list", "--project", "demo"],
+            cwd=self.folder,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("No open questions", result.stdout)
+
     def test_a_wait_it_starts_shows_as_a_tempo_wait(self):
         # The Stop hook finds running waits by their command in ps.
         wait = subprocess.Popen(
