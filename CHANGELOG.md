@@ -6,6 +6,13 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Settings → Projects is easier to read. Each project shows only its name, its number of
+  questions and its folders, with one Edit button that opens Rename and "Merge into…" for
+  that project. Folders that no longer exist are marked "folder gone", long paths wrap
+  only after a `/`, and buttons with nothing to save yet no longer look broken.
+
 ### Fixed
 
 - An empty project left by a folder that no longer exists, such as a throwaway folder in
