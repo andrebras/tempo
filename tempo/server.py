@@ -2,24 +2,29 @@
 
 Any website open in the browser could send requests to a localhost port, so
 every request must name this server as its Host, and writes must be JSON from
-this page's own origin.
+this page's own origin. Terminal requests must also carry the secret this server put
+in the page it served.
 """
 
 from __future__ import annotations
 
+import base64
 import contextlib
+import hmac
 import json
 import os
+import secrets
+import signal
 import subprocess
 import time
 import traceback
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, ClassVar
+from typing import Any, ClassVar, NoReturn
 from urllib.parse import parse_qs, unquote, urlparse
 
-from tempo import log
+from tempo import log, terminal
 from tempo.store import QuestionError, Store, connect, db_path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -29,6 +34,8 @@ PAGE = os.path.join(HERE, "page.html")
 SCRIPT = os.path.join(HERE, "page.js")
 # The largest request body the page sends is a note; a megabyte leaves plenty of room.
 MAX_BODY = 1_000_000
+# Where page.html gets the terminal's secret.
+SECRET_PLACE = b"{{terminal-secret}}"
 
 
 def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
@@ -36,8 +43,11 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
     # Read once, when the server starts. A checkout updated under a running server must
     # not make it claim the new version, or serve the new page against its old code.
     started = health()
+    # New at each start and only ever sent inside the page, so a terminal request without
+    # it comes from somewhere else, even when it names this page as its origin.
+    secret = secrets.token_urlsafe(32)
     with open(PAGE, "rb") as file:
-        page_html = file.read()
+        page_html = file.read().replace(SECRET_PLACE, secret.encode())
     with open(SCRIPT, "rb") as file:
         page_script = file.read()
 
@@ -47,6 +57,7 @@ def make_handler(port: int) -> type[BaseHTTPRequestHandler]:
         about = started
         page = page_html
         script = page_script
+        terminal_secret = secret
 
     return PortHandler
 
@@ -63,6 +74,7 @@ class Handler(BaseHTTPRequestHandler):
     about: ClassVar[dict[str, Any]]
     page: ClassVar[bytes] = b""
     script: ClassVar[bytes] = b""
+    terminal_secret: ClassVar[str] = ""
 
     def do_GET(self) -> None:
         if not self._trusted(write=False):
@@ -71,12 +83,38 @@ class Handler(BaseHTTPRequestHandler):
         if _parts(urlparse(self.path).path) == ["health"]:
             self._json(200, self.about)
             return
-        self._safely(lambda store: self._route(store, "GET", {}))
+        if not self._terminal("GET", {}):
+            self._safely(lambda store: self._route(store, "GET", {}))
 
     def do_POST(self) -> None:
         if not self._trusted(write=True):
             return
-        self._safely(self._post)
+        body = self._body()
+        if body is not None and not self._terminal("POST", body):
+            self._safely(lambda store: self._route(store, "POST", body))
+
+    def _terminal(self, method: str, body: dict[str, Any]) -> bool:
+        """Answer a terminal request, and say whether this was one. Each needs the secret.
+        All but opening a shell are answered without the database: the output lasts as
+        long as the shell, and typing must never wait for the database."""
+        parts = _parts(urlparse(self.path).path)
+        if parts[:2] != ["api", "terminal"]:
+            return False
+        secret = (self.headers.get("X-Tempo-Secret") or "").encode()
+        if not hmac.compare_digest(secret, self.terminal_secret.encode()):
+            self._json(403, {"error": "Only this page can use the terminal"})
+            return True
+        for route_method, pattern, run in TERMINAL_ROUTES:
+            args = _match(pattern, parts)
+            if route_method == method and args is not None:
+                shell = terminal.SHELLS.get(args[0])
+                if shell is None:
+                    self._json(404, {"error": "That terminal has ended"})
+                else:
+                    run(self, args[0], shell, body)
+                return True
+        self._safely(lambda store: self._route(store, method, body))
+        return True
 
     def _safely(self, run: Callable[[Store], None]) -> None:
         """Run a request with the database; an unexpected error, such as a locked
@@ -95,27 +133,28 @@ class Handler(BaseHTTPRequestHandler):
             with contextlib.suppress(OSError):
                 self._json(500, {"error": "Something went wrong in Tempo"})
 
-    def _post(self, store: Store) -> None:
-        """Check the body first, so a bad body is refused whatever the path."""
+    def _body(self) -> dict[str, Any] | None:
+        """A POST's JSON body, checked before the path, so a bad body is refused whatever
+        the path; None when it was refused."""
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = -1
         if length < 0:
             self._json(400, {"error": "Invalid Content-Length"})
-            return
+            return None
         if length > MAX_BODY:
             self._json(413, {"error": "The request is too large"})
-            return
+            return None
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             self._json(400, {"error": "Invalid JSON"})
-            return
+            return None
         if not isinstance(body, dict):
             self._json(400, {"error": "The body must be a JSON object"})
-            return
-        self._route(store, "POST", body)
+            return None
+        return body
 
     def _route(self, store: Store, method: str, body: dict[str, Any]) -> None:
         parts = _parts(urlparse(self.path).path)
@@ -255,8 +294,104 @@ def _start_page(request: Handler, store: Store, args: list[str], body: dict[str,
 def _terminal_setting(
     request: Handler, store: Store, args: list[str], body: dict[str, Any]
 ) -> None:
-    """Settings' Terminal switch, the same as `tempo config terminal`."""
-    request._save_setting(store, lambda: _switch(store.set_terminal, body))
+    """Settings' Terminal switch, the same as `tempo config terminal`. Turning it off here
+    also stops the open shells; off from the command, it only refuses new ones."""
+
+    def change(on: bool) -> None:
+        store.set_terminal(on)
+        if not on:
+            terminal.SHELLS.close_all()
+
+    request._save_setting(store, lambda: _switch(change, body))
+
+
+def _terminal_open(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
+    """Start a shell in the project's first folder still on disk. The page then reads its
+    output and sends it keys with the id this answers."""
+
+    def run() -> dict[str, Any]:
+        if not store.terminal():
+            raise QuestionError("The terminal is off; `tempo config terminal on` turns it on")
+        project = _text(body, "project", "")
+        folders = [
+            str(folder["path"])
+            for summary in store.project_summaries()
+            if summary["name"] == project
+            for folder in summary["folders"]
+            if folder["path"] and os.path.isdir(str(folder["path"]))
+        ]
+        if not folders:
+            raise QuestionError("No folder of %s is on this computer" % project)
+        return {"id": terminal.SHELLS.open(folders[0]), "folder": folders[0]}
+
+    request._handle(run)
+
+
+# What a terminal route runs: it gets the request, the shell's id and the shell, and the
+# JSON body (empty for a GET), and sends the answer. It never gets the database.
+TerminalRun = Callable[[Handler, str, terminal.Shell, dict[str, Any]], None]
+
+
+def _terminal_output(
+    request: Handler, key: str, shell: terminal.Shell, body: dict[str, Any]
+) -> None:
+    """The shell's output as Server-Sent Events, one base64 chunk in each, until the shell
+    ends or the page stops reading. Either way the shell is stopped."""
+    try:
+        output = shell.output()
+    except QuestionError as error:
+        request._json(409, {"error": str(error)})
+        return
+    try:
+        request.send_response(200)
+        request.send_header("Content-Type", "text/event-stream")
+        request.send_header("Cache-Control", "no-store")
+        request.end_headers()
+        for data in output:
+            if data is None:
+                request.wfile.write(b": still here\n\n")
+            else:
+                request.wfile.write(b"data: " + base64.b64encode(data) + b"\n\n")
+        request.wfile.write(b"event: end\ndata:\n\n")
+    except OSError:  # the page went away
+        pass
+    finally:
+        terminal.SHELLS.close(key)
+
+
+def _terminal_input(
+    request: Handler, key: str, shell: terminal.Shell, body: dict[str, Any]
+) -> None:
+    """Keys typed or pasted in the terminal."""
+
+    def run() -> dict[str, Any]:
+        shell.write(_text(body, "data", "").encode())
+        return {}
+
+    request._handle(run)
+
+
+def _terminal_resize(
+    request: Handler, key: str, shell: terminal.Shell, body: dict[str, Any]
+) -> None:
+    """The terminal's new size in characters, so full-screen programs fill it."""
+
+    def run() -> dict[str, Any]:
+        cols, rows = _number(body, "cols"), _number(body, "rows")
+        if not (cols and rows and 0 < cols < 1000 and 0 < rows < 1000):
+            raise QuestionError("cols and rows must be numbers from 1 to 999")
+        shell.resize(cols, rows)
+        return {}
+
+    request._handle(run)
+
+
+def _terminal_close(
+    request: Handler, key: str, shell: terminal.Shell, body: dict[str, Any]
+) -> None:
+    """End shell: stop it now rather than when the page goes away."""
+    terminal.SHELLS.close(key)
+    request._json(200, {})
 
 
 # A part of a route's path that matches any one part, which is passed to the route.
@@ -276,6 +411,16 @@ ROUTES: list[tuple[str, tuple[str | None, ...], Run]] = [
     ("POST", ("api", "projects", ANY, "rename"), _rename),
     ("POST", ("api", "settings", "page"), _start_page),
     ("POST", ("api", "settings", "terminal"), _terminal_setting),
+    ("POST", ("api", "terminal"), _terminal_open),
+]
+
+# The paths of an open shell, by its id; Handler._terminal answers them without the
+# database, after checking the secret.
+TERMINAL_ROUTES: list[tuple[str, tuple[str | None, ...], TerminalRun]] = [
+    ("GET", ("api", "terminal", ANY, "output"), _terminal_output),
+    ("POST", ("api", "terminal", ANY, "input"), _terminal_input),
+    ("POST", ("api", "terminal", ANY, "resize"), _terminal_resize),
+    ("POST", ("api", "terminal", ANY, "close"), _terminal_close),
 ]
 
 
@@ -291,8 +436,19 @@ def _match(pattern: tuple[str | None, ...], parts: list[str]) -> list[str] | Non
 def serve(port: int) -> None:
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(port))
     print("Tempo on http://127.0.0.1:%d/" % port, flush=True)
-    with contextlib.suppress(KeyboardInterrupt):
-        server.serve_forever()
+    # A newer Tempo stops this one with SIGTERM; exiting through finally stops the shells.
+    signal.signal(signal.SIGTERM, _exit)
+    try:
+        with contextlib.suppress(KeyboardInterrupt):
+            server.serve_forever()
+    finally:
+        # Let go of the port first, so a newer Tempo can take it while the shells stop.
+        server.server_close()
+        terminal.SHELLS.close_all()
+
+
+def _exit(signum: int, frame: Any) -> NoReturn:
+    raise SystemExit(0)
 
 
 def version() -> str | None:

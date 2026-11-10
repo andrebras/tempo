@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The server puts a new secret here at each start; terminal requests must send it. -->
+<meta name="tempo-secret" content="{{terminal-secret}}">
 <title>Tempo</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M5 22a11 11 0 0 1 22 0' stroke='%234f46e5' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='22' r='3' fill='%234f46e5'/%3E%3C/svg%3E">
 <script>
