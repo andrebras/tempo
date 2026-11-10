@@ -30,7 +30,7 @@ All notable changes to Tempo are listed here. The format follows
   list still on the left. Restore, Escape outside the shell, or picking a question puts it
   back under the question.
 - The question list on the left can be made wider or narrower by dragging its right edge
-  (or with the arrow keys), and hidden with the sidebar button left of the Tempo name or
+  (or with the arrow keys), and hidden with the sidebar button in the header, beside the terminal and Settings, or
   the `[` key; the button then carries the "something new" dot. The browser remembers both.
 - An early desktop app in `desktop/`, built with Tauri 2, shows the page in a window of
   its own on a Mac. It runs its own page server on a free port, and only its window can

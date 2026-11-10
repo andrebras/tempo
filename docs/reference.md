@@ -173,8 +173,8 @@ The setting is kept in the database, so every session and project sees it. With 
 ### The question list
 
 On a wide screen, drag the question list's right edge (or focus it and use the left and
-right arrow keys) to make the list wider or narrower. The sidebar button left of the
-Tempo name, or the `[` key, hides the list so the question gets the whole width, and shows
+right arrow keys) to make the list wider or narrower. The sidebar button in the header,
+next to the terminal and Settings buttons, or the `[` key, hides the list so the question gets the whole width, and shows
 it again. While the list is hidden, a dot on that button means a question in the project has
 something new. The browser remembers the width and whether the list is hidden. On a phone
 the list stays as it is.
