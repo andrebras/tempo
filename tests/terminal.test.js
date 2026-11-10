@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { sseEvents, decodeOutput, terminalTheme, terminalFont, MONO } = require("../tempo/terminal.js");
+const { sseEvents, decodeOutput, terminalTheme, terminalFont, terminalHeight, MONO } = require("../tempo/terminal.js");
 
 test("complete events are read and an unfinished one is kept for the next chunk", () => {
   const { events, rest } = sseEvents("data: aGk=\n\n: still here\n\nevent: end\ndata:\n\ndata: bW9y");
@@ -49,4 +49,10 @@ test("the font is the page's monospace one unless Settings names another, then i
   assert.deepEqual(terminalFont({ font: "", size: 13 }), { fontFamily: MONO, fontSize: 13 });
   assert.deepEqual(terminalFont({ font: '"Fira Code"', size: 16 }), { fontFamily: `"Fira Code", ${MONO}`, fontSize: 16 });
   assert.match(MONO, /ui-monospace/);
+});
+
+test("the dragged height stays between a few lines and most of the window", () => {
+  assert.equal(terminalHeight(300, 1000), 300);
+  assert.equal(terminalHeight(40, 1000), 120);
+  assert.equal(terminalHeight(2000, 1000), 850);
 });

@@ -187,7 +187,8 @@ tempo config terminal-size 14                     # in pixels, 8 to 32; 13 by de
 With it on, a Terminal button appears beside the gear. It opens a shell for the project
 shown, at the bottom of the question's pane. Each project keeps its own shell while the page
 is open, and the panel follows the project you pick in the header. **Hide** keeps the shell
-running; **End shell** stops it. The terminal uses the page's colours, light or dark, and
+running; **End shell** stops it. Drag the panel's top edge (or focus it and use the up and
+down arrow keys) to change its height, which the browser remembers. The terminal uses the page's colours, light or dark, and
 the font and size from Settings. If the font you name isn't installed, the terminal falls
 back to the system's monospace font, so the columns still line up. It is drawn by [xterm.js](https://xtermjs.org) 6.0.0 and its
 fit addon 0.11.0, which ship with Tempo in `tempo/vendor/xterm` (MIT licence), so the page
