@@ -8,6 +8,7 @@ import contextlib
 import json
 import os
 import re
+import shlex
 import signal
 import sqlite3
 import string
@@ -234,6 +235,12 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
         help="Only this question, closing once it is answered (what the sidebar's popup shows)",
     )
     tui.set_defaults(run=run_tui)
+
+    tmux = commands.add_parser(
+        "tmux", help="Show or hide the questions' sidebar on the left of this tmux window"
+    )
+    tmux.add_argument("--project", help="Start on this project; the folder's by default")
+    tmux.set_defaults(run=run_tmux)
 
 
 def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -490,6 +497,57 @@ def run_tui(args: argparse.Namespace) -> int:
     from tempo.tui import screen
 
     return screen.run(_project(args.project), sidebar=args.sidebar, question=args.question)
+
+
+# The sidebar's width in columns, and the pane option that marks a pane as the sidebar.
+SIDEBAR_WIDTH = 40
+SIDEBAR_MARK = "@tempo-sidebar"
+
+
+def run_tmux(args: argparse.Namespace) -> int:
+    """Show the sidebar (`tempo tui --sidebar`) on the left of the current tmux window,
+    keeping the keyboard in the current pane; when it is already there, close it. So one
+    key bound to this shows and hides it."""
+    if not os.environ.get("TMUX"):
+        print("tempo: tmux works only inside tmux; start tmux, then run it there", file=sys.stderr)
+        return 1
+    # The pane this runs in; tmux's own key bindings run it without one, on the current pane.
+    here = ["-t", os.environ["TMUX_PANE"]] if os.environ.get("TMUX_PANE") else []
+    try:
+        panes = _tmux("list-panes", *here, "-F", "#{pane_id} #{%s}" % SIDEBAR_MARK)
+        shown = [line.split()[0] for line in panes.splitlines() if line.endswith(" 1")]
+        if shown:
+            for pane in shown:
+                _tmux("kill-pane", "-t", pane)
+            return 0
+        tempo = os.path.join(CODE_ROOT, "bin", "tempo")
+        command = [tempo, "tui", "--sidebar", "--project", _project(args.project)]
+        pane = _tmux(
+            "split-window", *here, "-hbd", "-l", str(SIDEBAR_WIDTH), "-c", os.getcwd(),
+            "-e", "TEMPO_DB=%s" % db_path(), "-P", "-F", "#{pane_id}", shlex.join(command),
+        ).strip()  # fmt: skip
+        _tmux("set-option", "-p", "-t", pane, SIDEBAR_MARK, "1")
+    except (OSError, subprocess.CalledProcessError) as error:
+        print("tempo: tmux failed: %s" % _tmux_error(error), file=sys.stderr)
+        return 1
+    return 0
+
+
+def _tmux(*args: str) -> str:
+    """Run a tmux command and give its output; raises when it fails."""
+    done = subprocess.run(  # noqa: S603
+        ["tmux", *args],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return done.stdout
+
+
+def _tmux_error(error: Exception) -> str:
+    if isinstance(error, subprocess.CalledProcessError):
+        return (error.stderr or "").strip() or "exit %d" % error.returncode
+    return str(error)
 
 
 def open_count(path: str, project: str | None = None, folder: str | None = None) -> int:
