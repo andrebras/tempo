@@ -78,46 +78,6 @@ function terminalFont(settings) {
   return { fontFamily: settings.font ? `${settings.font}, ${MONO}` : MONO, fontSize: settings.size };
 }
 
-// The terminal's height in pixels, kept between a few lines and most of the window.
-function terminalHeight(height, windowHeight) {
-  return Math.round(Math.min(Math.max(height, 120), windowHeight * 0.85));
-}
-
-function setTerminalHeight(height) {
-  $("#terminal").style.height = `${terminalHeight(height, innerHeight)}px`;
-}
-
-// The grip on the terminal's top edge: dragging it up makes the terminal taller. The height
-// is kept per browser, like the theme.
-function startGrip() {
-  const grip = $("#terminal .grip");
-  const keep = () => {
-    try { localStorage.setItem("terminal-height", String($("#terminal").offsetHeight)); } catch { /* just don't remember */ }
-  };
-  try {
-    const saved = Number(localStorage.getItem("terminal-height"));
-    if (saved) setTerminalHeight(saved);
-  } catch { /* storage blocked: keep the default */ }
-  grip.addEventListener("pointerdown", (event) => {
-    const startY = event.clientY;
-    const startHeight = $("#terminal").offsetHeight;
-    grip.setPointerCapture(event.pointerId);
-    const move = (moved) => setTerminalHeight(startHeight + startY - moved.clientY);
-    grip.addEventListener("pointermove", move);
-    grip.addEventListener("lostpointercapture", () => {
-      grip.removeEventListener("pointermove", move);
-      keep();
-    }, { once: true });
-  });
-  grip.addEventListener("keydown", (event) => {
-    const step = { ArrowUp: 24, ArrowDown: -24 }[event.key];
-    if (!step) return;
-    event.preventDefault();
-    setTerminalHeight($("#terminal").offsetHeight + step);
-    keep();
-  });
-}
-
 function loadXterm() {
   xtermLoading ||= new Promise((resolve, reject) => {
     document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href: "/vendor/xterm.css" }));
@@ -248,7 +208,6 @@ function startTerminal() {
   });
   $("#terminal .hide").addEventListener("click", () => setTerminalButton(false));
   $("#terminal .end").addEventListener("click", endTerminal);
-  startGrip();
   new ResizeObserver(() => {
     const entry = terminals[state.project];
     if (entry && !$("#terminal").hidden) fitTerminal(entry);
@@ -257,5 +216,5 @@ function startTerminal() {
   fetch("/api/settings").then((response) => response.json()).then(applyTerminalSettings).catch(() => {});
 }
 
-if (typeof module === "object") module.exports = { sseEvents, decodeOutput, terminalTheme, terminalFont, terminalHeight, MONO };
+if (typeof module === "object") module.exports = { sseEvents, decodeOutput, terminalTheme, terminalFont, MONO };
 else startTerminal();
