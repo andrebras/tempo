@@ -938,6 +938,82 @@ class PopupTest(BoardTest):
         self.assertEqual(popups.running, [])
 
 
+class JumpTest(BoardTest):
+    """g in the sidebar goes to the pane where the shown project's Claude session runs."""
+
+    def test_g_jumps_with_the_projects_folders_and_says_what_went_wrong(self):
+        self.store.see_folder("shop", "/work/shop")
+        self.store.see_folder("demo", "/work/demo")
+        self.add(project="shop", title="There")
+        self.add(title="Here")
+        asked = []
+
+        def jumper(project, paths):
+            asked.append((project, paths))
+            return None if project == "shop" else "No Claude session open for %s." % project
+
+        board = Board(self.board_store, "shop", sidebar=True, jumper=jumper)
+        board.press("g")
+        self.assertEqual((asked, board.message), ([("shop", ["/work/shop"])], None))
+        # h and l only browse; g goes.
+        board.press("l")
+        self.assertEqual(len(asked), 1)
+        board.press("g")
+        self.assertEqual(board.message, ("No Claude session open for demo.", "error"))
+        self.assertEqual(self.store.get("shop", 1)["status"], "open")
+
+    def test_outside_tmux_g_says_so_and_shift_g_still_answers(self):
+        self.add(title="One", options=list("abcdefg"))
+        board = Board(self.board_store, "demo", sidebar=True)
+        board.press("g")
+        self.assertEqual(board.message, ("g works only inside tmux.", "error"))
+        board.press("G")
+        self.assertEqual(board.mode, "note")
+
+    @unittest.skipUnless(curses is not None, "needs curses")
+    def test_the_claude_pane_is_found_in_the_projects_folders(self):
+        from tempo.tui import screen
+
+        listing = "\n".join(
+            [
+                "%1\tshop\t@1\t100\t2.1.311\t/work/shop",
+                "%2\tshop\t@1\t100\tzsh\t/work/shop",
+                "%3\tshop\t@2\t300\tclaude\t/work/shop/.claude/worktrees/x",
+                "%4\tother\t@3\t900\t2.1.311\t/work/shopping",
+                "%5\tshop\t@4\t999\t2.1.311\t/work/shop",
+            ]
+        )
+        # The newest Claude pane inside a folder, never the sidebar's own (%5).
+        self.assertEqual(screen.claude_pane(listing, ["/work/shop"], "%5"), ("shop", "@2", "%3"))
+        self.assertIsNone(screen.claude_pane(listing, ["/work/none"], None))
+        self.assertIsNone(screen.claude_pane(listing, [], None))
+
+    @unittest.skipUnless(curses is not None, "needs curses")
+    def test_jump_switches_to_the_pane_or_says_none_is_open(self):
+        from tempo.tui import screen
+
+        calls = []
+
+        def tmux(command, **_):
+            calls.append(command[1:])
+            out = "%3\tshop\t@2\t1\t2.1.311\t/work/shop\n" if command[1] == "list-panes" else ""
+            return subprocess.CompletedProcess(command, 0, out, "")
+
+        with mock.patch("subprocess.run", side_effect=tmux):
+            self.assertIsNone(screen.jump("shop", ["/work/shop"]))
+            self.assertEqual(
+                calls[1:],
+                [["switch-client", "-t", "shop"], ["select-window", "-t", "@2"],
+                 ["select-pane", "-t", "%3"]],
+            )  # fmt: skip
+            self.assertEqual(
+                screen.jump("demo", ["/work/demo"]), "No Claude session open for demo."
+            )
+        failure = subprocess.CalledProcessError(1, ["tmux"], "", "no server running\n")
+        with mock.patch("subprocess.run", side_effect=failure):
+            self.assertEqual(screen.jump("shop", ["/work/shop"]), "tmux failed: no server running")
+
+
 class TmuxTest(DatabaseTest):
     """`tempo tmux` shows the sidebar on the left of the tmux window, or hides it."""
 

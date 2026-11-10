@@ -17,6 +17,8 @@ All notable changes to Tempo are listed here. The format follows
   you answer or follow up. `tempo tui --question N` shows one question that way anywhere.
 - `tempo tmux` opens the sidebar on the left of the current tmux window, 40 columns wide,
   and closes it when run again, so one tmux key can show and hide it.
+- In the sidebar, `g` goes to the pane where the shown project's Claude session runs, in
+  whichever tmux session it is, and says so when none is open.
 
 ## [0.11.0] - 2026-11-10
 
