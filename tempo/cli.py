@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import sqlite3
 import string
@@ -577,7 +578,27 @@ def run_install(args: argparse.Namespace) -> int:
     # Done, so sessions stop offering /tempo:install.
     with Store(connect()) as store:
         store.set_install_hint(False)
-    return _install_tmux(args) if args.tmux else 0
+    if args.tmux:
+        return _install_tmux(args)
+    _offer_tmux()
+    return 0
+
+
+def _offer_tmux() -> None:
+    """Say what --tmux would do, when tmux is installed or has a config and the config
+    doesn't bring the sidebar back yet; /tempo:install asks the user from this line."""
+    conf = tmux_conf()
+    if not (shutil.which("tmux") or os.path.lexists(conf)):
+        return
+    target = _tmux_conf_target(conf)[0]
+    if target and os.path.exists(target):
+        with open(target) as file:
+            if "tempo sidebar --restore" in file.read():
+                return
+    print(
+        "tmux is installed: `tempo install --tmux` would also add 3 lines to the end of %s"
+        " that bring the sidebar back when tmux starts, and turn the sidebar on." % conf
+    )
 
 
 # The lines `tempo install --tmux` adds to the tmux config and `tempo uninstall` removes.
