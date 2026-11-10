@@ -348,6 +348,21 @@ class ServerTest(ServerBase):
         self.request("POST", "/api/settings/terminal", {"on": False})
         self.assertFalse(self.store.terminal())
 
+    def test_saves_the_terminals_font_and_size(self):
+        _, data = self.request("GET", "/api/settings")
+        self.assertEqual(json.loads(data)["terminal_font"], "")
+        self.assertEqual(json.loads(data)["terminal_size"], 13)
+        body = {"font": "Menlo", "size": 15}
+        status, data = self.request("POST", "/api/settings/terminal", body)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)["terminal_font"], "Menlo")
+        self.assertEqual(json.loads(data)["terminal_size"], 15)
+        self.assertFalse(self.store.terminal())
+        for body in ({"size": 100}, {"size": "15"}, {"font": "a;b"}, {"font": 5}):
+            with self.subTest(body=body):
+                self.assertEqual(self.request("POST", "/api/settings/terminal", body)[0], 400)
+        self.assertEqual((self.store.terminal_font(), self.store.terminal_size()), ("Menlo", 15))
+
     def test_reports_settings_errors(self):
         self.add(project="other")
         status, data = self.request("POST", "/api/projects/demo/rename", {"name": " "})

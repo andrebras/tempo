@@ -300,15 +300,23 @@ def _start_page(request: Handler, store: Store, args: list[str], body: dict[str,
 def _terminal_setting(
     request: Handler, store: Store, args: list[str], body: dict[str, Any]
 ) -> None:
-    """Settings' Terminal switch, the same as `tempo config terminal`. Turning it off here
-    also stops the open shells; off from the command, it only refuses new ones."""
+    """Settings' Terminal card: the switch, the same as `tempo config terminal`, and the
+    font and its size. Turning it off here also stops the open shells; off from the
+    command, it only refuses new ones."""
 
     def change(on: bool) -> None:
         store.set_terminal(on)
         if not on:
             terminal.SHELLS.close_all()
 
-    request._save_setting(store, lambda: _switch(change, body))
+    def run() -> dict[str, Any]:
+        if "font" in body:
+            store.set_terminal_font(_text(body, "font", ""))
+        if "size" in body:
+            store.set_terminal_size(_number(body, "size") or 0)
+        return _switch(change, body) if "on" in body else {}
+
+    request._save_setting(store, run)
 
 
 def _terminal_open(request: Handler, store: Store, args: list[str], body: dict[str, Any]) -> None:
@@ -523,6 +531,8 @@ def _settings(store: Store) -> dict[str, Any]:
         "projects": projects,
         "start_page": store.start_page(),
         "terminal": store.terminal(),
+        "terminal_font": store.terminal_font(),
+        "terminal_size": store.terminal_size(),
     }
 
 
