@@ -6,6 +6,13 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The page server can open a shell in a project's folder, for a terminal on the page. It is
+  off unless you run `tempo config terminal on`, because the page can then run any command
+  as you. Each request needs a secret that the server puts only in the page it serves, and
+  each shell stops when its page goes away or the server stops.
+
 ### Changed
 
 - Settings → Projects is easier to read. Each project shows only its name, its number of
