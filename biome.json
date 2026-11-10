@@ -8,7 +8,8 @@
       "tests/terminal.test.js",
       "!!.claude",
       "!!.venv",
-      "!!.tempo-dev"
+      "!!.tempo-dev",
+      "!!desktop"
     ]
   },
   "formatter": { "enabled": false },
