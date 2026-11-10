@@ -49,7 +49,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 
 const {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
-  pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, terminalOffQuestion, terminalOffNotice, rewordNotice, state,
+  pathParts, projectRow, noteOpened, sideWidth, questionFresh, keptDraft, renderQuestion, renderSessions, renderTerminal, terminalOffQuestion, terminalOffNotice, rewordNotice, state,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -366,4 +366,12 @@ test("while an answer is being sent, a redraw keeps the buttons disabled", () =>
   } finally {
     state.sending = null;
   }
+});
+
+test("the list's width stays between readable and most of the window", () => {
+  assert.equal(sideWidth(300, 1400), 300);
+  assert.equal(sideWidth(100, 1400), 220);
+  assert.equal(sideWidth(2000, 1400), 840);
+  // A window too narrow for both bounds keeps the list readable.
+  assert.equal(sideWidth(100, 300), 220);
 });
