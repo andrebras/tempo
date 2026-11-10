@@ -83,7 +83,7 @@ Your questions stay in `~/.claude/tempo/`. Delete that folder if you want them g
 ## Usage
 
 There's nothing to run. When Claude needs a decision, it adds a question and tells you
-where to answer it. By default you answer from the terminal: in tmux, `tempo tmux` puts a
+where to answer it. By default you answer from the terminal: in tmux, `tempo sidebar on` puts a
 sidebar with your questions beside every window (see
 [A sidebar beside Claude](docs/reference.md#a-sidebar-beside-claude)).
 
