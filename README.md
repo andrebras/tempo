@@ -55,7 +55,7 @@ changed.
 
 **In tmux, with the sidebar**
 
-![The Tempo sidebar on the right of a tmux window, beside Claude's pane, listing the project's open questions by goal. Enter opens Q1 in a popup over the panes; option (b) is picked with a typed note and the popup closes, leaving four questions. Q2 opens in a popup, a follow-up is typed and the list marks Q2 as waiting on Claude; Claude rewords it, the list shows the new title with a dot, and the popup shows the thread.](docs/sidebar.gif)
+![A tmux session with two windows, one per project. In the first, a stand-in for Claude's pane says it asked two questions in Tempo, and the sidebar is turned on: a column on the right lists the project's open questions by goal. Enter opens Q1 in a popup over the panes; option (b) is picked with a typed note, the popup closes and Claude's pane shows it got the answer and goes on. Q2 opens, a follow-up is typed, and Claude's pane shows the question; Claude rewords Q2, the list shows the new title with a dot, and the popup shows the thread. Switching to the second window shows that project's sidebar.](docs/sidebar.gif)
 
 **Without tmux, with `tempo tui`**
 
