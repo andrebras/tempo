@@ -1931,99 +1931,121 @@ class InstallTest(HomeTest, DatabaseTest):
         lines = json.loads(out)["hookSpecificOutput"]["additionalContext"].splitlines()
         self.assertEqual(lines[1], cli.INSTALL_HINT)
 
-    def test_tmux_adds_the_block_once_and_saves_the_sidebar_as_on(self):
+    def tmux_there(self):
+        which = mock.patch.object(cli.shutil, "which", return_value="/usr/bin/tmux")
+        which.start()
+        self.addCleanup(which.stop)
+
+    def test_tmux_prints_the_line_and_never_makes_the_conf(self):
+        self.tmux_there()
         code, out, _ = run("install", "--tmux")
         self.assertEqual(code, 0)
-        self.assertIn("Added to %s the lines" % self.conf, out)
+        self.assertIn("add this line to the end of %s, which tmux reads" % self.conf, out)
+        self.assertIn("Tempo didn't change that file", out)
+        self.assertIn("    " + cli.TMUX_LINE, out)
         self.assertIn("comes on when tmux next starts", out)
-        self.assertEqual(self.read_conf(), "".join(line + "\n" for line in cli.TMUX_BLOCK))
+        self.assertFalse(os.path.lexists(self.conf))
         self.assertTrue(self.store.tmux_sidebar())
-        code, out, _ = run("install", "--tmux")
-        self.assertIn("already brings the sidebar back", out)
-        self.assertEqual(self.read_conf().count(cli.TMUX_BLOCK[0]), 1)
 
-    def test_tmux_keeps_the_users_lines_and_their_own_restore_line(self):
+    def test_tmux_leaves_the_users_conf_as_it_is(self):
         self.write_conf("set -g mouse on")
-        run("install", "--tmux")
-        self.assertEqual(self.read_conf(), "set -g mouse on\n" + cli._block_text())
-        self.write_conf('run-shell -b "tempo sidebar --restore"\n')
-        self.assertIn("already brings the sidebar back", run("install", "--tmux")[1])
-        self.assertEqual(self.read_conf(), 'run-shell -b "tempo sidebar --restore"\n')
-
-    def test_uninstall_removes_only_the_block(self):
-        self.write_conf("set -g mouse on\n")
-        run("install", "--tmux")
-        with open(self.conf, "a") as file:
-            file.write("bind T display-popup\n")
-        code, out, _ = run("uninstall")
+        code, out, _ = run("install", "--tmux")
         self.assertEqual(code, 0)
-        self.assertIn("Removed Tempo's lines from %s." % self.conf, out)
-        self.assertEqual(self.read_conf(), "set -g mouse on\nbind T display-popup\n")
-        self.assertFalse(os.path.lexists(self.link))
+        self.assertIn(cli.TMUX_LINE, out)
+        self.assertEqual(self.read_conf(), "set -g mouse on")
 
-    def test_uninstall_leaves_a_block_with_no_end(self):
-        self.write_conf("%s\n%s\nset -g mouse on\n" % cli.TMUX_BLOCK[:2])
-        before = self.read_conf()
-        _, _, err = run("uninstall")
-        self.assertIn("but not its last", err)
-        self.assertEqual(self.read_conf(), before)
+    def test_tmux_says_when_the_conf_already_has_a_restore_line(self):
+        for line in (cli.TMUX_LINE, 'run-shell -b "tempo sidebar --restore"'):
+            self.write_conf("set -g mouse on\n%s\n" % line)
+            out = run("install", "--tmux")[1]
+            self.assertIn("%s already brings the sidebar back" % self.conf, out)
+            self.assertNotIn("add this line", out)
+            self.assertEqual(self.read_conf(), "set -g mouse on\n%s\n" % line)
 
-    def test_a_symlinked_conf_has_its_target_edited(self):
+    def test_a_symlinked_conf_is_named_and_left_alone(self):
         dotfiles = os.path.join(self.home, "dotfiles")
         os.mkdir(dotfiles)
         real = os.path.join(dotfiles, "tmux.conf")
         self.write_conf("set -g mouse on\n", real)
         os.symlink(real, self.conf)
         out = run("install", "--tmux")[1]
-        self.assertIn("Added to %s (%s links to it)" % (real, self.conf), out)
-        self.assertTrue(os.path.islink(self.conf))
-        self.assertIn(cli.TMUX_BLOCK[1], self.read_conf(real))
-        run("uninstall")
+        self.assertIn("end of %s, which tmux reads" % self.conf, out)
+        self.assertEqual(os.readlink(self.conf), real)
         self.assertEqual(self.read_conf(real), "set -g mouse on\n")
+        with open(real, "a") as file:
+            file.write(cli.TMUX_LINE + "\n")
+        self.assertIn("already brings the sidebar back", run("install", "--tmux")[1])
 
-    def test_a_symlinked_conf_to_no_regular_file_is_left_alone(self):
-        os.symlink(os.path.join(self.home, "gone.conf"), self.conf)
-        code, out, err = run("install", "--tmux")
-        self.assertEqual(code, 1)
-        self.assertIn("which is missing, so it was left as it is", err)
-        self.assertIn(cli.TMUX_BLOCK[1], err)
-        self.assertFalse(os.path.exists(os.path.join(self.home, "gone.conf")))
-        os.remove(self.conf)
-        os.symlink(self.home, self.conf)
-        code, out, _ = run("install", "--tmux", "--slash")
+    def test_a_conf_link_to_no_regular_file_just_gets_the_line(self):
+        gone = os.path.join(self.home, "gone.conf")
+        os.symlink(gone, self.conf)
+        code, out, _ = run("install", "--tmux")
         self.assertEqual(code, 0)
-        self.assertIn("which is not a regular file", out)
+        self.assertIn(cli.TMUX_LINE, out)
+        self.assertFalse(os.path.lexists(gone))
 
-    def test_the_xdg_conf_is_used_when_it_is_the_only_one(self):
+    def test_the_xdg_conf_is_named_when_it_is_the_only_one(self):
         xdg = os.path.join(self.home, ".config", "tmux", "tmux.conf")
         os.makedirs(os.path.dirname(xdg))
         self.write_conf("set -g mouse on\n", xdg)
-        run("install", "--tmux")
+        out = run("install", "--tmux")[1]
+        self.assertIn("end of %s, which tmux reads" % xdg, out)
         self.assertFalse(os.path.lexists(self.conf))
-        self.assertIn(cli.TMUX_BLOCK[1], self.read_conf(xdg))
+        self.assertEqual(self.read_conf(xdg), "set -g mouse on\n")
 
-    def test_without_tmux_install_offers_it_while_tmux_is_there(self):
-        with mock.patch.object(cli.shutil, "which", return_value="/usr/bin/tmux"):
-            self.assertIn("`tempo install --tmux` would also add", run("install")[1])
-            self.assertFalse(os.path.lexists(self.conf))
-            run("install", "--tmux")
-            self.assertNotIn("would also add", run("install")[1])
-        os.remove(self.conf)
-        with mock.patch.object(cli.shutil, "which", return_value=None):
-            self.assertNotIn("would also add", run("install")[1])
-            self.write_conf("set -g mouse on\n")
-            self.assertIn("would also add 3 lines to the end of %s" % self.conf, run("install")[1])
+    def test_plain_install_prints_the_line_while_tmux_is_there(self):
+        self.assertNotIn(cli.TMUX_LINE, run("install")[1])
+        out = run("install", "--tmux")[1]
+        self.assertIn("tmux isn't installed, so there is nothing to set up for it.", out)
+        self.assertFalse(self.store.tmux_sidebar())
+        self.tmux_there()
+        out = run("install")[1]
+        self.assertIn("add this line to the end of %s" % self.conf, out)
+        self.assertNotIn("saved as on", out)
+        self.assertFalse(os.path.lexists(self.conf))
+        self.write_conf(cli.TMUX_LINE + "\n")
+        self.assertNotIn("sidebar", run("install")[1])
 
     def test_inside_tmux_it_turns_the_sidebar_on(self):
+        self.tmux_there()
         with (
             mock.patch.dict(os.environ, {"TMUX": "/tmp/fake,1,0"}),
             mock.patch.object(cli, "run_sidebar", return_value=0) as sidebar,
         ):
             self.assertEqual(run("install", "--tmux")[0], 0)
         self.assertEqual(sidebar.call_args.args[0].action, "on")
+        self.assertFalse(os.path.lexists(self.conf))
 
     def test_a_refused_link_stops_before_tmux(self):
+        self.tmux_there()
         os.makedirs(self.bin)
         open(self.link, "w").close()
-        self.assertEqual(run("install", "--tmux")[0], 1)
-        self.assertFalse(os.path.lexists(self.conf))
+        code, _, err = run("install", "--tmux")
+        self.assertEqual(code, 1)
+        self.assertNotIn(cli.TMUX_LINE, err)
+        self.assertFalse(self.store.tmux_sidebar())
+
+    def test_uninstall_leaves_the_conf_and_lists_tempos_lines(self):
+        run("install")
+        old = "set -g mouse on\n%s\n%s\n%s\nbind T display-popup\n" % (
+            cli.OLD_TMUX_MARKS[0],
+            cli.TMUX_LINE,
+            cli.OLD_TMUX_MARKS[1],
+        )
+        self.write_conf(old)
+        code, out, _ = run("uninstall")
+        self.assertEqual(code, 0)
+        self.assertIn("%s still has Tempo's lines, and Tempo didn't change it" % self.conf, out)
+        for line in (*cli.OLD_TMUX_MARKS, cli.TMUX_LINE):
+            self.assertIn("    " + line + "\n", out)
+        self.assertNotIn("mouse", out)
+        self.assertIn("Removed %s" % self.link, out)
+        self.assertEqual(self.read_conf(), old)
+        self.assertFalse(os.path.lexists(self.link))
+
+    def test_uninstall_says_nothing_of_a_conf_without_tempos_lines(self):
+        run("install")
+        self.write_conf("set -g mouse on\n")
+        out = run("uninstall")[1]
+        self.assertEqual(out, "Removed %s, which linked to %s.\n" % (self.link, self.target))
+        self.assertEqual(self.read_conf(), "set -g mouse on\n")

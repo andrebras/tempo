@@ -4,6 +4,21 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Tempo no longer writes your tmux config: adding a line to it is your own step.
+  `tempo install --tmux` still turns the sidebar on, then prints the line that brings it
+  back when tmux starts, `run-shell -b "~/.local/bin/tempo sidebar --restore"`, and the file
+  tmux reads, or says that file already has it. Plain `tempo install` prints the same line
+  when tmux is installed.
+- `/tempo:install` no longer asks whether to set tmux up. It turns the sidebar on and shows
+  you the line to add and the file to add it to.
+- `tempo uninstall` removes only the `~/.local/bin/tempo` link. When your tmux config still
+  has Tempo's lines, including the marked block 0.13.0 added, it prints them for you to
+  remove.
+
 ## [0.13.0] - 2026-11-11
 
 ### Added
