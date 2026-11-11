@@ -168,10 +168,11 @@ class SkillFilesTest(unittest.TestCase):
     def test_install_runs_this_plugins_tempo_install(self):
         text = self.read("install")
         self.assertIn("disable-model-invocation: true", text)
-        self.assertIn(
-            'allowed-tools: Bash("${CLAUDE_PLUGIN_ROOT}"/bin/tempo install --slash)', text
-        )
-        self.assertIn('```!\n"${CLAUDE_PLUGIN_ROOT}"/bin/tempo install --slash\n```', text)
+        command = '"${CLAUDE_PLUGIN_ROOT}"/bin/tempo install --tmux --slash'
+        self.assertIn("allowed-tools: Bash(%s)\n" % command, text)
+        self.assertIn("```!\n%s\n```" % command, text)
+        # Tempo never writes the tmux config, so Claude asks nothing and runs nothing more.
+        self.assertNotIn("tempo add", text)
 
     def test_the_heredoc_hands_the_text_over_untouched(self):
         # The same shell lines the skill runs, with the text Claude Code puts in place.
