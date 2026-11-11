@@ -1797,6 +1797,10 @@ class InstallTest(HomeTest, DatabaseTest):
         self.addCleanup(patch.stop)
         for name in ("TMUX", "XDG_CONFIG_HOME"):
             os.environ.pop(name, None)
+        # Whether tmux is installed is up to each test, not the machine.
+        which = mock.patch.object(cli.shutil, "which", return_value=None)
+        which.start()
+        self.addCleanup(which.stop)
 
     def on_path(self, on):
         path = (self.bin + os.pathsep if on else "") + "/usr/bin:/bin"
@@ -1997,6 +2001,18 @@ class InstallTest(HomeTest, DatabaseTest):
         run("install", "--tmux")
         self.assertFalse(os.path.lexists(self.conf))
         self.assertIn(cli.TMUX_BLOCK[1], self.read_conf(xdg))
+
+    def test_without_tmux_install_offers_it_while_tmux_is_there(self):
+        with mock.patch.object(cli.shutil, "which", return_value="/usr/bin/tmux"):
+            self.assertIn("`tempo install --tmux` would also add", run("install")[1])
+            self.assertFalse(os.path.lexists(self.conf))
+            run("install", "--tmux")
+            self.assertNotIn("would also add", run("install")[1])
+        os.remove(self.conf)
+        with mock.patch.object(cli.shutil, "which", return_value=None):
+            self.assertNotIn("would also add", run("install")[1])
+            self.write_conf("set -g mouse on\n")
+            self.assertIn("would also add 3 lines to the end of %s" % self.conf, run("install")[1])
 
     def test_inside_tmux_it_turns_the_sidebar_on(self):
         with (

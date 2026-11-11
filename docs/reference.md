@@ -61,8 +61,11 @@ The project is the one of the session's project folder (`TEMPO_PROJECT` still wi
 `disableSkillShellExecution` on in your Claude Code settings, the commands can't run.
 
 One more, `/tempo:install`, runs `tempo install` the same way, so `tempo` works in your own
-shell (see [`tempo install`](#commands)), and Claude tells you what it did and any line to
-add to your shell's config. It takes no text.
+shell (see [`tempo` in your own shell](#tempo-in-your-own-shell)), and Claude tells you what
+it did and any line to add to your shell's config. When tmux is installed, Claude then asks
+you, as a Tempo question, whether to set tmux up too; on yes it runs
+`tempo install --tmux`, which adds the lines that bring the sidebar back when tmux starts
+and turns the sidebar on. It takes no text.
 
 ## Hooks
 
@@ -301,6 +304,26 @@ The gear button at the top right of the page opens Settings.
 
 Projects are saved in the database, so every session, the hooks and the `tempo` command use
 them.
+
+## `tempo` in your own shell
+
+`tempo` is on Claude Code's `PATH` (the list of folders your shell looks in for commands)
+only inside a session. `/tempo:install`, or `tempo install` run from Tempo's marketplace
+copy (`~/.claude/plugins/marketplaces/tempo/bin/tempo install`), makes `~/.local/bin/tempo`,
+a symlink (a small file that points at another) to that marketplace copy, which
+`claude plugin marketplace update tempo` keeps up to date. Sessions run the installed copy
+in `~/.claude/plugins/cache/tempo/tempo/<version>/`, so the marketplace path is the one that
+doesn't change. From a clone of Tempo, it links to your clone's `bin/tempo` instead. It
+never replaces anything already at `~/.local/bin/tempo`, and when `~/.local/bin` is not on
+your `PATH` it prints the line to add to your shell's config. `tempo uninstall` removes the
+link. If you'd rather not have the link, an alias such as
+`alias tempo=~/.claude/plugins/marketplaces/tempo/bin/tempo` in `~/.zshrc` works too, but
+the tmux recipes below then need that full path instead of `~/.local/bin/tempo`.
+
+When tmux is installed, or you have a tmux config, `tempo install` says that
+`tempo install --tmux` would also set tmux up for the sidebar (see
+[A sidebar beside Claude](#a-sidebar-beside-claude)). `/tempo:install` asks you before it
+does.
 
 ## tmux and the status line
 
