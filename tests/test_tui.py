@@ -1069,8 +1069,11 @@ class JumpTest(BoardTest):
 class FakeTmux:
     """A tmux server for `tempo sidebar`: windows with their panes, server options and hooks."""
 
-    def __init__(self, windows, on="", hooks=None):
+    def __init__(self, windows, on="", hooks=None, panes=None):
         self.windows = {window: list(panes) for window, panes in windows.items()}
+        # Each pane's width, height and folder, where a test sets them: by default 80x24,
+        # in its window's folder.
+        self.panes = panes or {}
         self.marked = set()
         self.on = on
         self.hooks = hooks or {}
@@ -1105,9 +1108,14 @@ class FakeTmux:
                 for p in panes
             )
         elif name == "list-panes":
-            return "".join("1\n" if p in self.marked else "\n" for p in self.windows[args[2]])
-        elif name == "display-message":
-            return "/work/%s\n" % args[3].strip("@")
+            return "".join(
+                "%s\t%d\t%d\t%s\n"
+                % (
+                    ("1" if p in self.marked else ""),
+                    *self.panes.get(p, (80, 24, "/work/%s" % args[2].strip("@"))),
+                )
+                for p in self.windows[args[2]]
+            )
         elif name == "split-window":
             self.next += 1
             pane = "%%%d" % self.next
@@ -1178,6 +1186,15 @@ class SidebarCommandTest(DatabaseTest):
             (command,) = tmux.hooks[hook].values()
             self.assertTrue(command.startswith("run-shell -b 'env TEMPO_DB="))
             self.assertTrue(command.endswith(" sidebar --tidy'"))
+
+    def test_the_sidebar_shows_the_project_of_the_largest_pane_not_the_active_one(self):
+        # workmux's strip across the top, started in another project's folder, is active.
+        panes = {"%2": (171, 3, "/work/other"), "%3": (171, 55, "/work/shop")}
+        tmux = FakeTmux({"@2": ["%2", "%3"]}, panes=panes)
+        self.run_sidebar(tmux, "on")
+        (split,) = tmux.splits()
+        self.assertEqual(split[split.index("-c") + 1], "/work/shop")
+        self.assertTrue(split[-1].endswith(" tui --sidebar --project shop"))
 
     def test_a_sidebar_left_alone_in_its_window_closes_and_the_others_stay(self):
         tmux = FakeTmux({"@1": ["%1"], "@2": ["%2", "%3"]})
