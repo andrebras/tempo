@@ -17,6 +17,17 @@ from tests import REAL_START_SERVER, REAL_TEMPO_LINKED, TEST_PORT, RealServerSta
 from tests.helpers import DatabaseTest
 
 
+def continued(out):
+    """What the Stop hook gives Claude to keep the turn going, from its output: context
+    for the Stop event, never a block, which Claude Code shows as "Stop hook error"."""
+    output = json.loads(out or "{}")
+    if not output:
+        return ""
+    assert "decision" not in output, output
+    assert output["hookSpecificOutput"]["hookEventName"] == "Stop", output
+    return output["hookSpecificOutput"]["additionalContext"]
+
+
 def bash(command, tool_id):
     """A Bash tool call as a Claude Code transcript records it."""
     return {"type": "tool_use", "id": tool_id, "name": "Bash", "input": {"command": command}}
@@ -216,7 +227,7 @@ class CliTest(DatabaseTest):
             stop = run("hook", "stop", stdin=payload)[1]
         self.assertIn("shop Q1", context)
         self.assertNotIn("blog", context)
-        self.assertIn("shop Q2", json.loads(stop)["reason"])
+        self.assertIn("shop Q2", continued(stop))
         self.assertEqual(len(self.store.undelivered("blog")), 1)
         # Without CLAUDE_PROJECT_DIR (an older Claude Code), the cwd still names it.
         self.assertIn("blog Q1", self.prompt_context(payload))
@@ -266,7 +277,7 @@ class CliTest(DatabaseTest):
         for number in range(1, 61):
             self.add()
             self.store.answer("demo", number, "a", "A long note. " * 20)
-        reason = json.loads(run("hook", "stop", stdin="{}")[1])["reason"]
+        reason = continued(run("hook", "stop", stdin="{}")[1])
         self.assertLessEqual(len(reason), cli.HOOK_TEXT_LIMIT)
         self.assertIn(cli.MORE_NEWS % len(self.store.undelivered("demo")), reason)
 
@@ -552,9 +563,9 @@ class CliTest(DatabaseTest):
             ("user", "Which one?"),
             ("assistant", [{"type": "text", "text": "Pick one:\n- (a) Left\n- (b) Right"}]),
         )
-        self.assertEqual(json.loads(out)["decision"], "block")
+        self.assertTrue(continued(out))
         # The example link names the page's own port (TEMPO_PORT here), not 2204.
-        self.assertIn("[Q5](http://127.0.0.1:%d/#/…)" % TEST_PORT, json.loads(out)["reason"])
+        self.assertIn("[Q5](http://127.0.0.1:%d/#/…)" % TEST_PORT, continued(out))
 
     def test_stop_sends_back_questions_the_closing_list_does_not_record(self):
         closing = "\n\nOpen questions in demo:\n- Q1: Which way? http://127.0.0.1:2204/#/demo/1"
@@ -571,8 +582,8 @@ class CliTest(DatabaseTest):
         for name, text in cases.items():
             with self.subTest(name):
                 out = self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
-                self.assertEqual(json.loads(out)["decision"], "block")
-                self.assertIn("tempo add", json.loads(out)["reason"])
+                self.assertTrue(continued(out))
+                self.assertIn("tempo add", continued(out))
 
     def test_stop_ignores_code_quotes_and_statements(self):
         cases = {
@@ -618,7 +629,7 @@ class CliTest(DatabaseTest):
         for text in cases:
             with self.subTest(text):
                 out = self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
-                self.assertEqual(json.loads(out or "{}").get("decision"), "block")
+                self.assertTrue(continued(out))
 
     def test_stop_lets_statements_and_questions_it_answers_itself_through(self):
         cases = [
@@ -651,7 +662,7 @@ class CliTest(DatabaseTest):
         for text in cases:
             with self.subTest(text):
                 out = self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
-                self.assertEqual(json.loads(out or "{}").get("decision"), "block")
+                self.assertTrue(continued(out))
 
     def test_stop_lets_a_request_to_do_something_through(self):
         cases = [
@@ -770,16 +781,15 @@ class CliTest(DatabaseTest):
                     reply += [("user", results)] if results else []
                     reply += [("assistant", [{"type": "text", "text": ask}])]
                 out = self.stop(("user", "Go"), *reply)
-                self.assertEqual(json.loads(out or "{}").get("decision"), "block")
+                self.assertTrue(continued(out))
 
     def test_stop_hands_over_new_answers_once(self):
         self.add(title="Left or right?")
         self.store.answer("demo", 1, "b")
         reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
         self.assertEqual(self.stop(*reply, active=True), "")
-        out = json.loads(self.stop(*reply))
-        self.assertEqual(out["decision"], "block")
-        self.assertIn("demo Q1 (Left or right?) answered (b) Right", out["reason"])
+        out = continued(self.stop(*reply))
+        self.assertIn("demo Q1 (Left or right?) answered (b) Right", out)
         self.assertEqual(self.stop(*reply), "")
 
     def test_stop_hands_over_answers_before_anything_else(self):
@@ -787,8 +797,8 @@ class CliTest(DatabaseTest):
         self.add()
         self.store.answer("demo", 1, "a")
         options = [("user", "Go"), ("assistant", [{"type": "text", "text": "(a) Up (b) Down"}])]
-        self.assertIn("answered (a) Left", json.loads(self.stop(*options))["reason"])
-        self.assertIn("tempo add", json.loads(self.stop(*options))["reason"])
+        self.assertIn("answered (a) Left", continued(self.stop(*options)))
+        self.assertIn("tempo add", continued(self.stop(*options)))
 
     def test_stop_raises_follow_ups_left_unanswered(self):
         self.add(title="Ship it?")
@@ -797,13 +807,12 @@ class CliTest(DatabaseTest):
         self.marker(os.getpid())  # A wait is running, so only the follow-up can block.
         reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
         # New news is handed over first; the follow-up then gets a few minutes.
-        self.assertIn("asks for more: What is left?", json.loads(self.stop(*reply))["reason"])
+        self.assertIn("asks for more: What is left?", continued(self.stop(*reply)))
         self.assertEqual(self.stop(*reply), "")
         self.store.db.execute("UPDATE entries SET delivered_at = '2026-01-01T10:00:00Z'")
-        out = json.loads(self.stop(*reply))
-        self.assertEqual(out["decision"], "block")
-        self.assertIn("demo Q1 (Ship it?) asked: What is left?", out["reason"])
-        self.assertIn("`tempo reword 1 --context`", out["reason"])
+        out = continued(self.stop(*reply))
+        self.assertIn("demo Q1 (Ship it?) asked: What is left?", out)
+        self.assertIn("`tempo reword 1 --context`", out)
         self.assertEqual(self.stop(*reply, active=True), "")
         self.store.reword("demo", 1, "Answered the follow-up", context="Only the docs.")
         self.assertEqual(self.stop(*reply), "")
@@ -812,17 +821,16 @@ class CliTest(DatabaseTest):
         self.store.follow_up("demo", 2, "Sure?")
         self.store.take_undelivered("demo")
         self.store.db.execute("UPDATE entries SET delivered_at = '2026-01-01T10:00:00Z'")
-        self.assertIn("`tempo context 2`", json.loads(self.stop(*reply))["reason"])
+        self.assertIn("`tempo context 2`", continued(self.stop(*reply)))
         self.assertIn("hook stop demo blocked: unanswered follow-ups 1", self.hook_log())
 
     def test_stop_asks_for_a_wait_while_questions_are_open(self):
         reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
         self.assertEqual(self.stop(*reply), "")
         self.add()
-        out = json.loads(self.stop(*reply))
-        self.assertEqual(out["decision"], "block")
-        self.assertIn("tempo wait --timeout 1800", out["reason"])
-        self.assertIn("run_in_background", out["reason"])
+        out = continued(self.stop(*reply))
+        self.assertIn("tempo wait --timeout 1800", out)
+        self.assertIn("run_in_background", out)
         self.assertEqual(self.stop(*reply, active=True), "")
         self.marker(os.getpid())
         self.assertEqual(self.stop(*reply), "")
@@ -1209,7 +1217,7 @@ class CliTest(DatabaseTest):
         self.assertTrue(context.startswith("New from the user in Tempo:"), context)
         self.add()
         reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
-        reason = json.loads(self.stop(*reply))["reason"]
+        reason = continued(self.stop(*reply))
         self.assertIn("so answers would not reach you", reason)
 
     def test_with_the_page_off_a_question_number_counts_as_its_link(self):
@@ -1221,11 +1229,11 @@ class CliTest(DatabaseTest):
             return self.stop(("user", "Go"), ("assistant", [{"type": "text", "text": text}]))
 
         self.assertEqual(reply("Q1 asks which way. (a) Left (b) Right"), "")
-        reason = json.loads(reply("May I push?"))["reason"]
+        reason = continued(reply("May I push?"))
         self.assertIn("give its number (such as Q5)", reason)
         self.assertNotIn("link", reason)
         # The closing list names Q1, but that doesn't record the question asked above it.
-        self.assertIn("block", reply("May I push?\n\n- Q1 Which way? `tempo show 1`"))
+        self.assertTrue(continued(reply("May I push?\n\n- Q1 Which way? `tempo show 1`")))
 
 
 class GitTest(DatabaseTest):
