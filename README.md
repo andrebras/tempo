@@ -43,8 +43,9 @@ The second installs the plugin. Then start a new Claude Code session and type:
 /tempo:install
 ```
 
-It puts the `tempo` command in your own terminal and, once you say yes, sets tmux up for
-the sidebar. Claude tells you what it did. New sessions remind you of it until it is done.
+It puts the `tempo` command in your own terminal and turns the tmux sidebar on. Claude
+tells you what it did, and shows you the one line to add to your tmux config yourself so the
+sidebar comes back when tmux starts. New sessions remind you of it until it is done.
 
 ## See it in action
 
@@ -97,7 +98,8 @@ open sessions (for example with `claude --continue`) so they use the new hooks. 
 whose hooks are older than the installed Tempo says so once, so you know to restart it.
 
 To remove it, run `tempo uninstall` first if you ran `/tempo:install`: it removes the
-`~/.local/bin/tempo` link and Tempo's lines in `~/.tmux.conf`. Then:
+`~/.local/bin/tempo` link, and prints any of Tempo's lines left in your tmux config for you
+to remove. Then:
 
 ```bash
 claude plugin uninstall tempo@tempo
@@ -124,7 +126,7 @@ own shell. To do it by hand instead, run this once:
 
 ```bash
 ~/.claude/plugins/marketplaces/tempo/bin/tempo install          # just the command
-~/.claude/plugins/marketplaces/tempo/bin/tempo install --tmux   # and the tmux sidebar
+~/.claude/plugins/marketplaces/tempo/bin/tempo install --tmux   # also turns the sidebar on and prints the tmux line
 ```
 
 It makes `~/.local/bin/tempo`, a link to Tempo's copy that stays put across updates, and
@@ -159,10 +161,16 @@ The list itself never answers, so a stray key can't. A column on the left marks
 each question: a dot when a question is new or changed since you opened it, `…` while it waits on
 Claude, and `»` for the question to start with.
 
-tmux forgets its sidebars when it stops, after a reboot say. `/tempo:install` or
-`tempo install --tmux` adds three marked lines to `~/.tmux.conf` that bring them back, and
-`tempo uninstall` removes exactly those lines. The lines, how to add them yourself, and a key
-to show or hide the sidebar are in
+tmux forgets its sidebars when it stops, after a reboot say. To bring them back, add this
+line to the end of `~/.tmux.conf` (or `~/.config/tmux/tmux.conf`, if that is the one you
+use):
+
+```tmux
+run-shell -b "~/.local/bin/tempo sidebar --restore"
+```
+
+Tempo never changes your tmux config: `/tempo:install` and `tempo install --tmux` print this
+line and the file to add it to. More, and a key to show or hide the sidebar, in
 [A sidebar beside Claude](docs/reference.md#a-sidebar-beside-claude).
 
 ### Without tmux: `tempo tui`
