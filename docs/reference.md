@@ -195,7 +195,8 @@ bind -n M-t display-popup -E -w 90% -h 85% -d "#{pane_current_path}" "~/.local/b
 ### A sidebar beside Claude
 
 The sidebar is a 40-column pane in every tmux window, listing the open questions of that
-window's project by goal. A dot marks a new or changed question, `…` one waiting on Claude.
+window's project by goal. A dot marks a new or changed question, `…` one waiting on Claude
+and `»` the one to start with.
 
 | Key | What it does |
 | --- | --- |
