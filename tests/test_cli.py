@@ -902,27 +902,27 @@ class CliTest(DatabaseTest):
         self.assertEqual(out, "")
 
     def test_user_prompt_hook_uses_the_project_override(self):
-        self.add(project="ONZE HQ")
-        self.store.follow_up("ONZE HQ", 1, "Why?")
-        with mock.patch.dict("os.environ", {"TEMPO_PROJECT": "ONZE HQ"}):
-            _, out, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/onzehq"}))
-        self.assertIn("ONZE HQ Q1", out)
+        self.add(project="Oak Shop")
+        self.store.follow_up("Oak Shop", 1, "Why?")
+        with mock.patch.dict("os.environ", {"TEMPO_PROJECT": "Oak Shop"}):
+            _, out, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/oakshop"}))
+        self.assertIn("Oak Shop Q1", out)
 
     def test_user_prompt_hook_uses_the_folder_project_and_remembers_the_folder(self):
         del os.environ["TEMPO_PROJECT"]
-        self.add(project="onzehq")
-        hook = json.dumps({"cwd": "/x/onzehq"})
+        self.add(project="oakshop")
+        hook = json.dumps({"cwd": "/x/oakshop"})
         _, out, _ = run("hook", "user-prompt-submit", stdin=hook)
         self.assertEqual(out, "")
-        self.assertEqual(self.store.folders()[0]["project"], "onzehq")
-        self.assertEqual(self.store.folders()[0]["path"], os.path.realpath("/x/onzehq"))
-        self.store.rename_project("onzehq", "ONZE HQ")
-        self.store.follow_up("ONZE HQ", 1, "Why?")
+        self.assertEqual(self.store.folders()[0]["project"], "oakshop")
+        self.assertEqual(self.store.folders()[0]["path"], os.path.realpath("/x/oakshop"))
+        self.store.rename_project("oakshop", "Oak Shop")
+        self.store.follow_up("Oak Shop", 1, "Why?")
         _, out, _ = run("hook", "user-prompt-submit", stdin=hook)
-        self.assertIn("ONZE HQ Q1", out)
+        self.assertIn("Oak Shop Q1", out)
 
     def test_the_project_override_skips_the_folder(self):
-        run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/onzehq"}))
+        run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/oakshop"}))
         self.assertEqual(self.store.folders(), [])
 
     def test_add_remembers_the_folder_and_uses_its_project(self):
@@ -936,12 +936,12 @@ class CliTest(DatabaseTest):
         self.assertIn("Added Q2 in Tempo", out)
 
     def test_still_reads_the_old_oq_settings(self):
-        self.add(project="ONZE HQ")
-        self.store.follow_up("ONZE HQ", 1, "Why?")
-        with mock.patch.dict("os.environ", {"OQ_PROJECT": "ONZE HQ", "OQ_PORT": "2299"}):
+        self.add(project="Oak Shop")
+        self.store.follow_up("Oak Shop", 1, "Why?")
+        with mock.patch.dict("os.environ", {"OQ_PROJECT": "Oak Shop", "OQ_PORT": "2299"}):
             del os.environ["TEMPO_PROJECT"], os.environ["TEMPO_PORT"]
-            _, out, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/onzehq"}))
-        self.assertIn("ONZE HQ Q1", out)
+            _, out, _ = run("hook", "user-prompt-submit", stdin=json.dumps({"cwd": "/x/oakshop"}))
+        self.assertIn("Oak Shop Q1", out)
         self.assertIn("http://127.0.0.1:2299/", out)
 
     def test_the_new_settings_win_over_the_old_ones(self):
@@ -1093,7 +1093,7 @@ class CliTest(DatabaseTest):
         self.marker(4242, project="other")
         self.assertFalse(cli.wait_running("demo"))
         folders = {4343: "/x/demo", 4444: "/x/other", 4545: None, 4747: "/x/other"}
-        overrides = {4747: "ONZE HQ"}
+        overrides = {4747: "Oak Shop"}
         with (
             mock.patch.object(cli, "_process_cwd", side_effect=folders.get),
             mock.patch.object(cli, "_process_project_setting", side_effect=overrides.get),
@@ -1105,9 +1105,9 @@ class CliTest(DatabaseTest):
             self.assertFalse(cli.wait_running("shop"))
             self.waits[4646] = WAIT + " --project shop"
             self.assertTrue(cli.wait_running("shop"))
-            self.assertFalse(cli.wait_running("ONZE HQ"))
-            self.waits[4747] = WAIT  # Run with TEMPO_PROJECT="ONZE HQ".
-            self.assertTrue(cli.wait_running("ONZE HQ"))
+            self.assertFalse(cli.wait_running("Oak Shop"))
+            self.waits[4747] = WAIT  # Run with TEMPO_PROJECT="Oak Shop".
+            self.assertTrue(cli.wait_running("Oak Shop"))
             # A wait whose folder cannot be found counts for every project.
             self.waits[4545] = WAIT
             self.assertTrue(cli.wait_running("blog"))
@@ -1725,8 +1725,8 @@ class WaitProcessesTest(unittest.TestCase):
         self.assertIsNone(cli._process_cwd(-1))
 
     def test_finds_a_process_project_setting(self):
-        process = self.start(env=dict(os.environ, TEMPO_PROJECT="ONZE HQ"))
-        self.assertEqual(cli._process_project_setting(process.pid), "ONZE HQ")
+        process = self.start(env=dict(os.environ, TEMPO_PROJECT="Oak Shop"))
+        self.assertEqual(cli._process_project_setting(process.pid), "Oak Shop")
         plain = {k: v for k, v in os.environ.items() if not k.endswith("_PROJECT")}
         other = self.start(env=plain)
         self.assertIsNone(cli._process_project_setting(other.pid))

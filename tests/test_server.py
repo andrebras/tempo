@@ -177,10 +177,10 @@ class ServerTest(DatabaseTest):
         self.assertEqual(self.request("GET", "/health", host="evil.example")[0], 403)
 
     def test_the_list_names_projects_without_questions_yet(self):
-        self.store.see_folder("onzehq")
+        self.store.see_folder("oakshop")
         status, data = self.request("GET", "/api/questions?status=open")
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(data)["projects"], ["demo", "onzehq"])
+        self.assertEqual(json.loads(data)["projects"], ["demo", "oakshop"])
 
     def test_the_list_says_when_each_project_last_had_news(self):
         status, data = self.request("GET", "/api/questions?status=open")
@@ -247,7 +247,7 @@ class ServerTest(DatabaseTest):
         self.assertEqual(status, 400)
 
     def test_reads_and_saves_settings(self):
-        self.store.see_folder("onzehq")
+        self.store.see_folder("oakshop")
         status, data = self.request("GET", "/api/settings")
         self.assertEqual(status, 200)
         self.assertEqual(
@@ -255,28 +255,28 @@ class ServerTest(DatabaseTest):
             [
                 {"name": "demo", "questions": 1, "folders": []},
                 {
-                    "name": "onzehq",
+                    "name": "oakshop",
                     "questions": 0,
                     "folders": [],
                 },
             ],
         )
-        status, data = self.request("POST", "/api/projects/onzehq/rename", {"name": "demo"})
+        status, data = self.request("POST", "/api/projects/oakshop/rename", {"name": "demo"})
         self.assertEqual(status, 200)
-        status, data = self.request("POST", "/api/projects/demo/rename", {"name": "ONZE HQ"})
+        status, data = self.request("POST", "/api/projects/demo/rename", {"name": "Oak Shop"})
         self.assertEqual(status, 200)
         self.assertEqual(
             json.loads(data)["projects"],
             [
                 {
-                    "name": "ONZE HQ",
+                    "name": "Oak Shop",
                     "questions": 1,
                     "folders": [],
                 }
             ],
         )
-        self.assertEqual(self.store.get("ONZE HQ", 1)["label"], "Q1")
-        self.assertEqual(self.store.project_for("onzehq"), "ONZE HQ")
+        self.assertEqual(self.store.get("Oak Shop", 1)["label"], "Q1")
+        self.assertEqual(self.store.project_for("oakshop"), "Oak Shop")
 
     def test_settings_mark_folders_that_are_gone_and_hide_those_with_no_path(self):
         here = tempfile.mkdtemp()
@@ -360,7 +360,7 @@ class ServerTest(DatabaseTest):
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
 
     def test_refuses_settings_writes_from_other_sites(self):
-        self.store.see_folder("onzehq")
+        self.store.see_folder("oakshop")
         for path, body in [
             ("/api/projects/demo/rename", {"name": "Hijacked"}),
             ("/api/settings/page", {"on": True}),
@@ -369,7 +369,7 @@ class ServerTest(DatabaseTest):
                 status, _ = self.request("POST", path, body, origin="https://evil.example")
                 self.assertEqual(status, 403)
         self.assertEqual(self.store.projects(), ["demo"])
-        self.assertEqual(self.store.project_for("onzehq"), "onzehq")
+        self.assertEqual(self.store.project_for("oakshop"), "oakshop")
         self.assertFalse(self.store.start_page())
 
     def test_threads_are_gone(self):

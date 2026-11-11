@@ -352,7 +352,7 @@ The database and the page's log are private to your account: only you can read o
 accounts on a shared machine can't read your questions. A database from an older Tempo is
 made private the next time Tempo opens it; a folder that already existed is left as it is.
 
-Another tool that runs Claude sessions for you, such as Harp, can set `TEMPO_IN_THREAD=1` in
+Another tool that runs Claude sessions for you can set `TEMPO_IN_THREAD=1` in
 those sessions. Tempo's hooks then do nothing and print nothing there, so Tempo stays out of
 sessions you don't drive yourself.
 
