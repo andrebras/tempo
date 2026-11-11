@@ -268,7 +268,7 @@ The gear button at the top right of the page opens Settings.
   `tempo config page on|off` (see [Starting the page with each session](#starting-the-page-with-each-session)) and is kept
   in the database.
 - **Projects**: a project's name is what the page shows everywhere. A new git folder starts
-  as a project with the folder's name. Renaming it, for example `onzehq` → "ONZE HQ", takes
+  as a project with the folder's name. Renaming it, for example `oakshop` → "Oak Shop", takes
   its questions, their numbers and its folders along.
   Each project shows its name, its number of questions and its folders, with an Edit
   button. Edit opens Rename and "Merge into…" under that project only; `Esc` closes it and

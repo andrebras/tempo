@@ -30,7 +30,7 @@ answer anywhere with a short code like "12b".
 The `tempo` command is on your PATH (`oq`, its old name, still works as an alias). The project
 defaults to the one the user chose for the current git repo's folder in the page's Settings,
 else the folder name. Use the name `tempo add` prints, which may differ from the folder name
-(for example "ONZE HQ" for `onzehq`). Don't pass `--project` unless asked: the user can rename
+(for example "Oak Shop" for `oakshop`). Don't pass `--project` unless asked: the user can rename
 projects at any time.
 
 ## Asking a question
@@ -45,7 +45,7 @@ Write it so someone with no context can answer it cold:
 - `--option`: one per option, written out in full; they are lettered (a), (b)… in order.
 - `--recommended`: the letter you recommend, if any. Say why in the context.
 - `--goal`: always. The piece of work the answer moves forward, for example "Q5 settings",
-  "Release 0.4" or "DataForge test feed". Name it the same way on every question for that
+  "Release 0.4" or "WebApp test feed". Name it the same way on every question for that
   work: the page groups open questions by goal, oldest group first.
 - `--start-here "unlocks …"`: only when this question's answer really unlocks or sets the
   pattern for other questions in the same goal, for example "unlocks Q5 and Q6: it decides
