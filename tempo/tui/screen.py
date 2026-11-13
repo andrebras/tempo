@@ -58,6 +58,9 @@ KEYS = {
     curses.KEY_PPAGE: "pgup",
     curses.KEY_ENTER: "enter",
     curses.KEY_BACKSPACE: "backspace",
+    curses.KEY_DC: "delete",
+    curses.KEY_HOME: "home",
+    curses.KEY_END: "end",
     curses.KEY_RESIZE: "resize",
 }
 CHARACTERS = {
@@ -68,6 +71,8 @@ CHARACTERS = {
     "\x7f": "backspace",
     "\b": "backspace",
     "\x15": "ctrl-u",
+    "\x01": "home",
+    "\x05": "end",
     "\x04": "ctrl-d",
     "\x03": "ctrl-c",
 }

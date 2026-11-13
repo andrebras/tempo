@@ -199,6 +199,19 @@ class BoardTest(DatabaseTest):
         self.assertEqual(board.message, ("Answered Q1: (a) Left / Note: Nice", "ok"))
         self.assertEqual(self.store.get("demo", 1)["answer"]["body"], "Nice")
 
+    def test_the_cursor_moves_along_the_note_and_edits_where_it_is(self):
+        self.add()
+        board = self.board()
+        self.keys(board, "a", *"Gowith", "left", "left", "left", "left", " ")
+        self.assertEqual((board.typed, board.at), ("Go with", 3))
+        self.keys(board, "home", "delete", "G", "end", "left", "backspace")
+        self.assertEqual((board.typed, board.at), ("Go wih", 5))
+        board.paste("t")
+        self.keys(board, "right", "right", *"!")
+        self.assertEqual(board.typed, "Go with!")
+        board.press("enter")
+        self.assertEqual(self.store.get("demo", 1)["answer"]["body"], "Go with!")
+
     def test_escape_leaves_the_question_open(self):
         self.add()
         board = self.board()
@@ -780,9 +793,30 @@ class ViewTest(DatabaseTest):
         lines, cursor = self.screen()
         self.assertEqual(lines[-1], "Note for (b), optional (Enter sends, Esc cancels): Ok")
         self.assertEqual(cursor, (23, len(lines[-1])))
+        self.board.press("left")
+        _, cursor = self.screen()
+        self.assertEqual(cursor, (23, len(lines[-1]) - 1))
         self.board.press("enter")
         lines, _ = self.screen()
         self.assertEqual(lines[-1], "Answered Q1: (b) Right / Note: Ok")
+
+    def test_a_long_note_shows_the_part_around_the_cursor(self):
+        self.add(title="Left or right?")
+        self.board.reload()
+        self.board.press("a")
+        for key in "abcdefghijklmnopqrstuvwxyz" * 2:
+            self.board.press(key)
+        lines, cursor = self.screen(width=60)
+        # Typing at the end: the end shows, the cursor after it.
+        self.assertTrue(lines[-1].endswith("xyz"))
+        self.assertNotIn(": abc", lines[-1])
+        self.assertEqual(cursor, (23, len(lines[-1])))
+        self.board.press("home")
+        lines, cursor = self.screen(width=60)
+        # Back at the start: the start shows, the cursor on its first letter.
+        self.assertIn(": abc", lines[-1])
+        self.assertEqual(cursor, (23, lines[-1].index(": abc") + 2))
+        self.assertTrue(all(cell_width(line) <= 60 for line in lines))
 
     def test_long_text_scrolls_and_says_where_it_is(self):
         self.add(context="\n\n".join("Paragraph %d." % n for n in range(30)))
@@ -847,7 +881,9 @@ class KeyNameTest(unittest.TestCase):
         self.assertEqual(key_name("\x04"), "ctrl-d")
         self.assertEqual(key_name(curses.KEY_BTAB), "btab")
         self.assertEqual(key_name(curses.KEY_NPAGE), "pgdn")
-        self.assertIsNone(key_name("\x01"))
+        self.assertEqual(key_name("\x01"), "home")
+        self.assertEqual(key_name(curses.KEY_DC), "delete")
+        self.assertIsNone(key_name("\x02"))
         self.assertIsNone(key_name(curses.KEY_F1))
 
 
@@ -864,7 +900,7 @@ class ReadInputTest(unittest.TestCase):
         self.assertEqual(self.read("\x1b"), ("key", "esc"))
         self.assertEqual(self.read("j"), ("key", "j"))
         self.assertEqual(self.read("\n"), ("key", "enter"))
-        self.assertIsNone(self.read("\x01"))
+        self.assertIsNone(self.read("\x02"))
 
     def test_alt_and_a_key_is_ignored_as_one_key(self):
         # Option+Left and Option+Right on a Mac send Esc b and Esc f.
