@@ -88,11 +88,16 @@ class TextCanvas:
     def text(self) -> str:
         return "\n".join("".join(row).rstrip() for row in self.cells)
 
+    def cut(self, pieces: list[tuple[int, int, int]]) -> str:
+        """The text in pieces of lines, each a line and columns from and to (not included),
+        a line apiece, as a terminal copies a selection."""
+        return "\n".join("".join(self.cells[y][start:end]).rstrip() for y, start, end in pieces)
+
 
 def draw(board: Board, canvas: Canvas) -> tuple[int, int] | None:
     """Draw the whole screen; returns where the cursor goes while typing, else None."""
     height, width = canvas.size()
-    board.targets = []
+    board.targets, board.reading = [], None
     if board.mode in SETTINGS:
         _settings(board, canvas, Rect(0, 0, max(1, height - 1), width))
         return _bottom(board, canvas, height - 1, width)
@@ -276,6 +281,7 @@ def _detail(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
         canvas.put(rect.top, rect.left, clip(text, rect.width), "dim")
         return
     lines = detail_lines(board.question, rect.width)
+    board.reading = rect
     board.page = max(1, rect.height - 1)
     board.scroll = min(board.scroll, max(0, len(lines) - rect.height))
     for y, line in enumerate(lines[board.scroll : board.scroll + rect.height]):

@@ -3,6 +3,7 @@ import io
 import os
 import re
 import select
+import shlex
 import shutil
 import signal
 import subprocess
@@ -637,7 +638,7 @@ def _can_run_curses():
 class ScreenTest(DatabaseTest):
     """The real curses screen in a pseudo-terminal (pty), as a tmux popup would run it."""
 
-    def start(self, height=24, width=80, **settings):
+    def start(self, height=24, width=80, args=(), **settings):
         self.master, slave = pty.openpty()
         self.addCleanup(os.close, self.master)
         self.resize(height, width, slave)
@@ -645,7 +646,7 @@ class ScreenTest(DatabaseTest):
         env.pop("NO_COLOR", None)
         env.update(settings)
         self.process = subprocess.Popen(
-            [sys.executable, "-m", "tempo", "tui"],
+            [sys.executable, "-m", "tempo", "tui", *args],
             cwd=CODE_ROOT,
             env=env,
             stdin=slave,
@@ -752,6 +753,38 @@ class ScreenTest(DatabaseTest):
         self.see("2/3")
         os.write(self.master, b"\x1b")
         self.assertEqual(self.finish(), 0)
+
+    def test_a_drag_in_the_popup_copies_the_text_it_selects(self):
+        self.add(title="Left or right?", context="We need to pick one.")
+        # A pbcopy of its own, that writes what it is given to a file.
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder)
+        copied = os.path.join(folder, "copied")
+        pbcopy = os.path.join(folder, "pbcopy")
+        with open(pbcopy, "w") as script:
+            script.write("#!/bin/sh\ncat > %s\n" % shlex.quote(copied))
+        os.chmod(pbcopy, 0o755)
+        path = folder + os.pathsep + os.environ["PATH"]
+        self.start(args=["--question", "1"], PATH=path)
+        self.see("We need to pick one.")
+        # The popup asks the terminal for drags, and stops asking on the way out.
+        self.assertIn(b"\x1b[?1002h\x1b[?1006h", self.screen)
+        board = Board(self.store, "demo", question=1)
+        canvas = TextCanvas(24, 80)
+        draw(board, canvas)
+        y = canvas.text().split("\n").index("│We need to pick one." + " " * 58 + "│")
+        # Press on "need", drag right, and let go past the end of the line (from 1, not 0).
+        for code in ("0;5;%dM", "32;12;%dM", "0;40;%dm"):
+            os.write(self.master, b"\x1b[<" + (code % (y + 1)).encode())
+        self.see("Copied.")
+        with open(copied) as text:
+            self.assertEqual(text.read(), "need to pick one.")
+        # A click without a drag copies nothing.
+        os.remove(copied)
+        os.write(self.master, b"\x1b[<0;5;2M\x1b[<0;5;2m\x1b")
+        self.assertEqual(self.finish(), 0)
+        self.assertFalse(os.path.exists(copied))
+        self.assertIn(b"\x1b[?1006l\x1b[?1002l", self.screen)
 
     def test_no_color_draws_without_colors(self):
         self.add(title="Left or right?", recommended="a")
@@ -953,6 +986,10 @@ class ReadInputTest(unittest.TestCase):
         self.assertIsNone(self.read("\x1b", *"[1;5C"))
         self.assertIsNone(self.read("\x1b", *"OP"))
 
+    def test_the_mouse_in_sgr_format_is_read_whole(self):
+        self.assertEqual(self.read("\x1b", *"[<0;5;3M"), ("mouse", "[<0;5;3M"))
+        self.assertEqual(self.read("\x1b", *"[<0;12;3m"), ("mouse", "[<0;12;3m"))
+
     def test_a_paste_is_text_newlines_and_all(self):
         paste = ["[", "2", "0", "0", "~", *"Go with a.\r\nbut why?", *"\x1b[201~"]
         self.assertEqual(self.read("\x1b", *paste), ("paste", "Go with a.\nbut why?"))
@@ -1044,6 +1081,50 @@ class PopupTest(BoardTest):
         self.assertTrue(board.done)
         self.assertTrue(Board(self.board_store, "demo", question=7).done)
 
+    def test_a_drag_selects_the_questions_text_line_by_line(self):
+        self.add(title="Left or right?", context="We need to pick one.\n\nThe left is shorter.")
+        board = Board(self.board_store, "demo", question=1)
+        canvas = TextCanvas(16, 40)
+        draw(board, canvas)
+        lines = canvas.text().split("\n")
+        # The text sits inside the box: lines 1 to 13, columns 1 to 38.
+        self.assertEqual(board.reading, (1, 1, 13, 38))
+        y = next(i for i, line in enumerate(lines) if "need to pick" in line)
+        board.drag(y, lines[y].index("need"), start=True)
+        self.assertEqual(board.selected(), [])
+        # Dragged back up past the box: from the start of the text's first line.
+        board.drag(0, 30)
+        self.assertEqual(board.selection, ((y, 4), (1, 30)))
+        self.assertEqual(board.selected()[0], (1, 30, 39))
+        self.assertEqual(board.selected()[-1], (y, 1, 5))
+        # Down again and past the right edge: the rest of that line, borders left out.
+        board.drag(y, 70)
+        self.assertEqual(canvas.cut(board.selected()), "need to pick one.")
+        board.drag(y + 2, 4)
+        self.assertEqual(canvas.cut(board.selected()), "need to pick one.\n\nThe")
+        # Any key ends it; the wheel, as k and j, scrolls.
+        board.press("j")
+        self.assertIsNone(board.selection)
+        self.assertEqual(board.scroll, 1)
+        board.press("up")
+        self.assertEqual(board.scroll, 0)
+
+    @unittest.skipUnless(curses is not None, "needs curses")
+    def test_a_release_no_press_started_copies_nothing(self):
+        from tempo.tui import screen
+
+        self.add(title="Left or right?", context="We need to pick one.")
+        board = Board(self.board_store, "demo", question=1)
+        canvas = TextCanvas(24, 80)
+        draw(board, canvas)
+        y = canvas.text().split("\n").index("│We need to pick one." + " " * 58 + "│")
+        with mock.patch.object(screen, "copy") as copy:
+            for event, x in (("press", 4), ("release", 40), ("release", 2), ("drag", 9)):
+                screen._select(board, event, y, x, (24, 80))
+        # Some curses hand a click's release over before its press: only the drag copies.
+        copy.assert_called_once_with("need to pick one.")
+        self.assertEqual(board.selection, ((y, 4), (y, 40)))
+
     @unittest.skipUnless(curses is not None, "needs curses")
     def test_the_popup_runs_this_tempo_on_this_database(self):
         from tempo.tui import screen
@@ -1065,6 +1146,33 @@ class PopupTest(BoardTest):
             self.assertEqual(popen.call_args.args[0], screen.popup_command("demo", 1))
             popups.collect()
         self.assertEqual(popups.running, [])
+
+
+class CopyTest(unittest.TestCase):
+    @unittest.skipUnless(curses is not None, "needs curses")
+    def test_copy_tries_pbcopy_then_tmux_then_asks_the_terminal(self):
+        from tempo.tui import screen
+
+        found = {"pbcopy": "/usr/bin/pbcopy"}
+        with (
+            mock.patch("shutil.which", side_effect=found.get),
+            mock.patch.dict(os.environ, {"TMUX": "/tmp/tmux-1/default,1,0"}),
+            mock.patch("subprocess.run") as run,
+        ):
+            screen.copy("hi")
+            self.assertEqual(run.call_args.args[0], ["pbcopy"])
+            self.assertEqual(run.call_args.kwargs["input"], b"hi")
+            found.clear()
+            screen.copy("hi")
+            self.assertEqual(run.call_args.args[0], ["tmux", "load-buffer", "-w", "-"])
+        out = io.StringIO()
+        with (
+            mock.patch("shutil.which", return_value=None),
+            mock.patch.dict(os.environ, {"TMUX": ""}),
+            redirect_stdout(out),
+        ):
+            screen.copy("hi")
+        self.assertEqual(out.getvalue(), "\x1b]52;c;aGk=\x07")
 
 
 class JumpTest(BoardTest):

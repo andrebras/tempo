@@ -207,6 +207,9 @@ and `»` the one to start with.
 | `s`, `?` | Settings, and the keys |
 | `q` | Close this sidebar |
 
+In the popup, dragging over the question's text copies it to the clipboard (with `pbcopy`
+on a Mac, else through tmux), and the wheel scrolls.
+
 `tempo sidebar on|off|toggle` (toggle is the default) turns it on or off in every window.
 `--side left|right` picks the side, which is remembered. To bring it back when tmux restarts,
 add this line to the end of `~/.tmux.conf` yourself; Tempo never edits that file:

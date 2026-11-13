@@ -133,7 +133,9 @@ narrow column with the open questions of its project, grouped by goal. `tempo si
 
 The mouse works too: a click selects a question and a second click opens it, a click on
 `◂` or `▸` shows another project, and the wheel moves between questions. While the sidebar
-takes the mouse, hold Shift (Option in Terminal and iTerm2) to select its text.
+takes the mouse, hold Shift (Option in Terminal and iTerm2) to select its text. In the
+popup, drag over the question's text to copy it, as in Claude Code's pane; the wheel
+scrolls.
 
 To bring it back when tmux restarts, add the line from [Quick start](#quick-start) to the end
 of `~/.tmux.conf` yourself; Tempo never changes it. A key to show or hide the sidebar is in

@@ -137,6 +137,12 @@ class Board:
         self.into: str | None = None
         # Where a click lands on what was last drawn; the screen sets it as it draws.
         self.targets: list[Target] = []
+        # The question's text as last drawn, where a drag selects (the screen sets it), and
+        # the drag's first and last cells as (line, column), or None. Dragging is True from
+        # a press until its release: a release no press started copies nothing.
+        self.reading: Rect | None = None
+        self.selection: tuple[tuple[int, int], tuple[int, int]] | None = None
+        self.dragging = False
         self._seen: int | None = None
         if question is not None:
             self.number, self.focus = question, "detail"
@@ -234,6 +240,7 @@ class Board:
         return self._press(key) and not self.done
 
     def _press(self, key: str) -> bool:
+        self.selection = None
         if key == "ctrl-c":
             # Usually a terminal turns Ctrl-C into an interrupt; without one, it still quits.
             return False
@@ -305,6 +312,30 @@ class Board:
         elif here.kind == "question":
             self.number, self.scroll, self.focus = int(here.value), 0, "questions"
             self.question = self.store.get(self.project, self.number)
+
+    def drag(self, y: int, x: int, start: bool = False) -> None:
+        """A drag over the question's text, as in a terminal: start at line y, column x,
+        or stretch the selection to there. Outside the text, it stops at the text's edge."""
+        if self.reading is None:
+            return
+        top, left, height, width = self.reading
+        here = (min(max(y, top), top + height - 1), min(max(x, left), left + width - 1))
+        if start:
+            self.selection, self.message, self.dragging = (here, here), None, True
+        elif self.selection and self.dragging:
+            self.selection = (self.selection[0], here)
+
+    def selected(self) -> list[tuple[int, int, int]]:
+        """The selection as one piece per line: the line, then the columns from and to (not
+        included). The lines between the first and the last are selected whole. A click
+        that hasn't moved yet selects nothing."""
+        if self.selection is None or self.reading is None or len(set(self.selection)) == 1:
+            return []
+        (y1, x1), (y2, x2) = sorted(self.selection)
+        left, right = self.reading.left, self.reading.left + self.reading.width
+        return [
+            (y, x1 if y == y1 else left, x2 + 1 if y == y2 else right) for y in range(y1, y2 + 1)
+        ]
 
     def _sidebar(self, key: str) -> bool:
         """The sidebar's own keys; False for a key it reads as the full view does. In the
