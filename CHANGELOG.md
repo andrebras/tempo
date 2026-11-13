@@ -4,6 +4,20 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.2] - 2026-11-13
+
+### Fixed
+
+- The Stop hook hands Claude its news (your answers, a question asked only in chat, a
+  reminder to start `tempo wait`) as additional context instead of a block, so Claude Code
+  no longer shows it as "Stop hook error". This needs Claude Code 2.1.163 or later; older
+  versions ignore it, and the news waits for `tempo wait` or your next message.
+- A new tmux sidebar shows the project of the window's largest pane, not of whichever pane
+  was active, which could be another tool's strip, such as workmux's.
+- A tmux window closes once its main pane closes, even with both the workmux and Tempo
+  sidebars open. Before, it stayed open with only the sidebars until you closed Tempo's by
+  hand.
+
 ## [0.13.1] - 2026-11-11
 
 ### Changed
@@ -809,7 +823,8 @@ All notable changes to Tempo are listed here. The format follows
 - First version: questions in SQLite, the `tempo` command, hooks, a skill, and a local page
   to read, follow up on and answer them.
 
-[Unreleased]: https://github.com/andrebras/tempo/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/andrebras/tempo/compare/v0.13.2...HEAD
+[0.13.2]: https://github.com/andrebras/tempo/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/andrebras/tempo/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/andrebras/tempo/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/andrebras/tempo/compare/v0.11.0...v0.12.0
