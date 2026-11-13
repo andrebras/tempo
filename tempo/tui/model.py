@@ -110,6 +110,8 @@ class Board:
         # so a reload meanwhile (which may select another question) can't redirect it.
         self.target: tuple[str, int] | None = None
         self.typed = ""
+        # Where the cursor is in typed: how many characters come before it.
+        self.at = 0
         # The line shown after an action: (text, "ok" or "error").
         self.message: tuple[str, str] | None = None
         # The detail panel's first shown line, and how many lines a page is; the screen
@@ -256,7 +258,7 @@ class Board:
             self.reload()
         elif key == "r":
             if self._selected():
-                self.mode, self.typed, self.target = "reply", "", self._here()
+                self.mode, self.typed, self.at, self.target = "reply", "", 0, self._here()
         elif len(key) == 1 and key.lower() in string.ascii_lowercase and key not in BOUND:
             self._pick(key.lower())
         return True
@@ -321,7 +323,7 @@ class Board:
         Anywhere else it is ignored, so a paste never acts as keys: a letter in it would
         pick an option, and a newline would send."""
         if self.mode in ("note", "reply"):
-            self.typed += "".join(char for char in text if char == "\n" or char.isprintable())
+            self._insert("".join(char for char in text if char == "\n" or char.isprintable()))
         elif self.mode == "normal":
             self.message = ("Paste into a note (e after picking) or a follow-up (r).", "error")
 
@@ -357,7 +359,8 @@ class Board:
             # The store's own words for it.
             self.message = ("Option (%s) does not exist" % letter, "error")
             return
-        self.mode, self.typed, self.letter, self.target = "note", "", letter, self._here()
+        self.mode, self.typed, self.at = "note", "", 0
+        self.letter, self.target = letter, self._here()
         self.version = self.question["version"]
 
     def _type(self, key: str) -> None:
@@ -368,12 +371,24 @@ class Board:
                 self.answer(self.letter, self.typed)
             else:
                 self.reply(self.typed)
-        elif key == "backspace":
-            self.typed = self.typed[:-1]
+        elif key == "backspace" and self.at:
+            self.typed = self.typed[: self.at - 1] + self.typed[self.at :]
+            self.at -= 1
+        elif key == "delete":
+            self.typed = self.typed[: self.at] + self.typed[self.at + 1 :]
+        elif key in ("left", "right"):
+            self.at = max(0, min(len(self.typed), self.at + (1 if key == "right" else -1)))
+        elif key in ("home", "end"):
+            self.at = 0 if key == "home" else len(self.typed)
         elif key == "ctrl-u":
-            self.typed = ""
+            self.typed, self.at = "", 0
         elif len(key) == 1 and key.isprintable():
-            self.typed += key
+            self._insert(key)
+
+    def _insert(self, text: str) -> None:
+        """Type text where the cursor is, and move the cursor past it."""
+        self.typed = self.typed[: self.at] + text + self.typed[self.at :]
+        self.at += len(text)
 
     # Settings
 

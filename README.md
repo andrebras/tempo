@@ -149,6 +149,7 @@ questions. Questions (bottom left) lists the selected project's questions by goa
 | `Enter` | Go from Projects to Questions, and from Questions to Detail |
 | `a`, `b`, `c`… | Answer with that option, with an optional note on the bottom line: `Enter` sends, `Esc` cancels. Use Shift (`A`, `B`…) for options `h`, `j`, `k`, `l`, `q`, `r` and `s` |
 | `r` | Ask Claude for more (a follow-up): type it on the bottom line, `Enter` sends, `Esc` cancels |
+| `←` `→`, `Home` `End` (or `Ctrl-a` `Ctrl-e`) | While typing a note or follow-up, move the cursor; `Backspace` and `Delete` remove the character before or under it |
 | `s` | Open Settings, to see and merge projects; `Esc` goes back |
 | `PgDn` `PgUp`, `Ctrl-d` `Ctrl-u` | Scroll the detail by a page |
 | `?` | Show the keys |
