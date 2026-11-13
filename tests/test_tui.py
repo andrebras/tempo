@@ -1110,6 +1110,22 @@ class PopupTest(BoardTest):
         self.assertEqual(board.scroll, 0)
 
     @unittest.skipUnless(curses is not None, "needs curses")
+    def test_a_release_no_press_started_copies_nothing(self):
+        from tempo.tui import screen
+
+        self.add(title="Left or right?", context="We need to pick one.")
+        board = Board(self.board_store, "demo", question=1)
+        canvas = TextCanvas(24, 80)
+        draw(board, canvas)
+        y = canvas.text().split("\n").index("│We need to pick one." + " " * 58 + "│")
+        with mock.patch.object(screen, "copy") as copy:
+            for event, x in (("press", 4), ("release", 40), ("release", 2), ("drag", 9)):
+                screen._select(board, event, y, x, (24, 80))
+        # Some curses hand a click's release over before its press: only the drag copies.
+        copy.assert_called_once_with("need to pick one.")
+        self.assertEqual(board.selection, ((y, 4), (y, 40)))
+
+    @unittest.skipUnless(curses is not None, "needs curses")
     def test_the_popup_runs_this_tempo_on_this_database(self):
         from tempo.tui import screen
 

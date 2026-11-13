@@ -406,10 +406,11 @@ def _select(board: Board, event: str, y: int, x: int, size: tuple[int, int]) -> 
         board.press(event)
     elif event == "press":
         board.drag(y, x, start=True)
-    elif board.selection:
+    elif board.selection and board.dragging:
         board.drag(y, x)
         if event != "release":
             return
+        board.dragging = False
         if board.selection[0] == board.selection[1]:
             # A click, not a drag: nothing to copy.
             board.selection = None

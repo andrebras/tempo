@@ -138,9 +138,11 @@ class Board:
         # Where a click lands on what was last drawn; the screen sets it as it draws.
         self.targets: list[Target] = []
         # The question's text as last drawn, where a drag selects (the screen sets it), and
-        # the drag's first and last cells as (line, column), or None.
+        # the drag's first and last cells as (line, column), or None. Dragging is True from
+        # a press until its release: a release no press started copies nothing.
         self.reading: Rect | None = None
         self.selection: tuple[tuple[int, int], tuple[int, int]] | None = None
+        self.dragging = False
         self._seen: int | None = None
         if question is not None:
             self.number, self.focus = question, "detail"
@@ -319,8 +321,8 @@ class Board:
         top, left, height, width = self.reading
         here = (min(max(y, top), top + height - 1), min(max(x, left), left + width - 1))
         if start:
-            self.selection, self.message = (here, here), None
-        elif self.selection:
+            self.selection, self.message, self.dragging = (here, here), None, True
+        elif self.selection and self.dragging:
             self.selection = (self.selection[0], here)
 
     def selected(self) -> list[tuple[int, int, int]]:
