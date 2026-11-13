@@ -44,6 +44,12 @@ PASTE_WAIT = 1000
 PASTE_ON, PASTE_OFF = "\x1b[?2004h", "\x1b[?2004l"
 PASTE_START, PASTE_END = "[200~", "\x1b[201~"
 
+# The mouse buttons the screen reads: a left click, and the wheel up and down. Older
+# curses has no name for the wheel down.
+CLICK = curses.BUTTON1_PRESSED | curses.BUTTON1_CLICKED
+WHEEL_UP = curses.BUTTON4_PRESSED
+WHEEL_DOWN = getattr(curses, "BUTTON5_PRESSED", 0)
+
 # A key as get_wch() gives it: a character, or a curses key code.
 Key = Union[int, str]
 
@@ -309,6 +315,12 @@ def _loop(window: Any, board: Board, popups: Popups | None = None) -> None:
     # Esc normally waits a second for the rest of a key sequence; 25 ms is enough.
     with contextlib.suppress(AttributeError, curses.error):
         curses.set_escdelay(25)
+    if not board.single:
+        # Clicks and the wheel, as soon as the button goes down. The popup's single
+        # question has nothing to click, so there the terminal keeps selecting text.
+        with contextlib.suppress(curses.error):
+            curses.mousemask(CLICK | WHEEL_UP | WHEEL_DOWN)
+            curses.mouseinterval(0)
     _terminal(PASTE_ON)
     try:
         _keys(window, board, popups)
@@ -334,6 +346,20 @@ def _read(window: Any, wait: int) -> Key | None:
         window.timeout(TICK)
 
 
+def _mouse(board: Board) -> None:
+    """Act on a mouse event: a click where it lands, the wheel as k and j."""
+    try:
+        _, x, y, _, buttons = curses.getmouse()
+    except curses.error:
+        return
+    if buttons & CLICK:
+        board.click(y, x)
+    elif buttons & WHEEL_UP:
+        board.press("up")
+    elif WHEEL_DOWN and buttons & WHEEL_DOWN:
+        board.press("down")
+
+
 def _keys(window: Any, board: Board, popups: Popups | None = None) -> None:
     """Draw the board and act on what the user does, until a key quits."""
     color = curses.has_colors() and not os.environ.get("NO_COLOR")
@@ -357,6 +383,9 @@ def _keys(window: Any, board: Board, popups: Popups | None = None) -> None:
                 popups.collect()
         if board.done:
             return
+        if key == curses.KEY_MOUSE:
+            _mouse(board)
+            continue
         happened = read_input(key, lambda wait: _read(window, wait)) if key is not None else None
         if happened is None:
             continue

@@ -51,6 +51,18 @@ class Row(NamedTuple):
     question: Question | None
 
 
+class Target(NamedTuple):
+    """A place on the screen a click acts on: columns left to right (not included) of
+    line y, and what is there ("question" and its number, "project" and its name, or
+    "switch" and the step to the next project)."""
+
+    y: int
+    left: int
+    right: int
+    kind: str
+    value: str | int
+
+
 class Board:
     """The screen's state: the projects, the selected project's open questions, the
     selected question in full, which panel has the focus, and what the keys are doing
@@ -123,6 +135,8 @@ class Board:
         self.summaries: Summaries = []
         self.chosen = home
         self.into: str | None = None
+        # Where a click lands on what was last drawn; the screen sets it as it draws.
+        self.targets: list[Target] = []
         self._seen: int | None = None
         if question is not None:
             self.number, self.focus = question, "detail"
@@ -262,6 +276,35 @@ class Board:
         elif len(key) == 1 and key.lower() in string.ascii_lowercase and key not in BOUND:
             self._pick(key.lower())
         return True
+
+    def click(self, y: int, x: int) -> None:
+        """A mouse click at line y, column x. On a question it selects it, and on the one
+        already selected it opens it, as Enter does; on a project it selects that project.
+        In the sidebar, a click on the arrows beside the project's name switches project.
+        Elsewhere, or while typing or in Settings, it does nothing."""
+        if self.mode != "normal":
+            return
+        here = next((t for t in self.targets if t.y == y and t.left <= x < t.right), None)
+        if here is None:
+            return
+        self.message = None
+        if here.kind == "switch":
+            self.switch(int(here.value))
+        elif here.kind == "project" and here.value != self.project:
+            self.project, self.number, self.scroll = str(here.value), None, 0
+            self.questions, self.focus = [], "projects"
+            self.reload()
+        elif here.kind == "project":
+            self.focus = "projects"
+        elif here.kind == "question" and here.value == self.number and self.question:
+            if self.sidebar:
+                self.focus = "questions"
+                self._sidebar("enter")
+            else:
+                self.focus = "detail"
+        elif here.kind == "question":
+            self.number, self.scroll, self.focus = int(here.value), 0, "questions"
+            self.question = self.store.get(self.project, self.number)
 
     def _sidebar(self, key: str) -> bool:
         """The sidebar's own keys; False for a key it reads as the full view does. In the

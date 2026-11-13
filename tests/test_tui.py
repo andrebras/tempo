@@ -475,6 +475,49 @@ class SidebarTest(BoardTest):
         self.assertTrue(all(cell_width(line) <= 40 for line in lines))
         self.assertTrue(lines[-1].startswith("Enter open  h/l project"))
 
+    def test_a_click_selects_a_question_and_a_second_click_opens_it(self):
+        self.add(title="Left or right?")
+        self.add(title="Which colour?")
+        self.add(project="shop", title="There")
+        board = self.sidebar()
+        lines = self.screen(board)
+        self.assertEqual(board.number, 1)
+        # Anywhere in Q2's block: its title line.
+        y = lines.index("  Which colour?")
+        board.click(y, 5)
+        self.assertEqual((board.number, board.focus), (2, "questions"))
+        board.click(y, 5)
+        self.assertEqual((board.question["title"], board.focus), ("Which colour?", "detail"))
+        board.press("h")
+        self.screen(board)
+        # The arrow beside the project's name switches project; the divider does nothing.
+        board.click(2, 5)
+        self.assertEqual(board.project, "demo")
+        board.click(0, lines[0].index("▸"))
+        self.assertEqual(board.project, "shop")
+        board.click(0, 0)
+        self.assertEqual(board.project, "demo")
+
+    def test_a_click_does_nothing_while_typing(self):
+        self.add(title="Left or right?")
+        self.add(title="Which colour?")
+        board = Board(self.board_store, "demo")
+        canvas = TextCanvas(24, 80)
+        draw(board, canvas)
+        lines = canvas.text().split("\n")
+        y = next(i for i, line in enumerate(lines) if "Q2 Which colour?" in line)
+        board.press("a")
+        board.click(y, 5)
+        self.assertEqual((board.mode, board.number), ("note", 1))
+        board.press("esc")
+        # In the full view too: a click selects, a second one shows the detail.
+        board.click(y, 5)
+        self.assertEqual(board.number, 2)
+        board.click(y, 5)
+        self.assertEqual(board.focus, "detail")
+        board.click(1, 3)
+        self.assertEqual(board.focus, "projects")
+
     def test_h_and_l_switch_project_and_enter_opens_the_question(self):
         self.add(title="Here")
         self.add(project="shop", title="There")

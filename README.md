@@ -131,6 +131,10 @@ narrow column with the open questions of its project, grouped by goal. `tempo si
 | `s`, `?` | Settings, and the keys |
 | `q` | Close this sidebar |
 
+The mouse works too: a click selects a question and a second click opens it, a click on
+`◂` or `▸` shows another project, and the wheel moves between questions. While the sidebar
+takes the mouse, hold Shift (Option in Terminal and iTerm2) to select its text.
+
 To bring it back when tmux restarts, add the line from [Quick start](#quick-start) to the end
 of `~/.tmux.conf` yourself; Tempo never changes it. A key to show or hide the sidebar is in
 [A sidebar beside Claude](docs/reference.md#a-sidebar-beside-claude).
@@ -138,9 +142,10 @@ of `~/.tmux.conf` yourself; Tempo never changes it. A key to show or hide the si
 ### Without tmux: `tempo tui`
 
 `tempo tui` shows the open questions full screen, with panels side by side as in lazygit,
-and you use it only with the keyboard. Projects (top left) lists the projects with open
-questions. Questions (bottom left) lists the selected project's questions by goal. Detail
-(right) shows the selected question: its context, its options and its thread.
+and you use it with the keyboard; a click selects a project or question too. Projects (top
+left) lists the projects with open questions. Questions (bottom left) lists the selected
+project's questions by goal. Detail (right) shows the selected question: its context, its
+options and its thread.
 
 | Key | What it does |
 | --- | --- |
