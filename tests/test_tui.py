@@ -1102,9 +1102,12 @@ class PopupTest(BoardTest):
         self.assertEqual(canvas.cut(board.selected()), "need to pick one.")
         board.drag(y + 2, 4)
         self.assertEqual(canvas.cut(board.selected()), "need to pick one.\n\nThe")
-        # Any key ends it.
+        # Any key ends it; the wheel, as k and j, scrolls.
         board.press("j")
         self.assertIsNone(board.selection)
+        self.assertEqual(board.scroll, 1)
+        board.press("up")
+        self.assertEqual(board.scroll, 0)
 
     @unittest.skipUnless(curses is not None, "needs curses")
     def test_the_popup_runs_this_tempo_on_this_database(self):

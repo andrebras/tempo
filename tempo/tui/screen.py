@@ -359,7 +359,7 @@ def _read(window: Any, wait: int) -> Key | None:
 
 def _mouse(board: Board, size: tuple[int, int]) -> None:
     """Act on the mouse events curses has read: a click where it lands, the wheel as k and
-    j; in the popup, a drag, as select() reads it. Events that arrive together come out
+    j; in the popup, a drag, as _select() reads it. Events that arrive together come out
     one at a time, so a drag's release isn't lost behind its moves."""
     events = (
         (curses.BUTTON1_PRESSED, "press"),
@@ -376,7 +376,7 @@ def _mouse(board: Board, size: tuple[int, int]) -> None:
         if board.single:
             event = next((name for bit, name in events if buttons & bit), None)
             if event:
-                select(board, event, y, x, size)
+                _select(board, event, y, x, size)
         elif buttons & CLICK:
             board.click(y, x)
         elif buttons & WHEEL_UP:
@@ -396,10 +396,10 @@ def _sgr(board: Board, sequence: str, size: tuple[int, int]) -> None:
     event = "release" if found.group(4) == "m" else events.get(button)
     if event:
         # The terminal counts from 1, curses from 0.
-        select(board, event, y - 1, x - 1, size)
+        _select(board, event, y - 1, x - 1, size)
 
 
-def select(board: Board, event: str, y: int, x: int, size: tuple[int, int]) -> None:
+def _select(board: Board, event: str, y: int, x: int, size: tuple[int, int]) -> None:
     """The popup's mouse: a drag ("press", "drag", "release") selects the question's text
     and copies it once the button goes up; the wheel ("up", "down") scrolls."""
     if event in ("up", "down"):
@@ -476,7 +476,10 @@ def _keys(window: Any, board: Board, popups: Popups | None = None) -> None:
             _sgr(board, value, canvas.size())
         elif kind == "paste":
             board.paste(value)
-        elif value != "resize" and not board.press(value):
+        elif value == "resize":
+            # What was selected has moved.
+            board.selection = None
+        elif not board.press(value):
             return
         if typing and board.mode == "normal":
             # A note or follow-up was just sent (or cancelled). Keys already waiting are
