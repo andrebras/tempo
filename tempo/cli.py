@@ -727,9 +727,11 @@ SIDEBAR_SIDE = "@tempo-sidebar-side"
 SIDES = ("left", "right")
 # The tmux hooks that give each new window and session a sidebar while it is on.
 SIDEBAR_HOOKS = ("after-new-window", "after-new-session")
-# The tmux hooks that close a sidebar left alone in its window once every other pane there
-# has closed: by its program ending, or by kill-pane.
+# The tmux hooks that close a window once only sidebars are left in it, ours and workmux's:
+# when a pane's program ends, or after kill-pane.
 TIDY_HOOKS = ("pane-exited", "after-kill-pane")
+# The pane option workmux sets to "sidebar" on its own sidebar.
+WORKMUX_ROLE = "@workmux_role"
 # What every hook of ours runs, which tells them from the user's own.
 OUR_FLAGS = ("--window", "--tidy")
 # Where Claude Code keeps plugins, and the marketplace copy of Tempo it keeps up to date.
@@ -755,7 +757,7 @@ def run_sidebar(args: argparse.Namespace) -> int:
     session; the keyboard stays where it is. Off, every sidebar closes and the hooks go.
     toggle flips it, quietly, for a key binding; on and off say what they did, and do
     nothing when it already is so. With --side while on, the sidebars move to that side.
-    `q` closes just one, and a sidebar left alone in its window closes with it. Whether it
+    `q` closes just one, and a window where only sidebars are left closes. Whether it
     is on is saved, so --restore, run from ~/.tmux.conf, brings it back after tmux restarts."""
     try:
         if args.tidy:
@@ -867,14 +869,20 @@ def _sidebars_off() -> None:
 
 
 def _tidy_sidebars() -> None:
-    """Close each sidebar that is the only pane left in its window, which closes the window,
-    as it would have closed without the sidebar. A `tempo tui --sidebar` run by hand has no
-    mark, so it stays."""
-    listing = _tmux("list-panes", "-a", "-F", "#{pane_id}\t#{window_panes}\t#{%s}" % SIDEBAR_MARK)
+    """Close each window where only sidebars are left, ours and workmux's, as it would have
+    closed without them. A `tempo tui --sidebar` run by hand has no mark, so it stays."""
+    listing = _tmux(
+        "list-panes", "-a", "-F",
+        "#{window_id}\t#{%s}\t#{%s}" % (SIDEBAR_MARK, WORKMUX_ROLE),
+    )  # fmt: skip
+    windows: dict[str, list[tuple[str, str]]] = {}
     for line in listing.splitlines():
-        pane, panes, mark = line.split("\t")
-        if panes == "1" and mark == "1":
-            _tmux("kill-pane", "-t", pane)
+        window, mark, role = line.split("\t")
+        windows.setdefault(window, []).append((mark, role))
+    for window, panes in windows.items():
+        ours = any(mark == "1" for mark, _ in panes)
+        if ours and all(mark == "1" or role == "sidebar" for mark, role in panes):
+            _tmux("kill-window", "-t", window)
 
 
 def _tmux(*args: str) -> str:

@@ -1069,8 +1069,10 @@ class JumpTest(BoardTest):
 class FakeTmux:
     """A tmux server for `tempo sidebar`: windows with their panes, server options and hooks."""
 
-    def __init__(self, windows, on="", hooks=None, panes=None):
+    def __init__(self, windows, on="", hooks=None, panes=None, workmux=()):
         self.windows = {window: list(panes) for window, panes in windows.items()}
+        # The panes that are workmux's sidebar.
+        self.workmux = set(workmux)
         # Each pane's width, height and folder, where a test sets them: by default 80x24,
         # in its window's folder.
         self.panes = panes or {}
@@ -1100,11 +1102,13 @@ class FakeTmux:
         elif name == "list-panes" and args[1] == "-a":
             return "".join(
                 args[3]
+                .replace("#{window_id}", window)
                 .replace("#{pane_id}", p)
                 .replace("#{window_panes}", str(len(panes)))
                 .replace("#{@tempo-sidebar}", "1" if p in self.marked else "")
+                .replace("#{@workmux_role}", "sidebar" if p in self.workmux else "")
                 + "\n"
-                for panes in self.windows.values()
+                for window, panes in self.windows.items()
                 for p in panes
             )
         elif name == "list-panes":
@@ -1124,6 +1128,9 @@ class FakeTmux:
         elif name == "kill-pane":
             self.close(args[2])
             self.marked.discard(args[2])
+        elif name == "kill-window":
+            for pane in self.windows.pop(args[2]):
+                self.marked.discard(pane)
         elif name == "show-hooks":
             return "".join(
                 "%s[%d] %s\n" % (args[2], i, c) for i, c in self.hooks.get(args[2], {}).items()
@@ -1204,6 +1211,19 @@ class SidebarCommandTest(DatabaseTest):
         self.assertEqual(self.run_sidebar(tmux, "--tidy", env={"TMUX": ""})[0], 0)
         # @1 closes with its sidebar; @2 keeps %3 and the sidebar beside it.
         self.assertEqual(tmux.windows, {"@2": ["%3", "%92"]})
+
+    def test_a_window_left_with_only_our_sidebar_and_workmuxs_closes(self):
+        # workmux's sidebar (%9) sits beside ours in each window.
+        tmux = FakeTmux({"@1": ["%9", "%1"], "@2": ["%8", "%2"]}, workmux={"%8", "%9"})
+        self.run_sidebar(tmux, "on")
+        tmux.close("%1")
+        self.run_sidebar(tmux, "--tidy")
+        self.assertEqual(tmux.windows, {"@2": ["%8", "%2", "%92"]})
+
+    def test_tidy_leaves_a_window_with_only_workmuxs_sidebar_to_workmux(self):
+        tmux = FakeTmux({"@1": ["%9"]}, workmux={"%9"})
+        self.run_sidebar(tmux, "--tidy")
+        self.assertEqual(tmux.windows, {"@1": ["%9"]})
 
     def test_tidy_leaves_a_sidebar_run_by_hand_alone(self):
         # No mark: a `tempo tui --sidebar` the user started in a window of its own.
