@@ -4,6 +4,22 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The sidebar and `tempo tui` respond to the mouse. A click selects a question, and a
+  second click opens it, as Enter does. In the sidebar, a click on `◂` or `▸` shows another
+  project and the wheel moves between questions; in `tempo tui`, a click also selects a
+  project. Dragging no longer selects text in the sidebar: hold Shift (Option in Terminal
+  and iTerm2) to select text.
+
+### Fixed
+
+- In the box where you type a note or a follow-up, Left, Right, Home and End (and Ctrl-a,
+  Ctrl-e) move the cursor, and typing, pasting, Backspace and Delete act where it is.
+  Before, the cursor always stayed at the end.
+
 ## [0.13.2] - 2026-11-13
 
 ### Fixed
