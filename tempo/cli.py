@@ -1124,7 +1124,10 @@ def run_hook(args: argparse.Namespace) -> int:
         reason, project, outcome = stop_outcome(payload, cwd)
         log.write("hook", args.event, project, outcome)
         if reason:
-            print(json.dumps({"decision": "block", "reason": reason}))
+            # Not {"decision": "block"}: Claude Code shows a block as "Stop hook error",
+            # though nothing failed. Context keeps the turn going and shows as feedback.
+            context = {"hookEventName": "Stop", "additionalContext": reason}
+            print(json.dumps({"hookSpecificOutput": context}))
         return 0
     # A hook must never block or break the session over a Tempo problem: exit code 2
     # would discard the user's prompt. Errors go to stderr, which Claude Code does not
