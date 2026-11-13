@@ -13,7 +13,15 @@ from datetime import datetime, timezone
 from typing import Protocol
 
 from tempo.store import Question
-from tempo.tui.model import SETTINGS, Board, Rect, detail_lines, layout, waiting_on_claude
+from tempo.tui.model import (
+    SETTINGS,
+    Board,
+    Rect,
+    Target,
+    detail_lines,
+    layout,
+    waiting_on_claude,
+)
 from tempo.tui.text import Line, cell_width, clip, plain, wrap
 
 TITLES = {"projects": "Projects", "questions": "Questions", "detail": "Detail"}
@@ -84,6 +92,7 @@ class TextCanvas:
 def draw(board: Board, canvas: Canvas) -> tuple[int, int] | None:
     """Draw the whole screen; returns where the cursor goes while typing, else None."""
     height, width = canvas.size()
+    board.targets = []
     if board.mode in SETTINGS:
         _settings(board, canvas, Rect(0, 0, max(1, height - 1), width))
         return _bottom(board, canvas, height - 1, width)
@@ -147,6 +156,8 @@ def _projects(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
         if name == board.project:
             style = "selected" if focused else "current"
         _row(canvas, rect.top + y, rect, text, style, str(count))
+        right = rect.left + rect.width
+        board.targets.append(Target(rect.top + y, rect.left, right, "project", name))
 
 
 def _questions(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
@@ -179,6 +190,7 @@ def _questions(board: Board, canvas: Canvas, rect: Rect, focused: bool) -> None:
             style = "selected" if focused else "current"
         end = "quick" if question["quick"] else ""
         _row(canvas, rect.top + y, rect, text, style, end)
+        board.targets.append(_target(rect, rect.top + y, question))
 
 
 def _sidebar_questions(board: Board, canvas: Canvas, rect: Rect) -> None:
@@ -187,11 +199,14 @@ def _sidebar_questions(board: Board, canvas: Canvas, rect: Rect) -> None:
     line after; a heading before each goal. The selected block is highlighted whole and
     kept wholly on screen."""
     lines: list[tuple[Line, str]] = []
+    # The question each line belongs to, blank lines after a block included.
+    owners: list[Question | None] = []
     block = (0, 0)
     for row in board.rows():
         question = row.question
         if question is None:
             lines.append(([(str(row.goal), "heading")], ""))
+            owners.append(None)
             continue
         start = len(lines)
         style = "selected" if question["number"] == board.number else ""
@@ -212,6 +227,7 @@ def _sidebar_questions(board: Board, canvas: Canvas, rect: Rect) -> None:
         if style:
             block = (start, len(lines))
         lines.append(([], ""))
+        owners += [question] * (len(lines) - len(owners))
     # Scrolled just enough that the selected block is whole.
     top = max(0, block[1] - rect.height)
     if block[0] < top:
@@ -221,6 +237,14 @@ def _sidebar_questions(board: Board, canvas: Canvas, rect: Rect) -> None:
             _row(canvas, rect.top + y, rect, plain(line), style)
         else:
             _spans(canvas, rect.top + y, rect.left, line, rect.width)
+        owner = owners[top + y]
+        if owner is not None:
+            board.targets.append(_target(rect, rect.top + y, owner))
+
+
+def _target(rect: Rect, y: int, question: Question) -> Target:
+    """A click on line y of a list, anywhere across it, acts on question."""
+    return Target(y, rect.left, rect.left + rect.width, "question", question["number"])
 
 
 def _state_mark(board: Board, question: Question) -> tuple[str, str]:
@@ -278,8 +302,13 @@ def _sidebar(board: Board, canvas: Canvas, rect: Rect) -> None:
             _detail(board, canvas, inner, True)
         return
     count = dict(board.projects).get(board.project, 0)
-    head = "◂ %s · %d open ▸" % (board.project, count)
-    canvas.put(rect.top, rect.left, clip(head, rect.width), "title")
+    head = clip("◂ %s · %d open ▸" % (board.project, count), rect.width)
+    canvas.put(rect.top, rect.left, head, "title")
+    # A click on an arrow, or the space beside it, switches project as h and l do.
+    board.targets.append(Target(rect.top, rect.left, rect.left + 2, "switch", -1))
+    if head.endswith("▸"):
+        right = rect.left + cell_width(head)
+        board.targets.append(Target(rect.top, right - 2, right, "switch", 1))
     # The other projects with something open or new, a dot on those with news.
     others: Line = []
     for name, open_count in board.projects:
