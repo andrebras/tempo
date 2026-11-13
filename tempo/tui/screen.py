@@ -7,12 +7,14 @@ It never starts the page or opens a port: it only reads and writes the database.
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import curses
 import locale
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -21,7 +23,7 @@ from typing import Any, Union
 
 from tempo.store import CODE_ROOT, Store, connect, db_path
 from tempo.tui.model import Board
-from tempo.tui.view import draw
+from tempo.tui.view import TextCanvas, draw
 
 # What a pane running Claude Code shows as its command: "claude", or the version it names
 # its process after, such as "2.1.311". Plain "node" is left out: any Node program shows it.
@@ -49,6 +51,11 @@ PASTE_START, PASTE_END = "[200~", "\x1b[201~"
 CLICK = curses.BUTTON1_PRESSED | curses.BUTTON1_CLICKED
 WHEEL_UP = curses.BUTTON4_PRESSED
 WHEEL_DOWN = getattr(curses, "BUTTON5_PRESSED", 0)
+# The popup's single question asks the terminal for drags too: button presses, moves while
+# one is down, and releases, in the SGR format (ESC [ < button ; x ; y, then M, or m for a
+# release). curses can't ask for drags itself, and only reads this format for some TERMs.
+MOUSE_ON, MOUSE_OFF = "\x1b[?1002h\x1b[?1006h", "\x1b[?1006l\x1b[?1002l"
+MOUSE = re.compile(r"\[<(\d+);(\d+);(\d+)([Mm])")
 
 # A key as get_wch() gives it: a character, or a curses key code.
 Key = Union[int, str]
@@ -124,6 +131,8 @@ def read_input(first: Key, more: Callable[[int], Key | None]) -> tuple[str, str]
         # A control sequence ends with a character from @ to ~.
         if "@" <= char <= "~":
             break
+    if MOUSE.fullmatch(sequence):
+        return ("mouse", sequence)
     return ("paste", _pasted(more)) if sequence == PASTE_START else None
 
 
@@ -315,17 +324,19 @@ def _loop(window: Any, board: Board, popups: Popups | None = None) -> None:
     # Esc normally waits a second for the rest of a key sequence; 25 ms is enough.
     with contextlib.suppress(AttributeError, curses.error):
         curses.set_escdelay(25)
-    if not board.single:
-        # Clicks and the wheel, as soon as the button goes down. The popup's single
-        # question has nothing to click, so there the terminal keeps selecting text.
-        with contextlib.suppress(curses.error):
-            curses.mousemask(CLICK | WHEEL_UP | WHEEL_DOWN)
-            curses.mouseinterval(0)
-    _terminal(PASTE_ON)
+    # Clicks and the wheel, as soon as the button goes down. The popup's single question
+    # has nothing to click, but tmux keeps a drag in a popup from selecting text: there a
+    # drag selects the question's text and copies it, so the moves between count too.
+    drag = curses.BUTTON1_PRESSED | curses.BUTTON1_RELEASED | curses.REPORT_MOUSE_POSITION
+    with contextlib.suppress(curses.error):
+        curses.mousemask((drag if board.single else CLICK) | WHEEL_UP | WHEEL_DOWN)
+        curses.mouseinterval(0)
+    mouse = MOUSE_ON if board.single else ""
+    _terminal(PASTE_ON + mouse)
     try:
         _keys(window, board, popups)
     finally:
-        _terminal(PASTE_OFF)
+        _terminal(PASTE_OFF + (MOUSE_OFF if mouse else ""))
 
 
 def _terminal(code: str) -> None:
@@ -346,18 +357,85 @@ def _read(window: Any, wait: int) -> Key | None:
         window.timeout(TICK)
 
 
-def _mouse(board: Board) -> None:
-    """Act on a mouse event: a click where it lands, the wheel as k and j."""
-    try:
-        _, x, y, _, buttons = curses.getmouse()
-    except curses.error:
+def _mouse(board: Board, size: tuple[int, int]) -> None:
+    """Act on the mouse events curses has read: a click where it lands, the wheel as k and
+    j; in the popup, a drag, as select() reads it. Events that arrive together come out
+    one at a time, so a drag's release isn't lost behind its moves."""
+    events = (
+        (curses.BUTTON1_PRESSED, "press"),
+        (curses.REPORT_MOUSE_POSITION, "drag"),
+        (curses.BUTTON1_RELEASED, "release"),
+        (WHEEL_UP, "up"),
+        (WHEEL_DOWN, "down"),
+    )
+    while True:
+        try:
+            _, x, y, _, buttons = curses.getmouse()
+        except curses.error:
+            return
+        if board.single:
+            event = next((name for bit, name in events if buttons & bit), None)
+            if event:
+                select(board, event, y, x, size)
+        elif buttons & CLICK:
+            board.click(y, x)
+        elif buttons & WHEEL_UP:
+            board.press("up")
+        elif WHEEL_DOWN and buttons & WHEEL_DOWN:
+            board.press("down")
+
+
+def _sgr(board: Board, sequence: str, size: tuple[int, int]) -> None:
+    """Act on a mouse event that curses passed on as keys, in the SGR format (MOUSE): the
+    terminal's name (TERM) told curses of another format, as tmux's does."""
+    found = MOUSE.fullmatch(sequence)
+    if not found:
         return
-    if buttons & CLICK:
-        board.click(y, x)
-    elif buttons & WHEEL_UP:
-        board.press("up")
-    elif WHEEL_DOWN and buttons & WHEEL_DOWN:
-        board.press("down")
+    button, x, y = (int(found.group(n)) for n in (1, 2, 3))
+    events = {0: "press", 32: "drag", 64: "up", 65: "down"}
+    event = "release" if found.group(4) == "m" else events.get(button)
+    if event:
+        # The terminal counts from 1, curses from 0.
+        select(board, event, y - 1, x - 1, size)
+
+
+def select(board: Board, event: str, y: int, x: int, size: tuple[int, int]) -> None:
+    """The popup's mouse: a drag ("press", "drag", "release") selects the question's text
+    and copies it once the button goes up; the wheel ("up", "down") scrolls."""
+    if event in ("up", "down"):
+        board.press(event)
+    elif event == "press":
+        board.drag(y, x, start=True)
+    elif board.selection:
+        board.drag(y, x)
+        if event != "release":
+            return
+        if board.selection[0] == board.selection[1]:
+            # A click, not a drag: nothing to copy.
+            board.selection = None
+            return
+        canvas = TextCanvas(*size)
+        draw(board, canvas)
+        copy(canvas.cut(board.selected()))
+        board.message = ("Copied.", "ok")
+
+
+def copy(text: str) -> None:
+    """Put text on the clipboard: with pbcopy on a Mac, else through tmux (which passes it
+    on to the terminal when set-clipboard allows), else by asking the terminal itself."""
+    commands = []
+    if shutil.which("pbcopy"):
+        commands.append(["pbcopy"])
+    if os.environ.get("TMUX"):
+        commands.append(["tmux", "load-buffer", "-w", "-"])
+    for command in commands:
+        try:
+            subprocess.run(command, input=text.encode(), capture_output=True, check=True)  # noqa: S603
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        return
+    # OSC 52: most terminals put the text on the clipboard; some ignore it.
+    _terminal("\x1b]52;c;%s\x07" % base64.b64encode(text.encode()).decode())
 
 
 def _keys(window: Any, board: Board, popups: Popups | None = None) -> None:
@@ -369,6 +447,9 @@ def _keys(window: Any, board: Board, popups: Popups | None = None) -> None:
     while True:
         window.erase()
         cursor = draw(board, canvas)
+        for y, start, end in board.selected():
+            with contextlib.suppress(curses.error):
+                window.chgat(y, start, end - start, curses.A_REVERSE)
         with contextlib.suppress(curses.error):
             curses.curs_set(1 if cursor else 0)
             if cursor:
@@ -384,14 +465,16 @@ def _keys(window: Any, board: Board, popups: Popups | None = None) -> None:
         if board.done:
             return
         if key == curses.KEY_MOUSE:
-            _mouse(board)
+            _mouse(board, canvas.size())
             continue
         happened = read_input(key, lambda wait: _read(window, wait)) if key is not None else None
         if happened is None:
             continue
         kind, value = happened
         typing = board.mode in ("note", "reply")
-        if kind == "paste":
+        if kind == "mouse":
+            _sgr(board, value, canvas.size())
+        elif kind == "paste":
             board.paste(value)
         elif value != "resize" and not board.press(value):
             return
