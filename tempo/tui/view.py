@@ -384,14 +384,18 @@ def _bottom(board: Board, canvas: Canvas, y: int, width: int) -> tuple[int, int]
         ask += " (Enter sends, Esc cancels): " if width >= 70 else ": "
         ask = clip(ask, max(0, width - 20))
         room = max(1, width - cell_width(ask) - 1)
-        # A pasted newline shows as an arrow, on the one line there is. Only the end shows
-        # when the text is longer than the line.
+        # A pasted newline shows as an arrow, on the one line there is. When the text is
+        # longer than the line, the part around the cursor shows.
         typed = board.typed.replace("\n", "↵")
-        while cell_width(typed) > room:
-            typed = typed[max(1, len(typed) - room) :]
+        start = 0
+        while cell_width(typed[start : board.at]) > room:
+            start += 1
+        shown = typed[start:]
+        while cell_width(shown) > room:
+            shown = shown[:-1]
         canvas.put(y, 0, ask, "prompt")
-        canvas.put(y, cell_width(ask), typed)
-        return y, cell_width(ask) + cell_width(typed)
+        canvas.put(y, cell_width(ask), shown)
+        return y, cell_width(ask) + cell_width(typed[start : board.at])
     if board.mode == "confirm":
         ask = "Merge %s into %s? y merges, n cancels" % (board.chosen, board.into)
         canvas.put(y, 0, clip(ask, width - 1), "prompt")
