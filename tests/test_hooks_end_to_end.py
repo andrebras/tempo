@@ -99,9 +99,10 @@ class HooksEndToEndTest(unittest.TestCase):
         )
         if not out:
             return ""
-        decision = json.loads(out)
-        self.assertEqual(decision["decision"], "block")
-        return decision["reason"]
+        # Context, not a block: Claude Code shows a block as "Stop hook error".
+        output = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual(output["hookEventName"], "Stop")
+        return output["additionalContext"]
 
     def ask_and_answer(self):
         added = self.tempo(
