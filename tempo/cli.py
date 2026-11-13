@@ -827,11 +827,16 @@ def _sidebars_on(side: str) -> None:
 
 def _add_sidebar(window: str, side: str) -> None:
     """Give a window a sidebar on side, unless it has one: a full-height column showing
-    the project of the folder its current pane is in."""
-    listing = _tmux("list-panes", "-t", window, "-F", "#{%s}" % SIDEBAR_MARK)
-    if "1" in listing.split():
+    the project of the folder its largest pane is in. Not the active pane's: that can be
+    another tool's strip, such as workmux's, started in some other project's folder."""
+    fields = "#{%s}\t#{pane_width}\t#{pane_height}\t#{pane_current_path}" % SIDEBAR_MARK
+    panes = [
+        line.split("\t", 3) for line in _tmux("list-panes", "-t", window, "-F", fields).splitlines()
+    ]
+    if any(pane[0] == "1" for pane in panes):
         return
-    path = _tmux("display-message", "-p", "-t", window, "#{pane_current_path}").strip()
+    sizes = [(int(width) * int(height), path) for _, width, height, path in panes]
+    path = max(sizes, key=lambda size: size[0])[1] if sizes else ""
     command = [
         stable_tempo(), "tui", "--sidebar",
         "--project", project_name(path or os.getcwd()),
