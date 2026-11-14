@@ -477,8 +477,12 @@ def wait_for_news(
     parent = os.getppid()
     # A marker tells the hooks that a wait is running for this project.
     marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
-    _write_marker(marker, project)
+    # Claude Code stops a hook's wait with SIGTERM on /exit, and a closed terminal sends
+    # SIGHUP. Exiting from the signal leaves through the finally below, which removes the
+    # marker, and cuts the sleep short.
+    before = {stop: signal.signal(stop, _stop_waiting) for stop in (signal.SIGTERM, signal.SIGHUP)}
     try:
+        _write_marker(marker, project)
         while True:
             current = _folder_project(path) if path else project
             if current != project:
@@ -495,6 +499,13 @@ def wait_for_news(
     finally:
         with contextlib.suppress(OSError):
             os.remove(marker)
+        for stop, handler in before.items():
+            signal.signal(stop, handler)
+
+
+def _stop_waiting(signum: int, frame: object) -> None:
+    """End the wait as a signal's default would, with exit code 128 + signum."""
+    raise SystemExit(128 + signum)
 
 
 def run_answer(args: argparse.Namespace) -> None:
@@ -994,9 +1005,9 @@ def _write_marker(marker: str, project: str | None) -> None:
 
 
 def wait_running(project: str) -> bool:
-    """Whether a `tempo wait` covering the project is running. Markers left by waits
-    that were killed are removed, and so are those whose pid has since been given to a
-    process that is not a wait.
+    """Whether a wait covering the project is running, the hooks' or a `tempo wait`.
+    Markers left by waits that were killed are removed, and so are those whose pid has
+    since been given to a process that is not a wait.
 
     A wait that left no marker here (one from an install older than markers, or one
     whose database, and so its markers, are in another folder) counts for the project it
@@ -1097,8 +1108,8 @@ SERVE_COMMAND = re.compile(TEMPO_COMMAND % "serve")
 
 
 def _wait_processes() -> dict[int, str] | None:
-    """The `tempo wait` processes running, as their commands by pid, or None when ps
-    cannot be run."""
+    """The waits running, from the hooks or `tempo wait`, as their commands by pid, or
+    None when ps cannot be run."""
     try:
         # ps is looked up on PATH on purpose; the arguments are fixed and there is no shell.
         listing = subprocess.run(
@@ -1226,6 +1237,9 @@ def hook_wait(cwd: str) -> int:
             return 0
         log.write("hook", "wait", project, "waiting")
         text = wait_for_news(project, path, HOOK_WAIT_SECONDS, 2.0, limit=HOOK_TEXT_LIMIT)
+    except SystemExit:
+        log.write("hook", "wait", project, "ended: stopped")
+        raise
     except Exception as error:
         log.write("hook", "wait", project, "error: %s" % error)
         return 0

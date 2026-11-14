@@ -1,5 +1,5 @@
-"""Handing the user's answers and follow-ups to Claude: the hook and `tempo wait` take
-the entries not delivered yet and mark them delivered."""
+"""Handing the user's answers and follow-ups to Claude: the hooks (their background wait
+among them) and `tempo wait` take the entries not delivered yet and mark them delivered."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ class DeliveryStore(StoreBase):
 
     def take_undelivered(self, project: str | None = None) -> Entries:
         """Return the user's undelivered entries and mark them delivered in one
-        transaction, so two readers at once (two sessions' hooks, or a hook and tempo
-        wait) never both pass on the same entry."""
+        transaction, so two readers at once (two sessions' hooks, or a prompt's hook and
+        the background wait) never both pass on the same entry."""
         with self.delivering(project) as entries:
             return entries
 

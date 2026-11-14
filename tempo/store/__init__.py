@@ -3,8 +3,9 @@
 A question belongs to a project and has a running number that is never reused.
 Its wording lives in versions (a reword adds a version, old ones stay). Everything
 that happens to it afterwards (added context, rewords, follow-ups, answers) is an
-entry in its thread. Entries written by the user start undelivered; the hook and
-`tempo wait` hand them to Claude and mark them delivered.
+entry in its thread. Entries written by the user start undelivered; the hooks hand them
+to Claude (the background wait wakes an idle session with them) and mark them delivered.
+`tempo wait` does the same for scripts.
 
 A project is just a name. The first time a session runs in a git folder, the folder is
 filed under a project of the same name; renaming the project in Settings takes its
