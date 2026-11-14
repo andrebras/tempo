@@ -6,9 +6,10 @@ description: Records every question Claude needs the user to decide on in the Te
 # Tempo
 
 Questions for the user live in a SQLite database, not only in chat. The user reads and answers
-them on a local page at http://127.0.0.1:2204/ (started by this plugin's SessionStart hook,
-which also lists the project's open questions). End every update with those open questions,
-one line each: the number as a link to the question, then the title, as in
+them on a local page at http://127.0.0.1:2204/ (started by this plugin's SessionStart hook
+when the user turned the page on; the hook also lists the project's open questions). End
+every update with those open questions, one line each: the number as a link to the
+question, then the title, as in
 `- [Q3](http://127.0.0.1:2204/#/shop/3) Pick a colour`. Never print the bare link: the user
 clicks the number. With the page off, write the number and title only (`- Q3 Pick a colour`).
 If a reply asks the user something (lettered options,
@@ -18,8 +19,8 @@ back once to add it. A link on a list item that names a Q number, as in the clos
 count: to point at a question already in Tempo, link its number in a sentence or a heading,
 as in `**[Q5](http://127.0.0.1:2204/#/shop/5): Pick a colour?**`.
 
-The user can turn the page off (`tempo config page off`, or in the page's Settings). Then
-sessions don't start it, and the SessionStart note says so. In that mode, never give page
+The page is off unless the user turns it on (`tempo config page on|off`, or in the page's
+Settings). While it is off, sessions don't start it, and the SessionStart note says so. In that mode, never give page
 links: point to the terminal instead. End updates with each open question's number, title and
 `tempo show N`, and tell the user they answer with `tempo answer N <letter>`. To point at a
 question already in Tempo, name its number (Q5) in a sentence. `tempo serve --background`
