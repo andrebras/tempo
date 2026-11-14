@@ -300,7 +300,7 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
 def _run_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Run by Claude Code and by Tempo itself: the hooks and the page."""
     hook = commands.add_parser("hook", help="Claude Code hook entry point (reads JSON on stdin)")
-    hook.add_argument("event", choices=["session-start", "user-prompt-submit", "stop"])
+    hook.add_argument("event", choices=["session-start", "user-prompt-submit", "stop", "wait"])
     hook.add_argument("--port", type=int, default=_port())
     hook.set_defaults(run=run_hook)
 
@@ -1024,6 +1024,8 @@ def wait_running(project: str) -> bool:
         else:
             with contextlib.suppress(OSError):
                 os.remove(path)
+    # The hooks' wait asks before it leaves its own marker, so it must not count itself.
+    marked.add(os.getpid())
     unmarked = {pid: command for pid, command in (waits or {}).items() if pid not in marked}
     return running or any(
         _unmarked_project(pid, command) in (None, project) for pid, command in unmarked.items()
@@ -1087,10 +1089,10 @@ def _process_cwd(pid: int) -> str | None:
 
 
 # How a Tempo command shows in ps: bin/tempo runs `python3 /…/tempo/__main__.py wait …`
-# (older releases ran `python3 -m tempo wait …`), and start_server runs
-# `python3 -m tempo serve …`.
+# (older releases ran `python3 -m tempo wait …`), the hooks' wait runs `… hook wait`, and
+# start_server runs `python3 -m tempo serve …`.
 TEMPO_COMMAND = r"(?:^|\s)(?:-m tempo|\S*/tempo/__main__\.py) %s(?:\s|$)"
-WAIT_COMMAND = re.compile(TEMPO_COMMAND % "wait")
+WAIT_COMMAND = re.compile(TEMPO_COMMAND % "(?:hook )?wait")
 SERVE_COMMAND = re.compile(TEMPO_COMMAND % "serve")
 
 
@@ -1139,6 +1141,8 @@ def run_hook(args: argparse.Namespace) -> int:
     if not isinstance(payload, dict):
         payload = {}
     cwd = project_folder(payload)
+    if args.event == "wait":
+        return hook_wait(cwd)
     if args.event == "stop":
         reason, project, outcome = stop_outcome(payload, cwd)
         log.write("hook", args.event, project, outcome)
@@ -1189,6 +1193,48 @@ def run_hook(args: argparse.Namespace) -> int:
             json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}})
         )
     return 0
+
+
+# How long a wait started by a hook runs at most, in seconds: a minute less than its
+# timeout in hooks.json (a week), so it ends quietly before Claude Code stops it.
+HOOK_WAIT_SECONDS = 7 * 24 * 3600 - 60
+
+
+def hook_wait(cwd: str) -> int:
+    """The wait Claude Code runs in the background (asyncRewake) when a session starts and
+    when a reply ends, while the project has open questions. Exit code 2 wakes Claude, even
+    an idle session, and shows it stderr; exit code 0 ends quietly. So it ends with 2 only
+    when the user answered or followed up, and with 0 when another wait already covers the
+    project, when the session is gone, or after HOOK_WAIT_SECONDS."""
+    project = "-"
+    try:
+        named = setting("PROJECT")
+        path = None if named else folder_path(cwd)
+        found = _folder_project(path) if path else named
+        if not found:
+            # A folder with no name, such as "/", belongs to no project.
+            log.write("hook", "wait", "-", "quiet: no project")
+            return 0
+        project = found
+        with Store(connect()) as store:
+            questions = store.list(project, "open")
+        if not questions:
+            log.write("hook", "wait", project, "quiet: no open questions")
+            return 0
+        if wait_running(project):
+            log.write("hook", "wait", project, "quiet: a wait is running")
+            return 0
+        log.write("hook", "wait", project, "waiting")
+        text = wait_for_news(project, path, HOOK_WAIT_SECONDS, 2.0, limit=HOOK_TEXT_LIMIT)
+    except Exception as error:
+        log.write("hook", "wait", project, "error: %s" % error)
+        return 0
+    if not text:
+        log.write("hook", "wait", project, "ended: session gone" if text is None else "ended")
+        return 0
+    log.write("hook", "wait", project, "woke the session")
+    print(text, file=sys.stderr)
+    return 2
 
 
 def session_note(project: str, port: int, limit: int | None = None) -> str:
