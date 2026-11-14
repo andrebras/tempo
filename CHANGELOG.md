@@ -6,6 +6,8 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.13.4] - 2026-11-14
+
 ### Added
 
 - In the popup that shows one question, dragging over the question's text selects it and
@@ -858,7 +860,8 @@ All notable changes to Tempo are listed here. The format follows
 - First version: questions in SQLite, the `tempo` command, hooks, a skill, and a local page
   to read, follow up on and answer them.
 
-[Unreleased]: https://github.com/andrebras/tempo/compare/v0.13.3...HEAD
+[Unreleased]: https://github.com/andrebras/tempo/compare/v0.13.4...HEAD
+[0.13.4]: https://github.com/andrebras/tempo/compare/v0.13.3...v0.13.4
 [0.13.3]: https://github.com/andrebras/tempo/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/andrebras/tempo/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/andrebras/tempo/compare/v0.13.0...v0.13.1
