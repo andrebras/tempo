@@ -110,8 +110,8 @@ tempo/
   log.py          the page log, server.log
   store/          the SQLite database: questions, projects, settings and delivery
   tui/            tempo tui, the full-screen terminal view
-skills/           five skills: tempo, which teaches Claude the workflow, and one for each
-                  slash command (list, show, answer, dive)
+skills/           six skills: tempo, which teaches Claude the workflow, and one for each
+                  slash command (list, show, answer, dive, install)
 tests/            Python tests (test_page.py drives the page in Chrome), and page.test.js
                   for the page's script
 ```

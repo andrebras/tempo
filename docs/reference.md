@@ -159,7 +159,9 @@ leaves the list once its folders are gone; folders in the system's temporary fol
 The full-screen terminal view; its panels and keys are in the
 [README](../README.md#without-tmux-tempo-tui). `--project NAME` starts on another project,
 `--sidebar` is the compact view for a narrow pane, and `--question N` shows only that question
-and closes once it is answered.
+and closes once it is answered. That one-question view is what the sidebar's popup shows: a
+drag copies the question's text, so outside tmux the terminal's own selection needs Shift
+(Option in Terminal and iTerm2).
 
 Pasted text goes into the note or follow-up you are writing, line breaks included (shown as
 `↵`). In a terminal with bracketed paste, which most have, a paste never acts as keys. Alt
@@ -215,7 +217,7 @@ and `»` the one to start with.
 | `q` | Close this sidebar |
 
 In the popup, dragging over the question's text copies it to the clipboard (with `pbcopy`
-on a Mac, else through tmux), and the wheel scrolls.
+on a Mac, else through tmux, else by asking the terminal itself), and the wheel scrolls.
 
 `tempo sidebar on|off|toggle` (toggle is the default) turns it on or off in every window.
 `--side left|right` picks the side, which is remembered. To bring it back when tmux restarts,
