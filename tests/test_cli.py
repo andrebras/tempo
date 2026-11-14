@@ -3,6 +3,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -1048,6 +1049,22 @@ class CliTest(DatabaseTest):
             code, out, _ = run("wait", "--timeout", "5", "--interval", "0.1")
         self.assertEqual((code, out), (0, ""))
         self.assertEqual(len(self.store.undelivered("demo")), 1)
+
+    def test_a_stopped_wait_removes_its_marker(self):
+        # Claude Code stops the hooks' wait with SIGTERM on /exit.
+        self.add()
+        self.waits[os.getpid()] = HOOK_WAIT
+        before = signal.getsignal(signal.SIGTERM)
+
+        def stopped(seconds):
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        with mock.patch.object(cli.time, "sleep", stopped), self.assertRaises(SystemExit) as end:
+            run("hook", "wait", stdin="{}")
+        self.assertEqual(end.exception.code, 128 + signal.SIGTERM)
+        self.assertEqual([n for n in os.listdir(self.tmp.name) if n.startswith("wait-")], [])
+        self.assertIn("hook wait demo ended: stopped", self.hook_log())
+        self.assertIs(signal.getsignal(signal.SIGTERM), before)
 
     def test_the_hooks_wait_wakes_claude_only_with_news(self):
         self.add()

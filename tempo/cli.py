@@ -477,8 +477,12 @@ def wait_for_news(
     parent = os.getppid()
     # A marker tells the hooks that a wait is running for this project.
     marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
-    _write_marker(marker, project)
+    # Claude Code stops a hook's wait with SIGTERM on /exit, and a closed terminal sends
+    # SIGHUP. Exiting from the signal leaves through the finally below, which removes the
+    # marker, and cuts the sleep short.
+    before = {stop: signal.signal(stop, _stop_waiting) for stop in (signal.SIGTERM, signal.SIGHUP)}
     try:
+        _write_marker(marker, project)
         while True:
             current = _folder_project(path) if path else project
             if current != project:
@@ -495,6 +499,13 @@ def wait_for_news(
     finally:
         with contextlib.suppress(OSError):
             os.remove(marker)
+        for stop, handler in before.items():
+            signal.signal(stop, handler)
+
+
+def _stop_waiting(signum: int, frame: object) -> None:
+    """End the wait as a signal's default would, with exit code 128 + signum."""
+    raise SystemExit(128 + signum)
 
 
 def run_answer(args: argparse.Namespace) -> None:
@@ -1226,6 +1237,9 @@ def hook_wait(cwd: str) -> int:
             return 0
         log.write("hook", "wait", project, "waiting")
         text = wait_for_news(project, path, HOOK_WAIT_SECONDS, 2.0, limit=HOOK_TEXT_LIMIT)
+    except SystemExit:
+        log.write("hook", "wait", project, "ended: stopped")
+        raise
     except Exception as error:
         log.write("hook", "wait", project, "error: %s" % error)
         return 0
