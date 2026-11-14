@@ -825,20 +825,15 @@ class CliTest(DatabaseTest):
         self.assertIn("`tempo context 2`", continued(self.stop(*reply)))
         self.assertIn("hook stop demo blocked: unanswered follow-ups 1", self.hook_log())
 
-    def test_stop_asks_for_a_wait_while_questions_are_open(self):
+    def test_stop_no_longer_asks_for_a_wait_while_questions_are_open(self):
+        # The hooks start the wait themselves, so Claude never has to.
         reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
-        self.assertEqual(self.stop(*reply), "")
         self.add()
-        out = continued(self.stop(*reply))
-        self.assertIn("tempo wait --timeout 1800", out)
-        self.assertIn("run_in_background", out)
-        self.assertEqual(self.stop(*reply, active=True), "")
-        self.marker(os.getpid())
         self.assertEqual(self.stop(*reply), "")
 
     def test_stop_lets_the_reply_end_on_any_error(self):
         self.add()
-        with mock.patch.object(cli, "wait_running", side_effect=RuntimeError):
+        with mock.patch.object(cli, "deliver_inbox", side_effect=RuntimeError):
             self.assertEqual(run("hook", "stop", stdin="{}")[1], "")
 
     def test_hooks_never_block_the_session_on_a_tempo_error(self):
@@ -883,7 +878,7 @@ class CliTest(DatabaseTest):
                 "hook user-prompt-submit demo nothing new",
                 "hook user-prompt-submit demo delivered 1",
                 "hook stop demo blocked: unrecorded question",
-                "hook stop demo blocked: no wait",
+                "hook stop demo let through",
                 "hook stop - let through: already sent back once",
                 "hook stop - quiet: TEMPO_IN_THREAD",
                 "hook session-start demo error: broken",
@@ -1258,10 +1253,6 @@ class CliTest(DatabaseTest):
         _, out, _ = run("hook", "user-prompt-submit", stdin="{}")
         context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
         self.assertTrue(context.startswith("New from the user in Tempo:"), context)
-        self.add()
-        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
-        reason = continued(self.stop(*reply))
-        self.assertIn("so answers would not reach you", reason)
 
     def test_with_the_page_off_a_question_number_counts_as_its_link(self):
         self.add()

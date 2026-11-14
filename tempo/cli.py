@@ -1390,9 +1390,9 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
     a short outcome for the log.
 
     In order: the user's new answers and follow-ups (handed over and marked delivered),
-    a question asked only in chat, follow-ups Claude was given a while ago and has not
-    answered, then open questions with no `tempo wait` running to bring the answers
-    back. Blocks at most once per reply (stop_hook_active), and any
+    a question asked only in chat, then follow-ups Claude was given a while ago and has
+    not answered. Answers that come later wake the session through the hooks' wait (see
+    hook_wait). Blocks at most once per reply (stop_hook_active), and any
     error lets the reply end, so the hook can never trap a session.
     """
     if payload.get("stop_hook_active"):
@@ -1416,15 +1416,6 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
             if unanswered:
                 reason = unanswered_note(store, unanswered, page)
                 return reason, project, "blocked: unanswered follow-ups %d" % len(unanswered)
-            questions = store.list(project, "open")
-        if questions and not wait_running(project):
-            reason = (
-                "%s has open questions in Tempo, but no `tempo wait` is running, so answers"
-                "%s would not reach you until the user writes in chat. Start"
-                " `tempo wait --timeout 1800` with the Bash tool's run_in_background option,"
-                " then end the reply." % (project, " from the page" if page else "")
-            )
-            return reason, project, "blocked: no wait"
     except Exception as error:
         return None, project, "error: %s" % error
     return None, project, "let through"
