@@ -4,6 +4,25 @@ All notable changes to Tempo are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- In the popup that shows one question, dragging over the question's text selects it and
+  copies it to the clipboard when you let go, as in Claude Code's pane. It uses `pbcopy` on
+  a Mac, else tmux, else asks the terminal. The wheel scrolls the question. When you run it
+  outside tmux (`tempo tui --question N`), hold Shift (Option in Terminal and iTerm2) for
+  the terminal's own selection.
+
+### Changed
+
+- Tempo's hooks now keep the wait for your answers running in the background themselves,
+  so Claude no longer starts `tempo wait`, and the Stop hook no longer reminds it to. The
+  wait wakes the session, even an idle one, only when you answer or follow up. Before, an
+  idle session woke every 30 minutes to find nothing new; now it stays idle. There is one
+  wait per project, and it ends quietly after a week with no answer; the next reply that
+  ends starts a new one. Restart open sessions to get the new hooks.
+
 ## [0.13.3] - 2026-11-13
 
 ### Added
