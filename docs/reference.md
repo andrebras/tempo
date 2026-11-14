@@ -19,7 +19,7 @@ Commands for Claude:
 | `tempo archive` | Archive the answered questions now (they also archive by themselves 7 days after their latest answer) |
 | `tempo set-next <n>` | Continue numbering from an older list |
 | `tempo inbox` | Print answers and follow-ups Claude hasn't seen yet. `--all-projects` shows every project's without marking them seen |
-| `tempo wait` | Wait until you answer or follow up, then print it. `--timeout 1800` stops after that many seconds (`0` or none: wait forever); `--interval 2` sets how often it looks |
+| `tempo wait` | Wait until you answer or follow up, then print it. `--timeout 1800` stops after that many seconds (`0` or none: wait forever); `--interval 2` sets how often it looks. The hooks run their own wait, so Claude no longer needs it |
 
 Commands for you:
 
@@ -60,13 +60,20 @@ text early, and the lines after it run as shell commands.
 
 ## Hooks
 
-Hooks are small commands that Claude Code runs at fixed moments of a session. Tempo uses three:
+Hooks are small commands that Claude Code runs at fixed moments of a session. Tempo uses these:
 
 | Hook | When | What it does |
 | --- | --- | --- |
-| SessionStart | A session starts | Tells Claude how to use Tempo and lists the project's open questions. Starts the page if you turned that on. Until `tempo` is in your shell, asks once to run `/tempo:install` |
+| SessionStart | A session starts | Tells Claude how to use Tempo and lists the project's open questions. Starts the page if you turned that on. Until `tempo` is in your shell, asks once to run `/tempo:install`. Also starts the wait (below) |
 | UserPromptSubmit | You send a message | Adds the answers and follow-ups Claude hasn't seen yet |
-| Stop | Claude finishes a reply | Sends Claude back to work, at most once per reply: to read a new answer, to record a question it asked you in chat, to answer a follow-up waiting more than five minutes, or to start a `tempo wait` |
+| Stop | Claude finishes a reply | Sends Claude back to work, at most once per reply: to read a new answer, to record a question it asked you in chat, or to answer a follow-up waiting more than five minutes. Also starts the wait (below) |
+
+**The wait** (`tempo hook wait`) runs in the background while the project has open
+questions, one per project however many sessions are open. As soon as you answer or follow
+up, it exits and Claude Code wakes the session, even an idle one, with what you wrote. If
+nothing comes, it ends quietly after a week without waking anyone, and the next reply that
+ends starts a new one. It also ends when its session closes. It is an `asyncRewake` hook:
+Claude Code wakes Claude only when such a hook exits with code 2.
 
 Each answer is delivered once, and only to sessions of its own project: the folder Claude Code
 started the session in. Long lists are cut to fit what Claude Code shows of a hook; `tempo

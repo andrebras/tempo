@@ -230,21 +230,22 @@ the theme, font and project names in Settings, where you can also merge two proj
  Claude ──tempo add / context / reword──▶  SQLite  ◀──answer / follow-up── sidebar / tui / page / tempo answer
    ▲                                          │
    ├──── hook on your next message ───────────┤
-   ├──── tempo wait (running in background) ──┤
+   ├──── hook waiting in the background ──────┤
    └──── hook when a reply ends ──────────────┘
 ```
 
 Claude writes questions with the bundled `tempo` command, following the bundled skill. Tempo
-uses three hooks, small commands that Claude Code runs at fixed moments of a session.
+uses hooks, small commands that Claude Code runs at fixed moments of a session.
 
 Your answers reach Claude in one of three ways: a hook adds them before Claude reads your
-next message; a `tempo wait` that Claude keeps running in the background wakes it as soon as
-you answer; or, when Claude finishes a reply, a hook hands them over so Claude carries on.
+next message; a hook that waits in the background wakes it as soon as you answer, even
+when the session is idle; or, when Claude finishes a reply, a hook hands them over so
+Claude carries on.
 
 Each answer is delivered once, and only to sessions of its own project. The slash commands
 save the answer already delivered, and Claude reads it straight from their output. The hook
 at the end of a reply also sends Claude back when it asked you something in chat without
-recording it, or when no `tempo wait` is running. More in [Hooks](docs/reference.md#hooks);
+recording it. More in [Hooks](docs/reference.md#hooks);
 commands, settings and environment variables are in [docs/reference.md](docs/reference.md).
 
 ## Security

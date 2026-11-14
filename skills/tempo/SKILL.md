@@ -87,17 +87,12 @@ Answers and follow-ups reach you three ways, wherever the user gave them (the pa
 terminal or `tempo tui`):
 
 1. **On the user's next message**: the UserPromptSubmit hook adds them to your context.
-2. **While you keep working**: after asking, start `tempo wait --timeout 1800` with the Bash
-   tool's `run_in_background` option. It exits as soon as the user answers or follows up,
-   which wakes you with what they wrote, or after 30 minutes with "Nothing new from the
-   user." Start it again after either, while questions are still open, so no wait outlives
-   the session by long. Run only one wait per session.
+2. **While the session is idle**: while the project has open questions, Tempo's hooks keep a
+   wait running in the background, and it wakes you with what the user wrote as soon as they
+   answer or follow up. You don't start it, and you don't need `tempo wait`.
 3. **When a reply ends**: the Stop hook hands you anything new and sends you back once to
    deal with it. If a follow-up reached you more than five minutes ago and you haven't
-   answered it in the question, it sends you back once to answer it. If the project has
-   open questions and no `tempo wait` is running for it,
-   it sends you back once to start one. A running wait counts for every session in the
-   same project.
+   answered it in the question, it sends you back once to answer it.
 
 An answer whose note asks something comes with a line saying so: reply in the question with
 `tempo context` (a reword would reopen the answered question).
