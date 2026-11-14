@@ -157,7 +157,7 @@ class HooksEndToEndTest(unittest.TestCase):
         self.assertIn("`tempo reword 1 --context`", reason)
         self.assertEqual(self.stop(active=True), "")
         self.tempo("reword", "1", "--note", "Answered the follow-up", "--context", "Docs only.")
-        # Answered, so it is not raised again (the hook may still ask for a wait).
+        # Answered, so it is not raised again.
         self.assertNotIn("What is left?", self.stop())
 
 

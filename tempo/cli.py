@@ -300,7 +300,7 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
 def _run_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Run by Claude Code and by Tempo itself: the hooks and the page."""
     hook = commands.add_parser("hook", help="Claude Code hook entry point (reads JSON on stdin)")
-    hook.add_argument("event", choices=["session-start", "user-prompt-submit", "stop"])
+    hook.add_argument("event", choices=["session-start", "user-prompt-submit", "stop", "wait"])
     hook.add_argument("--port", type=int, default=_port())
     hook.set_defaults(run=run_hook)
 
@@ -458,11 +458,24 @@ def run_wait(args: argparse.Namespace) -> int:
     # project renamed or joined in Settings while the wait runs is followed.
     path = None if named else folder_path(project_folder())
     project = _folder_project(path) if path else named
-    deadline = time.time() + args.timeout if args.timeout else None
-    # The session's shell. When it is gone, the wait is an orphan: news it took would
-    # reach nobody, and could be meant for a later session in the same project.
+    text = wait_for_news(project, path, args.timeout, args.interval)
+    if text is not None:
+        print(text or "Nothing new from the user.")
+    return 0
+
+
+def wait_for_news(
+    project: str | None, path: str | None, timeout: float, interval: float, limit: int | None = None
+) -> str | None:
+    """Wait until the user answers or follows up, and return it, marked delivered. Return
+    "" after timeout seconds (0: never), and None once the session is gone. With a path,
+    the project is that folder's, looked up on every check."""
+    deadline = time.time() + timeout if timeout else None
+    # The session's shell, or Claude Code for a wait a hook started. When it is gone, the
+    # wait is an orphan: news it took would reach nobody, and could be meant for a later
+    # session in the same project.
     parent = os.getppid()
-    # A marker tells the Stop hook that a wait is running for this project.
+    # A marker tells the hooks that a wait is running for this project.
     marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
     _write_marker(marker, project)
     try:
@@ -472,15 +485,13 @@ def run_wait(args: argparse.Namespace) -> int:
                 project = current
                 _write_marker(marker, project)
             if os.getppid() != parent:
-                return 0
-            text = take_inbox(project)
+                return None
+            text = take_inbox(project, limit)
             if text:
-                print(text)
-                return 0
+                return text
             if deadline and time.time() >= deadline:
-                print("Nothing new from the user.")
-                return 0
-            time.sleep(args.interval)
+                return ""
+            time.sleep(interval)
     finally:
         with contextlib.suppress(OSError):
             os.remove(marker)
@@ -1013,6 +1024,8 @@ def wait_running(project: str) -> bool:
         else:
             with contextlib.suppress(OSError):
                 os.remove(path)
+    # The hooks' wait asks before it leaves its own marker, so it must not count itself.
+    marked.add(os.getpid())
     unmarked = {pid: command for pid, command in (waits or {}).items() if pid not in marked}
     return running or any(
         _unmarked_project(pid, command) in (None, project) for pid, command in unmarked.items()
@@ -1076,10 +1089,10 @@ def _process_cwd(pid: int) -> str | None:
 
 
 # How a Tempo command shows in ps: bin/tempo runs `python3 /…/tempo/__main__.py wait …`
-# (older releases ran `python3 -m tempo wait …`), and start_server runs
-# `python3 -m tempo serve …`.
+# (older releases ran `python3 -m tempo wait …`), the hooks' wait runs `… hook wait`, and
+# start_server runs `python3 -m tempo serve …`.
 TEMPO_COMMAND = r"(?:^|\s)(?:-m tempo|\S*/tempo/__main__\.py) %s(?:\s|$)"
-WAIT_COMMAND = re.compile(TEMPO_COMMAND % "wait")
+WAIT_COMMAND = re.compile(TEMPO_COMMAND % "(?:hook )?wait")
 SERVE_COMMAND = re.compile(TEMPO_COMMAND % "serve")
 
 
@@ -1128,6 +1141,8 @@ def run_hook(args: argparse.Namespace) -> int:
     if not isinstance(payload, dict):
         payload = {}
     cwd = project_folder(payload)
+    if args.event == "wait":
+        return hook_wait(cwd)
     if args.event == "stop":
         reason, project, outcome = stop_outcome(payload, cwd)
         log.write("hook", args.event, project, outcome)
@@ -1178,6 +1193,48 @@ def run_hook(args: argparse.Namespace) -> int:
             json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}})
         )
     return 0
+
+
+# How long a wait started by a hook runs at most, in seconds: a minute less than its
+# timeout in hooks.json (a week), so it ends quietly before Claude Code stops it.
+HOOK_WAIT_SECONDS = 7 * 24 * 3600 - 60
+
+
+def hook_wait(cwd: str) -> int:
+    """The wait Claude Code runs in the background (asyncRewake) when a session starts and
+    when a reply ends, while the project has open questions. Exit code 2 wakes Claude, even
+    an idle session, and shows it stderr; exit code 0 ends quietly. So it ends with 2 only
+    when the user answered or followed up, and with 0 when another wait already covers the
+    project, when the session is gone, or after HOOK_WAIT_SECONDS."""
+    project = "-"
+    try:
+        named = setting("PROJECT")
+        path = None if named else folder_path(cwd)
+        found = _folder_project(path) if path else named
+        if not found:
+            # A folder with no name, such as "/", belongs to no project.
+            log.write("hook", "wait", "-", "quiet: no project")
+            return 0
+        project = found
+        with Store(connect()) as store:
+            questions = store.list(project, "open")
+        if not questions:
+            log.write("hook", "wait", project, "quiet: no open questions")
+            return 0
+        if wait_running(project):
+            log.write("hook", "wait", project, "quiet: a wait is running")
+            return 0
+        log.write("hook", "wait", project, "waiting")
+        text = wait_for_news(project, path, HOOK_WAIT_SECONDS, 2.0, limit=HOOK_TEXT_LIMIT)
+    except Exception as error:
+        log.write("hook", "wait", project, "error: %s" % error)
+        return 0
+    if not text:
+        log.write("hook", "wait", project, "ended: session gone" if text is None else "ended")
+        return 0
+    log.write("hook", "wait", project, "woke the session")
+    print(text, file=sys.stderr)
+    return 2
 
 
 def session_note(project: str, port: int, limit: int | None = None) -> str:
@@ -1333,9 +1390,9 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
     a short outcome for the log.
 
     In order: the user's new answers and follow-ups (handed over and marked delivered),
-    a question asked only in chat, follow-ups Claude was given a while ago and has not
-    answered, then open questions with no `tempo wait` running to bring the answers
-    back. Blocks at most once per reply (stop_hook_active), and any
+    a question asked only in chat, then follow-ups Claude was given a while ago and has
+    not answered. Answers that come later wake the session through the hooks' wait (see
+    hook_wait). Blocks at most once per reply (stop_hook_active), and any
     error lets the reply end, so the hook can never trap a session.
     """
     if payload.get("stop_hook_active"):
@@ -1359,15 +1416,6 @@ def stop_outcome(payload: dict[str, Any], cwd: str) -> tuple[str | None, str, st
             if unanswered:
                 reason = unanswered_note(store, unanswered, page)
                 return reason, project, "blocked: unanswered follow-ups %d" % len(unanswered)
-            questions = store.list(project, "open")
-        if questions and not wait_running(project):
-            reason = (
-                "%s has open questions in Tempo, but no `tempo wait` is running, so answers"
-                "%s would not reach you until the user writes in chat. Start"
-                " `tempo wait --timeout 1800` with the Bash tool's run_in_background option,"
-                " then end the reply." % (project, " from the page" if page else "")
-            )
-            return reason, project, "blocked: no wait"
     except Exception as error:
         return None, project, "error: %s" % error
     return None, project, "let through"
@@ -1554,9 +1602,9 @@ def run_serve(args: argparse.Namespace) -> int | None:
 # Shared
 
 
-def take_inbox(project: str | None) -> str:
+def take_inbox(project: str | None, limit: int | None = None) -> str:
     """Return the user's undelivered answers and follow-ups as text, marking them seen."""
-    return deliver_inbox(project)[0]
+    return deliver_inbox(project, limit)[0]
 
 
 def deliver_inbox(project: str | None, limit: int | None = None) -> tuple[str, int]:

@@ -40,6 +40,7 @@ def result(tool_id, output, error=False):
 
 # How a `tempo wait` process started by bin/tempo shows in ps.
 WAIT = "/usr/bin/python3 /plugin/tempo/__main__.py wait --timeout 1800"
+HOOK_WAIT = "/usr/bin/python3 /plugin/tempo/__main__.py hook wait"
 
 
 def run(*argv, stdin=""):
@@ -824,20 +825,15 @@ class CliTest(DatabaseTest):
         self.assertIn("`tempo context 2`", continued(self.stop(*reply)))
         self.assertIn("hook stop demo blocked: unanswered follow-ups 1", self.hook_log())
 
-    def test_stop_asks_for_a_wait_while_questions_are_open(self):
+    def test_stop_no_longer_asks_for_a_wait_while_questions_are_open(self):
+        # The hooks start the wait themselves, so Claude never has to.
         reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
-        self.assertEqual(self.stop(*reply), "")
         self.add()
-        out = continued(self.stop(*reply))
-        self.assertIn("tempo wait --timeout 1800", out)
-        self.assertIn("run_in_background", out)
-        self.assertEqual(self.stop(*reply, active=True), "")
-        self.marker(os.getpid())
         self.assertEqual(self.stop(*reply), "")
 
     def test_stop_lets_the_reply_end_on_any_error(self):
         self.add()
-        with mock.patch.object(cli, "wait_running", side_effect=RuntimeError):
+        with mock.patch.object(cli, "deliver_inbox", side_effect=RuntimeError):
             self.assertEqual(run("hook", "stop", stdin="{}")[1], "")
 
     def test_hooks_never_block_the_session_on_a_tempo_error(self):
@@ -882,7 +878,7 @@ class CliTest(DatabaseTest):
                 "hook user-prompt-submit demo nothing new",
                 "hook user-prompt-submit demo delivered 1",
                 "hook stop demo blocked: unrecorded question",
-                "hook stop demo blocked: no wait",
+                "hook stop demo let through",
                 "hook stop - let through: already sent back once",
                 "hook stop - quiet: TEMPO_IN_THREAD",
                 "hook session-start demo error: broken",
@@ -1003,7 +999,7 @@ class CliTest(DatabaseTest):
     def test_wait_leaves_a_marker_while_it_runs(self):
         seen = []
 
-        def inbox(project):
+        def inbox(project, limit=None):
             seen.append(cli.wait_running("demo"))
             return "Answered"
 
@@ -1052,6 +1048,48 @@ class CliTest(DatabaseTest):
             code, out, _ = run("wait", "--timeout", "5", "--interval", "0.1")
         self.assertEqual((code, out), (0, ""))
         self.assertEqual(len(self.store.undelivered("demo")), 1)
+
+    def test_the_hooks_wait_wakes_claude_only_with_news(self):
+        self.add()
+        # The wait runs in this process, and has no marker yet when it looks for other
+        # waits, so it must not count itself.
+        self.waits[os.getpid()] = HOOK_WAIT
+
+        def meanwhile(seconds):
+            self.store.follow_up("demo", 1, "Hm?")
+
+        with mock.patch.object(cli.time, "sleep", meanwhile):
+            code, out, err = run("hook", "wait", stdin="{}")
+        # Exit code 2 wakes Claude and shows it stderr.
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("demo Q1 (Which way?) asks for more: Hm?", err)
+        self.assertEqual([n for n in os.listdir(self.tmp.name) if n.startswith("wait-")], [])
+        self.assertIn("hook wait demo woke the session", self.hook_log())
+
+    def test_the_hooks_wait_ends_quietly_after_its_timeout(self):
+        self.add()
+        clock = FakeClock()
+        with (
+            mock.patch.object(cli, "HOOK_WAIT_SECONDS", 4),
+            mock.patch.object(cli.time, "time", clock.time),
+            mock.patch.object(cli.time, "sleep", clock.sleep),
+        ):
+            self.assertEqual(run("hook", "wait", stdin="{}"), (0, "", ""))
+        self.assertEqual(clock.slept, [2.0] * 2)
+        self.assertEqual(self.hook_log(), ["hook wait demo waiting", "hook wait demo ended"])
+
+    def test_the_hooks_wait_ends_at_once_with_nothing_to_wait_for(self):
+        with mock.patch.object(cli.time, "sleep", side_effect=AssertionError("waited")):
+            # No open questions.
+            self.assertEqual(run("hook", "wait", stdin="{}"), (0, "", ""))
+            # Another wait already covers the project.
+            self.add()
+            self.marker(4242)
+            self.assertEqual(run("hook", "wait", stdin="{}"), (0, "", ""))
+        self.assertEqual(
+            self.hook_log(),
+            ["hook wait demo quiet: no open questions", "hook wait demo quiet: a wait is running"],
+        )
 
     def test_wait_follows_its_folder_when_the_project_is_renamed(self):
         del os.environ["TEMPO_PROJECT"]
@@ -1215,10 +1253,6 @@ class CliTest(DatabaseTest):
         _, out, _ = run("hook", "user-prompt-submit", stdin="{}")
         context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
         self.assertTrue(context.startswith("New from the user in Tempo:"), context)
-        self.add()
-        reply = [("user", "Go"), ("assistant", [{"type": "text", "text": "Done."}])]
-        reason = continued(self.stop(*reply))
-        self.assertIn("so answers would not reach you", reason)
 
     def test_with_the_page_off_a_question_number_counts_as_its_link(self):
         self.add()
@@ -1717,9 +1751,11 @@ class WaitProcessesTest(unittest.TestCase):
 
     def test_lists_the_processes_running_tempo_wait(self):
         wait = self.start("-m", "tempo", "wait", "--timeout", "1800")
+        hook = self.start("/plugin/tempo/__main__.py", "hook", "wait")
         other = self.start("-m", "tempo", "serve")
         waits = cli._wait_processes()
         self.assertIn("-m tempo wait --timeout 1800", waits[wait.pid])
+        self.assertIn("/plugin/tempo/__main__.py hook wait", waits[hook.pid])
         self.assertNotIn(other.pid, waits)
         self.assertNotIn(os.getpid(), waits)
 

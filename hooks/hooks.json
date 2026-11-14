@@ -7,6 +7,12 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/tempo hook session-start",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/tempo hook wait",
+            "asyncRewake": true,
+            "timeout": 604800
           }
         ]
       }
@@ -29,6 +35,12 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/tempo hook stop",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/tempo hook wait",
+            "asyncRewake": true,
+            "timeout": 604800
           }
         ]
       }
