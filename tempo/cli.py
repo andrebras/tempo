@@ -458,11 +458,24 @@ def run_wait(args: argparse.Namespace) -> int:
     # project renamed or joined in Settings while the wait runs is followed.
     path = None if named else folder_path(project_folder())
     project = _folder_project(path) if path else named
-    deadline = time.time() + args.timeout if args.timeout else None
-    # The session's shell. When it is gone, the wait is an orphan: news it took would
-    # reach nobody, and could be meant for a later session in the same project.
+    text = wait_for_news(project, path, args.timeout, args.interval)
+    if text is not None:
+        print(text or "Nothing new from the user.")
+    return 0
+
+
+def wait_for_news(
+    project: str | None, path: str | None, timeout: float, interval: float, limit: int | None = None
+) -> str | None:
+    """Wait until the user answers or follows up, and return it, marked delivered. Return
+    "" after timeout seconds (0: never), and None once the session is gone. With a path,
+    the project is that folder's, looked up on every check."""
+    deadline = time.time() + timeout if timeout else None
+    # The session's shell, or Claude Code for a wait a hook started. When it is gone, the
+    # wait is an orphan: news it took would reach nobody, and could be meant for a later
+    # session in the same project.
     parent = os.getppid()
-    # A marker tells the Stop hook that a wait is running for this project.
+    # A marker tells the hooks that a wait is running for this project.
     marker = os.path.join(os.path.dirname(_db_path()), "wait-%d.json" % os.getpid())
     _write_marker(marker, project)
     try:
@@ -472,15 +485,13 @@ def run_wait(args: argparse.Namespace) -> int:
                 project = current
                 _write_marker(marker, project)
             if os.getppid() != parent:
-                return 0
-            text = take_inbox(project)
+                return None
+            text = take_inbox(project, limit)
             if text:
-                print(text)
-                return 0
+                return text
             if deadline and time.time() >= deadline:
-                print("Nothing new from the user.")
-                return 0
-            time.sleep(args.interval)
+                return ""
+            time.sleep(interval)
     finally:
         with contextlib.suppress(OSError):
             os.remove(marker)
@@ -1554,9 +1565,9 @@ def run_serve(args: argparse.Namespace) -> int | None:
 # Shared
 
 
-def take_inbox(project: str | None) -> str:
+def take_inbox(project: str | None, limit: int | None = None) -> str:
     """Return the user's undelivered answers and follow-ups as text, marking them seen."""
-    return deliver_inbox(project)[0]
+    return deliver_inbox(project, limit)[0]
 
 
 def deliver_inbox(project: str | None, limit: int | None = None) -> tuple[str, int]:

@@ -1003,7 +1003,7 @@ class CliTest(DatabaseTest):
     def test_wait_leaves_a_marker_while_it_runs(self):
         seen = []
 
-        def inbox(project):
+        def inbox(project, limit=None):
             seen.append(cli.wait_running("demo"))
             return "Answered"
 
