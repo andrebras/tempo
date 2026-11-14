@@ -1005,9 +1005,9 @@ def _write_marker(marker: str, project: str | None) -> None:
 
 
 def wait_running(project: str) -> bool:
-    """Whether a `tempo wait` covering the project is running. Markers left by waits
-    that were killed are removed, and so are those whose pid has since been given to a
-    process that is not a wait.
+    """Whether a wait covering the project is running, the hooks' or a `tempo wait`.
+    Markers left by waits that were killed are removed, and so are those whose pid has
+    since been given to a process that is not a wait.
 
     A wait that left no marker here (one from an install older than markers, or one
     whose database, and so its markers, are in another folder) counts for the project it
@@ -1108,8 +1108,8 @@ SERVE_COMMAND = re.compile(TEMPO_COMMAND % "serve")
 
 
 def _wait_processes() -> dict[int, str] | None:
-    """The `tempo wait` processes running, as their commands by pid, or None when ps
-    cannot be run."""
+    """The waits running, from the hooks or `tempo wait`, as their commands by pid, or
+    None when ps cannot be run."""
     try:
         # ps is looked up on PATH on purpose; the arguments are fixed and there is no shell.
         listing = subprocess.run(
