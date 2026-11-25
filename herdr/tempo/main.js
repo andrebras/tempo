@@ -33,10 +33,11 @@ const SHOWN_MS = 4000;
 const HIDDEN_MS = 30000;
 // The newest question already announced, shared so copies and reloads never repeat a toast.
 const ANNOUNCED = "tempo.announced";
-// Text sizes follow Herdr's interface size (Settings → Look), as its own panels do:
-// size(0) is that size, steps above or below it for titles and labels.
+// Text sizes follow the terminal font size (Settings → Look → Terminal font), the one
+// size Herdr lets you change: a question's text is that size (size(1)), the list and the
+// thread one step smaller (size(0)), labels two, the title one larger.
 function size(step) {
-  return (settings()?.ui_font_size ?? 13) + step;
+  return (settings()?.font_size ?? 14) - 1 + step;
 }
 
 // This mod's block in Herdr's side panel.
@@ -344,7 +345,7 @@ export default class Tempo extends View {
               .child(div().text_color(t.accent).child(q.label))
               .when(Boolean(q.goal), (el) => el.child(div().truncate().child(q.goal))),
           )
-          .child(div().text_size(size(3)).font_semibold().child(q.title)),
+          .child(div().text_size(size(2)).font_semibold().child(q.title)),
       )
       .when(Boolean(q.waiting), (el) =>
         el.child(
