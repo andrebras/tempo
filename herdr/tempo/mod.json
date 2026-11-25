@@ -1,0 +1,21 @@
+{
+  "place": "right",
+  "size": 300,
+  "title": "Tempo",
+  "palette": [
+    {
+      "title": "Tempo: show the questions beside this tab",
+      "command": "pane.split",
+      "args": {
+        "direction": "right",
+        "mod": "tempo"
+      },
+      "words": "questions"
+    },
+    {
+      "title": "Tempo: answer the next open question",
+      "command": "tempo.open",
+      "words": "questions"
+    }
+  ]
+}
