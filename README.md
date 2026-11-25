@@ -179,13 +179,11 @@ tempo install --herdr
 ```
 
 It copies the panel into Herdr's mods (`~/.config/herdr-app/mods/tempo`, or the folder
-`HERDR_APP_HOME` names). In Herdr, open the command palette and pick "Tempo: show the
-questions beside this tab"; you can move the pane like any other. The `–` in its header
-collapses it to a narrow strip with the count, and a click on the strip brings it back. In a
-Herdr whose tab bar shows mods' buttons (`tab_button` in a mod's `mod.json`), a Questions
-button with the count opens the pane, and collapses or expands it. After a Tempo update, the
-next Claude session refreshes the copy, and Herdr reloads the panel. A copy you edited is
-never replaced.
+`HERDR_APP_HOME` names). It sits in Herdr's side panel, beside Files and Changes: the Tempo
+button in the tab bar shows and hides it, and so does "Tempo: show the questions" in the
+command palette. This needs a Herdr that puts mods in its side panel (`panel` in a mod's
+`mod.json`). After a Tempo update, the next Claude session refreshes the copy, and Herdr
+reloads the panel. A copy you edited is never replaced.
 
 ### Commands
 

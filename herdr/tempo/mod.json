@@ -1,31 +1,25 @@
 {
-  "place": "right",
-  "size": 300,
+  "place": "none",
   "title": "Tempo",
+  "panel": {
+    "title": "Tempo",
+    "icon": "icon.svg"
+  },
   "palette": [
     {
-      "title": "Tempo: show the questions beside this tab",
-      "command": "pane.split",
+      "title": "Tempo: show the questions",
+      "command": "layout.select",
       "args": {
-        "direction": "right",
-        "mod": "tempo"
+        "stack": "panel-body",
+        "child": "panel-tempo",
+        "show": true
       },
-      "words": "questions"
+      "words": "questions sidebar panel"
     },
     {
       "title": "Tempo: show the next open question",
       "command": "tempo.open",
       "words": "questions"
-    },
-    {
-      "title": "Tempo: collapse or expand the questions",
-      "command": "tempo.toggle",
-      "words": "questions hide"
     }
-  ],
-  "tab_button": {
-    "title": "Questions",
-    "icon": "icon.svg",
-    "toggle": "toggle"
-  }
+  ]
 }
