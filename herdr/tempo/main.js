@@ -21,6 +21,7 @@ import {
   notify,
   panes,
   setShared,
+  settings,
   shared,
   spaces,
   theme,
@@ -32,6 +33,12 @@ const SHOWN_MS = 4000;
 const HIDDEN_MS = 30000;
 // The newest question already announced, shared so copies and reloads never repeat a toast.
 const ANNOUNCED = "tempo.announced";
+// Text sizes follow Herdr's interface size (Settings → Look), as its own panels do:
+// size(0) is that size, steps above or below it for titles and labels.
+function size(step) {
+  return (settings()?.ui_font_size ?? 13) + step;
+}
+
 // This mod's block in Herdr's side panel.
 const PANEL = "panel-tempo";
 export default class Tempo extends View {
@@ -231,7 +238,7 @@ export default class Tempo extends View {
       .bg(t.background)
       .border_1()
       .border_color(t.border)
-      .text_size(13)
+      .text_size(size(0))
       .text_color(t.foreground)
       .child(this.header(t))
       .child(body);
@@ -268,7 +275,7 @@ export default class Tempo extends View {
           .min_w(0)
           .truncate()
           .text_right()
-          .text_size(12)
+          .text_size(size(-1))
           .text_color(t.dim)
           .child(this.open ? `Q${this.open.number}` : (this.mine?.project ?? "")),
       );
@@ -301,7 +308,7 @@ export default class Tempo extends View {
     else if (!this.tempo || !this.mine) text = cwd ? "Reading…" : "This space isn't on this computer.";
     else if (mine.length === 0) text = "No open questions here.";
     if (text === null) return [];
-    return [div().px(4).py(6).text_size(12).text_color(t.muted).child(text)];
+    return [div().px(4).py(6).text_size(size(-1)).text_color(t.muted).child(text)];
   }
 
   row(t, q) {
@@ -332,12 +339,12 @@ export default class Tempo extends View {
           .child(
             h_flex()
               .gap(6)
-              .text_size(11)
+              .text_size(size(-1))
               .text_color(t.dim)
               .child(div().text_color(t.accent).child(q.label))
               .when(Boolean(q.goal), (el) => el.child(div().truncate().child(q.goal))),
           )
-          .child(div().text_size(14).font_semibold().child(q.title)),
+          .child(div().text_size(size(3)).font_semibold().child(q.title)),
       )
       .when(Boolean(q.waiting), (el) =>
         el.child(
@@ -346,7 +353,7 @@ export default class Tempo extends View {
             .py(6)
             .rounded(6)
             .bg(t.raised)
-            .text_size(12)
+            .text_size(size(-1))
             .text_color(t.working)
             .child("Waiting on Claude to answer your follow-up."),
         ),
@@ -354,7 +361,7 @@ export default class Tempo extends View {
       .child(
         TextView.markdown(`ctx-${q.project}-${q.number}-${q.version}`, q.context ?? "")
           .selectable(true)
-          .text_size(12.5)
+          .text_size(size(1))
           .text_color(t.foreground),
       )
       .child(
@@ -371,7 +378,7 @@ export default class Tempo extends View {
           .border_1()
           .border_color(t.input)
           .bg(t.background)
-          .text_size(12.5)
+          .text_size(size(1))
           .text_color(t.foreground),
       )
       .child(
@@ -386,7 +393,7 @@ export default class Tempo extends View {
       )
       .child(
         div()
-          .text_size(11.5)
+          .text_size(size(-1))
           .text_color(t.dim)
           .child("Pick an option to answer. To send only a note, use Ask for more context: the question stays open."),
       )
@@ -415,7 +422,7 @@ export default class Tempo extends View {
       .child(div().flex_none().text_color(t.accent).child(`(${o.letter})`))
       .child(div().flex_1().min_w(0).child(o.text))
       .when(recommended, (el) =>
-        el.child(div().flex_none().text_size(11).text_color(t.done).child("recommended")),
+        el.child(div().flex_none().text_size(size(-1)).text_color(t.done).child("recommended")),
       );
   }
 
@@ -431,7 +438,7 @@ export default class Tempo extends View {
       .items_center()
       .rounded(8)
       .font_medium()
-      .text_size(12.5)
+      .text_size(size(1))
       .when(primary, (el) => el.bg(on ? t.solid : t.raised).text_color(on ? t.solid_foreground : t.dim))
       .when(!primary, (el) =>
         el
@@ -461,11 +468,11 @@ export default class Tempo extends View {
       .py(6)
       .rounded(6)
       .bg(t.surface)
-      .text_size(12)
+      .text_size(size(0))
       .child(
         h_flex()
           .gap(6)
-          .text_size(11)
+          .text_size(size(-1))
           .text_color(t.dim)
           .child(who)
           .child(e.created_at.slice(0, 16).replace("T", " ")),
@@ -534,5 +541,5 @@ function groupBy(items, key) {
 }
 
 function heading(t, text) {
-  return div().px(2).pt(6).text_size(11).text_color(t.dim).truncate().child(text);
+  return div().px(2).pt(6).text_size(size(-1)).text_color(t.dim).truncate().child(text);
 }
