@@ -68,7 +68,7 @@ export default class Tempo extends View {
     const [name, number, ...rest] = command.split(":");
     if (name !== "open") return;
     if (number) return this.show(rest.join(":"), Number(number), cx);
-    const first = this.mine?.questions[0] ?? this.all[0];
+    const first = this.mine?.questions[0];
     if (first) return this.show(first.project, first.number, cx);
     notify({ title: "Tempo", body: "No open questions.", level: "info", timeout: 3000 });
   }
@@ -119,13 +119,16 @@ export default class Tempo extends View {
     const mark = shared(ANNOUNCED);
     if (typeof mark === "string") {
       const fresh = all.filter((q) => q.created_at > mark);
+      // Every project's new questions are announced, but only the shown project's open
+      // here when clicked: the panel shows that project alone.
       for (const q of fresh.slice(-3)) {
+        const here = q.project === this.mine?.project;
         notify({
           title: `Tempo: ${q.label} in ${q.project}`,
           body: q.title,
           level: "info",
           timeout: 8000,
-          action: { name: `tempo.open:${q.number}:${q.project}` },
+          ...(here ? { action: { name: `tempo.open:${q.number}:${q.project}` } } : {}),
         });
       }
     }
@@ -255,11 +258,6 @@ export default class Tempo extends View {
 
   list(t, cwd) {
     const mine = this.mine?.questions ?? [];
-    const project = this.mine?.project;
-    const others = groupBy(
-      this.all.filter((q) => q.project !== project),
-      (q) => q.project,
-    );
     return v_flex()
       .id("tempo-list")
       .flex_1()
@@ -273,8 +271,6 @@ export default class Tempo extends View {
           ...(goal ? [heading(t, goal)] : []),
           ...qs.map((q) => this.row(t, q)),
         ]),
-        ...(others.length ? [heading(t, "Other projects")] : []),
-        ...others.map(([name, qs]) => this.projectRow(t, name, qs)),
       ]);
   }
 
@@ -303,20 +299,6 @@ export default class Tempo extends View {
       .on_click((_e, cx) => cx.spawn((cx) => this.show(q.project, q.number, cx)))
       .child(div().flex_none().w(34).text_color(q.waiting ? t.working : t.accent).child(q.label))
       .child(div().flex_1().min_w(0).child(q.title));
-  }
-
-  projectRow(t, name, qs) {
-    return h_flex()
-      .id(`p-${name}`)
-      .gap(8)
-      .px(6)
-      .py(4)
-      .rounded(6)
-      .cursor_pointer()
-      .hover((s) => s.bg(t.hover))
-      .on_click((_e, cx) => cx.spawn((cx) => this.show(name, qs[0].number, cx)))
-      .child(div().flex_1().truncate().child(name))
-      .child(div().text_color(t.muted).child(String(qs.length)));
   }
 
   // One question in full: what it is, the options to pick from, and its thread.
