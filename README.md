@@ -95,7 +95,7 @@ Then restart open sessions (for example with `claude --continue`): a session kee
 plugin version it started with, and says so once when it is out of date.
 
 To remove it, run `tempo uninstall` first if you ran `/tempo:install`: it removes the
-`~/.local/bin/tempo` link, and prints any of Tempo's lines left in your tmux config for you
+`~/.local/bin/tempo` link and the Herdr panel, unless you edited it, and prints any of Tempo's lines left in your tmux config for you
 to remove. Then:
 
 ```bash
@@ -166,6 +166,23 @@ Answers are saved exactly as the page and `tempo answer` save them, and the scre
 changes by itself. For answered and archived questions and search, use
 [the page](#the-page-optional). Paste handling, merging projects with `s`, and a tmux popup
 for `tempo tui` are in [the reference](docs/reference.md#tempo-tui).
+
+### In Herdr
+
+[Herdr](https://herdr.dev) is a desktop app for terminals and coding agents. Tempo comes
+with a panel for it, a Herdr mod, that lists the open questions of the project in front of
+you. Click one to read it, pick an option and answer, or ask Claude for more. A new
+question shows a notice in Herdr. To install it, run:
+
+```bash
+tempo install --herdr
+```
+
+It copies the panel into Herdr's mods (`~/.config/herdr-app/mods/tempo`, or the folder
+`HERDR_APP_HOME` names). In Herdr, open the command palette and pick "Tempo: show the
+questions beside this tab"; you can move the pane like any other. After a Tempo update, the
+next Claude session refreshes the copy, and Herdr reloads the panel. A copy you edited is
+never replaced.
 
 ### Commands
 
