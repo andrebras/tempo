@@ -6,6 +6,13 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A panel for [Herdr](https://herdr.dev), the desktop app for terminals and coding agents:
+  it lists the open questions of the project in front of you, and you answer them or ask
+  Claude for more in it. `tempo install --herdr` copies it into Herdr's mods, sessions keep
+  the copy current after updates, and `tempo uninstall` removes it unless you edited it.
+
 ## [0.13.4] - 2026-11-14
 
 ### Added

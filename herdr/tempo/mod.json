@@ -1,0 +1,25 @@
+{
+  "place": "none",
+  "title": "Tempo",
+  "panel": {
+    "title": "Tempo",
+    "icon": "icon.svg"
+  },
+  "palette": [
+    {
+      "title": "Tempo: show or hide the questions",
+      "command": "layout.toggle",
+      "args": {
+        "id": "panel",
+        "stack": "panel-body",
+        "child": "panel-tempo"
+      },
+      "words": "questions sidebar panel"
+    },
+    {
+      "title": "Tempo: show the next open question",
+      "command": "tempo.open",
+      "words": "questions"
+    }
+  ]
+}

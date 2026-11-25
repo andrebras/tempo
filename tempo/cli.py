@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -290,9 +291,16 @@ def _config_commands(commands: argparse._SubParsersAction[argparse.ArgumentParse
         help="Also turn the tmux sidebar on, and print the line for your tmux config that"
         " brings it back when tmux starts",
     )
+    install.add_argument(
+        "--herdr",
+        action="store_true",
+        help="Also copy Tempo's panel into Herdr's mods; sessions keep the copy current",
+    )
     install.set_defaults(run=run_install)
     uninstall = commands.add_parser(
-        "uninstall", help="Remove the link; Tempo's lines in your tmux config are yours to remove"
+        "uninstall",
+        help="Remove the link and an unedited copy of the Herdr panel; Tempo's lines in your"
+        " tmux config are yours to remove",
     )
     uninstall.set_defaults(run=run_uninstall)
 
@@ -578,6 +586,10 @@ def run_install(args: argparse.Namespace) -> int:
     link, target = os.path.join(folder, "tempo"), stable_tempo()
     if os.path.islink(link) and os.readlink(link) == target:
         print("Already installed: %s links to %s." % (link, target))
+    elif args.herdr and _tempo_link(link):
+        # Another Tempo's link (the plugin's, say) runs tempo just as well for the panel:
+        # nothing to say about it.
+        return _install_herdr()
     elif os.path.lexists(link):
         hint = " (`tempo uninstall` does)" if _tempo_link(link) else ""
         print(
@@ -585,7 +597,9 @@ def run_install(args: argparse.Namespace) -> int:
             " `tempo install` again." % (link, _what_is(link), hint),
             file=sys.stdout if args.slash else sys.stderr,
         )
-        return 0 if args.slash else 1
+        # The panel finds tempo on PATH too, so it is set up all the same.
+        herdr = _install_herdr() if args.herdr else 0
+        return 0 if args.slash else max(1, herdr)
     else:
         if not os.path.isdir(folder):
             os.makedirs(folder)
@@ -602,12 +616,13 @@ def run_install(args: argparse.Namespace) -> int:
     # Done, so sessions stop offering /tempo:install.
     with Store(connect()) as store:
         store.set_install_hint(False)
+    herdr = _install_herdr() if args.herdr else 0
     conf = tmux_conf()
     if not (shutil.which("tmux") or os.path.lexists(conf)):
         if args.tmux:
             print("tmux isn't installed, so there is nothing to set up for it.")
-        return 0
-    code = _sidebar_on() if args.tmux else 0
+        return herdr
+    code = max(herdr, _sidebar_on() if args.tmux else 0)
     if _tmux_set_up(conf):
         if args.tmux:
             print("%s already brings the sidebar back when tmux starts." % conf)
@@ -618,6 +633,160 @@ def run_install(args: argparse.Namespace) -> int:
             % (conf, TMUX_LINE)
         )
     return code
+
+
+# Tempo's panel for Herdr, a desktop app for terminals and coding agents: a Herdr mod in
+# the repo's herdr/tempo. `tempo install --herdr` copies its files into Herdr's mods, all
+# but dot files and the editor helpers Herdr writes beside a mod it loads.
+HERDR_HELPERS = ("gpui-kit.d.ts", "jsconfig.json")
+# Written next to the copy: the version and fingerprints of what Tempo copied, so it can tell
+# its own copy, which it may replace, from one the user edited. Herdr skips dot files.
+HERDR_MARK = ".tempo-copy.json"
+
+
+def herdr_mod_folder() -> str:
+    """Where Herdr loads the panel from: the mods folder of Herdr's home, which is
+    $HERDR_APP_HOME, else herdr-app in $XDG_CONFIG_HOME or ~/.config, as Herdr finds it."""
+    home = os.environ.get("HERDR_APP_HOME") or os.path.join(
+        os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "herdr-app"
+    )
+    return os.path.join(home, "mods", "tempo")
+
+
+def _herdr_source() -> str:
+    return os.path.join(CODE_ROOT, "herdr", "tempo")
+
+
+def _fingerprints(folder: str) -> dict[str, str]:
+    """The SHA-256 of each of the mod's files in folder: every file but dot files, such as
+    Finder's .DS_Store, and Herdr's helpers, as Herdr itself counts a mod's files."""
+    found = {}
+    with contextlib.suppress(OSError):
+        for name in sorted(os.listdir(folder)):
+            path = os.path.join(folder, name)
+            if name.startswith(".") or name in HERDR_HELPERS or not os.path.isfile(path):
+                continue
+            with contextlib.suppress(OSError), open(path, "rb") as file:
+                found[name] = hashlib.sha256(file.read()).hexdigest()
+    return found
+
+
+def _herdr_copy() -> tuple[str, dict[str, Any]]:
+    """What is in Herdr's mods under Tempo's name: "missing", "ours" (exactly as Tempo
+    copied it), "edited" (Tempo's copy, changed or added to since) or "other" (not
+    Tempo's copy), with the mark Tempo wrote next to it."""
+    folder = herdr_mod_folder()
+    if not os.path.lexists(folder):
+        return "missing", {}
+    try:
+        with open(os.path.join(folder, HERDR_MARK), encoding="utf-8") as file:
+            mark = json.load(file)
+    except (OSError, ValueError):
+        return "other", {}
+    if not isinstance(mark, dict):
+        return "other", {}
+    if _fingerprints(folder) != mark.get("files"):
+        return "edited", mark
+    return "ours", mark
+
+
+def _copy_herdr_mod(old: dict[str, Any]) -> None:
+    """Copy the mod's files into Herdr's mods, each replaced in one step so Herdr, which
+    reloads a mod when its files change, never reads half a file; remove the files of the
+    old copy that the new one no longer has; then write the mark."""
+    from tempo import server
+
+    source, folder = _herdr_source(), herdr_mod_folder()
+    files = _fingerprints(source)
+    os.makedirs(folder, exist_ok=True)
+    mark = {"version": server.version(), "files": files}
+    writes = [(name, os.path.join(source, name)) for name in files] + [(HERDR_MARK, None)]
+    for name, path in writes:
+        if path is None:
+            data = (json.dumps(mark, indent=2) + "\n").encode()
+        else:
+            with open(path, "rb") as file:
+                data = file.read()
+        part = os.path.join(folder, "." + name + ".part")
+        with open(part, "wb") as file:
+            file.write(data)
+        os.replace(part, os.path.join(folder, name))
+    for name in set(old.get("files") or {}) - set(files):
+        with contextlib.suppress(OSError):
+            os.remove(os.path.join(folder, name))
+
+
+def _install_herdr() -> int:
+    """Copy the panel into Herdr's mods, or bring Tempo's copy up to date. Never replaces
+    an edited copy or someone else's mod, and does nothing without Herdr."""
+    folder = herdr_mod_folder()
+    if not os.path.isdir(os.path.dirname(os.path.dirname(folder))):
+        print(
+            "tempo: Herdr isn't set up here (%s is missing), so there is nothing to install"
+            " for it. Open Herdr once, then run `tempo install --herdr` again."
+            % os.path.dirname(os.path.dirname(folder)),
+            file=sys.stderr,
+        )
+        return 1
+    state, mark = _herdr_copy()
+    if state in ("edited", "other"):
+        what = "Tempo's panel, edited since" if state == "edited" else "not Tempo's copy"
+        print(
+            "tempo: %s is already there, %s, so it was left as it is. Remove it, then run"
+            " `tempo install --herdr` again." % (folder, what),
+            file=sys.stderr,
+        )
+        return 1
+    if state == "ours" and mark.get("files") == _fingerprints(_herdr_source()):
+        print("Herdr's panel is already installed in %s." % folder)
+        return 0
+    _copy_herdr_mod(mark)
+    print(
+        "%s Tempo's panel in %s. In Herdr, click Tempo in the tab bar, or pick \"Tempo: show"
+        ' or hide the questions" in the command palette. Sessions keep the copy current'
+        " after updates." % ("Updated" if state == "ours" else "Copied", folder)
+    )
+    return 0
+
+
+def refresh_herdr_mod() -> bool:
+    """Bring Tempo's unedited copy of the Herdr panel up to this code's, when this code
+    is not older than the one that copied it; whether it did. The SessionStart hook runs
+    it, so an update reaches Herdr. Never from a git checkout, whose panel may be half
+    done, and never makes a copy nobody asked for."""
+    from tempo import server
+
+    if os.path.exists(os.path.join(CODE_ROOT, ".git")):
+        return False
+    state, mark = _herdr_copy()
+    if state != "ours" or _older(server.version(), mark.get("version")):
+        return False
+    if mark.get("files") == _fingerprints(_herdr_source()):
+        return False
+    _copy_herdr_mod(mark)
+    return True
+
+
+def _uninstall_herdr() -> None:
+    """Remove Tempo's copy of the Herdr panel, with Herdr's helpers beside it, unless it
+    was edited or isn't Tempo's."""
+    folder = herdr_mod_folder()
+    state, mark = _herdr_copy()
+    if state == "missing":
+        return
+    if state != "ours":
+        what = "edited since Tempo copied it" if state == "edited" else "not Tempo's copy"
+        print("%s is %s, so it was left as it is." % (folder, what))
+        return
+    for name in (*mark["files"], *HERDR_HELPERS, HERDR_MARK, ".DS_Store"):
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(os.path.join(folder, name))
+    try:
+        os.rmdir(folder)
+    except OSError:
+        print("Removed Herdr's panel from %s; the folder has other files, so it stays." % folder)
+        return
+    print("Removed Herdr's panel from %s." % folder)
 
 
 def _sidebar_on() -> int:
@@ -669,8 +838,10 @@ def _tmux_set_up(conf: str) -> bool:
 
 def run_uninstall(args: argparse.Namespace) -> int:
     """Remove ~/.local/bin/tempo, but only when it is a link to a Tempo bin/tempo. The tmux
-    config is never changed: Tempo's lines left in it are printed for the user to remove."""
+    config is never changed: Tempo's lines left in it are printed for the user to remove.
+    The copy of the Herdr panel goes too, unless it was edited."""
     _report_tmux_lines()
+    _uninstall_herdr()
     link = os.path.join(os.path.expanduser(LOCAL_BIN), "tempo")
     if not os.path.lexists(link):
         print("Nothing to remove: %s isn't there." % link)
@@ -1177,6 +1348,12 @@ def run_hook(args: argparse.Namespace) -> int:
     except Exception as error:
         page = ", page not started"
         print("tempo: the page did not start: %s" % error, file=sys.stderr)
+    if args.event == "session-start":
+        try:
+            if refresh_herdr_mod():
+                page += ", herdr panel updated"
+        except Exception as error:
+            print("tempo: the Herdr panel was not updated: %s" % error, file=sys.stderr)
     project = "-"
     note = restart_note(payload.get("session_id"))
     try:

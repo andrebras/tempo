@@ -2110,3 +2110,186 @@ class InstallTest(HomeTest, DatabaseTest):
         out = run("uninstall")[1]
         self.assertEqual(out, "Removed %s, which linked to %s.\n" % (self.link, self.target))
         self.assertEqual(self.read_conf(), "set -g mouse on\n")
+
+
+class HerdrInstallTest(HomeTest, DatabaseTest):
+    """`tempo install --herdr` copies the panel into Herdr's mods; the SessionStart hook
+    keeps an unedited copy current, and uninstall removes it. With a temporary HOME."""
+
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.dict(os.environ)
+        patch.start()
+        self.addCleanup(patch.stop)
+        for name in ("TMUX", "XDG_CONFIG_HOME", "HERDR_APP_HOME"):
+            os.environ.pop(name, None)
+        os.environ["PATH"] = os.path.join(self.home, ".local", "bin") + os.pathsep + "/bin"
+        which = mock.patch.object(cli.shutil, "which", return_value=None)
+        which.start()
+        self.addCleanup(which.stop)
+        self.code_in(self.cache)
+        self.source = os.path.join(self.cache, "herdr", "tempo")
+        os.makedirs(self.source)
+        self.ship("one")
+        self.version("0.14.0")
+        self.mods = os.path.join(self.home, ".config", "herdr-app", "mods")
+        os.makedirs(self.mods)
+        self.folder = os.path.join(self.mods, "tempo")
+
+    def ship(self, text):
+        for name in ("main.js", "mod.json"):
+            self.write(os.path.join(self.source, name), "%s %s" % (name, text))
+
+    def version(self, number):
+        patch = mock.patch("tempo.server.version", return_value=number)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def write(self, path, text):
+        with open(path, "w") as file:
+            file.write(text)
+
+    def copied(self, name="main.js"):
+        with open(os.path.join(self.folder, name)) as file:
+            return file.read()
+
+    def session_start(self):
+        with mock.patch.object(cli, "start_server", return_value=True):
+            return run("hook", "session-start", stdin="{}")
+
+    def test_install_copies_the_panel_and_says_where(self):
+        code, out, err = run("install", "--herdr")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("Copied Tempo's panel in %s." % self.folder, out)
+        self.assertEqual(self.copied(), "main.js one")
+        self.assertEqual(self.copied("mod.json"), "mod.json one")
+        self.assertEqual(
+            sorted(os.listdir(self.folder)), sorted(["main.js", "mod.json", cli.HERDR_MARK])
+        )
+        self.assertEqual(
+            os.readlink(os.path.join(self.home, ".local", "bin", "tempo")),
+            os.path.join(self.marketplace, "bin", "tempo"),
+        )
+
+    def test_installing_twice_says_so_and_a_new_panel_updates_the_copy(self):
+        run("install", "--herdr")
+        self.assertIn("already installed in %s" % self.folder, run("install", "--herdr")[1])
+        self.ship("two")
+        self.assertIn("Updated Tempo's panel", run("install", "--herdr")[1])
+        self.assertEqual(self.copied(), "main.js two")
+
+    def test_herdr_app_home_picks_the_folder(self):
+        other = os.path.join(self.home, "scratch")
+        os.makedirs(other)
+        os.environ["HERDR_APP_HOME"] = other
+        self.assertEqual(run("install", "--herdr")[0], 0)
+        self.assertTrue(os.path.isfile(os.path.join(other, "mods", "tempo", "main.js")))
+        self.assertFalse(os.path.lexists(self.folder))
+
+    def test_without_herdr_nothing_is_copied(self):
+        shutil.rmtree(os.path.join(self.home, ".config", "herdr-app"))
+        code, _, err = run("install", "--herdr")
+        self.assertEqual(code, 1)
+        self.assertIn("Herdr isn't set up here", err)
+        self.assertFalse(os.path.lexists(self.folder))
+
+    def test_an_edited_copy_or_someone_elses_mod_is_left_alone(self):
+        run("install", "--herdr")
+        self.write(os.path.join(self.folder, "main.js"), "mine")
+        self.ship("two")
+        code, _, err = run("install", "--herdr")
+        self.assertEqual(code, 1)
+        self.assertIn("edited since", err)
+        self.session_start()
+        self.assertEqual(self.copied(), "mine")
+        self.assertIn("edited since Tempo copied it", run("uninstall")[1])
+        self.assertEqual(self.copied(), "mine")
+        os.remove(os.path.join(self.folder, cli.HERDR_MARK))
+        self.assertIn("not Tempo's copy", run("install", "--herdr")[2])
+
+    def test_a_file_added_beside_the_copy_counts_as_an_edit(self):
+        run("install", "--herdr")
+        self.write(os.path.join(self.folder, "extra.js"), "mine")
+        self.assertEqual(cli._herdr_copy()[0], "edited")
+
+    def test_a_dot_file_beside_the_copy_is_not_an_edit(self):
+        run("install", "--herdr")
+        self.write(os.path.join(self.folder, ".DS_Store"), "finder")
+        self.assertEqual(cli._herdr_copy()[0], "ours")
+        self.assertIn("Removed Herdr's panel", run("uninstall")[1])
+        self.assertFalse(os.path.lexists(self.folder))
+
+    def test_an_update_copies_new_files_and_removes_dropped_ones(self):
+        run("install", "--herdr")
+        self.write(os.path.join(self.source, "icon.svg"), "<svg/>")
+        os.remove(os.path.join(self.source, "mod.json"))
+        run("install", "--herdr")
+        self.assertEqual(self.copied("icon.svg"), "<svg/>")
+        self.assertFalse(os.path.exists(os.path.join(self.folder, "mod.json")))
+        self.assertEqual(cli._herdr_copy()[0], "ours")
+
+    def test_herdrs_own_helpers_beside_the_copy_are_not_an_edit(self):
+        run("install", "--herdr")
+        for name in cli.HERDR_HELPERS:
+            self.write(os.path.join(self.folder, name), "generated")
+        self.assertEqual(cli._herdr_copy()[0], "ours")
+        self.assertIn("Removed Herdr's panel", run("uninstall")[1])
+        self.assertFalse(os.path.lexists(self.folder))
+
+    def test_a_session_start_after_an_update_refreshes_the_copy(self):
+        run("install", "--herdr")
+        self.ship("two")
+        self.version("0.15.0")
+        self.session_start()
+        self.assertEqual(self.copied(), "main.js two")
+
+    def test_an_older_session_leaves_a_newer_copy(self):
+        run("install", "--herdr")
+        self.ship("old")
+        self.version("0.13.0")
+        self.session_start()
+        self.assertEqual(self.copied(), "main.js one")
+
+    def test_a_session_never_makes_a_copy_nobody_asked_for(self):
+        self.session_start()
+        self.assertFalse(os.path.lexists(self.folder))
+
+    def test_a_session_from_a_git_checkout_leaves_the_copy(self):
+        run("install", "--herdr")
+        os.mkdir(os.path.join(self.cache, ".git"))
+        self.ship("work in progress")
+        self.session_start()
+        self.assertEqual(self.copied(), "main.js one")
+
+    def test_a_refresh_that_fails_does_not_break_the_hook(self):
+        run("install", "--herdr")
+        with mock.patch.object(cli, "refresh_herdr_mod", side_effect=OSError("disk full")):
+            code, out, err = self.session_start()
+        self.assertEqual(code, 0)
+        self.assertIn("SessionStart", out)
+        self.assertIn("the Herdr panel was not updated: disk full", err)
+
+    def test_the_panel_is_copied_even_when_the_link_is_left_alone(self):
+        bin_dir = os.path.join(self.home, ".local", "bin")
+        os.makedirs(bin_dir)
+        open(os.path.join(bin_dir, "tempo"), "w").close()
+        code, out, err = run("install", "--herdr")
+        self.assertEqual(code, 1)
+        self.assertIn("is already there, a file", err)
+        self.assertIn("Copied Tempo's panel", out)
+
+    def test_another_tempos_link_is_kept_quietly_when_copying_the_panel(self):
+        # The plugin's own copy of Tempo: its bin/tempo beside its tempo package.
+        plugin = os.path.join(self.home, "plugin")
+        other = os.path.join(plugin, "bin", "tempo")
+        for path in (other, os.path.join(plugin, "tempo", "__main__.py")):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            open(path, "w").close()
+        bin_dir = os.path.join(self.home, ".local", "bin")
+        os.makedirs(bin_dir)
+        os.symlink(other, os.path.join(bin_dir, "tempo"))
+        code, out, err = run("install", "--herdr")
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+        self.assertIn("Copied Tempo's panel", out)
+        self.assertEqual(os.readlink(os.path.join(bin_dir, "tempo")), other)
