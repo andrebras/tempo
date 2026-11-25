@@ -16,6 +16,16 @@
       "title": "Tempo: show the next open question",
       "command": "tempo.open",
       "words": "questions"
+    },
+    {
+      "title": "Tempo: collapse or expand the questions",
+      "command": "tempo.toggle",
+      "words": "questions hide"
     }
-  ]
+  ],
+  "tab_button": {
+    "title": "Questions",
+    "icon": "icon.svg",
+    "toggle": "toggle"
+  }
 }

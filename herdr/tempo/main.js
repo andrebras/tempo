@@ -2,7 +2,8 @@
 // A click shows the question in this panel: its context, its options and its thread. You
 // pick an option (with an optional note) and send it, or ask Claude for more. These are the
 // person's own clicks, sent with `tempo answer` and `tempo reply`, as the page sends them.
-// A toast says when a new question arrives.
+// A toast says when a new question arrives. The header's – collapses the pane to a strip
+// with the count, and a click on the strip brings it back; `tempo.toggle` does either.
 //
 // It runs programs: `tempo list --json` every few seconds (less often while the window is
 // hidden), `tempo show --json` for the open question, and `tempo answer` or `tempo reply`
@@ -17,7 +18,9 @@ import {
   nextCommand,
   notify,
   panes,
+  run,
   setShared,
+  settings,
   shared,
   spaces,
   theme,
@@ -29,6 +32,11 @@ const SHOWN_MS = 4000;
 const HIDDEN_MS = 30000;
 // The newest question already announced, shared so copies and reloads never repeat a toast.
 const ANNOUNCED = "tempo.announced";
+// The open-question count, for a tab-bar button that shows it.
+const BADGE = "tempo.badge";
+// How wide the collapsed strip is, and below which width the pane draws as one.
+const STRIP = 44;
+const NARROW = 90;
 
 export default class Tempo extends View {
   init(_props, cx) {
@@ -41,6 +49,12 @@ export default class Tempo extends View {
     this.last = 0;
     this.open = null; // the question shown in full: { project, number, question, pick }
     this.sending = false;
+    this.width = 0; // as drawn, in window pixels
+    // The root's id is new for each load: Herdr keeps an element's last size across a
+    // reload, and would not report it to the new code.
+    this.rootId = `root-${Date.now()}`;
+    this.wide = 300; // the width to go back to when expanded
+    this.side = null; // which way the border moved to collapse it: "right" or "left"
     this.note = InputState.new({ placeholder: "Add a note (optional)" });
     this.more = InputState.new({ placeholder: "Ask Claude for more…" });
     this.more.on("submit", (_e, cx) => cx.spawn((cx) => this.followUp(cx)));
@@ -63,10 +77,13 @@ export default class Tempo extends View {
     });
   }
 
-  // "open": the shown project's first question; "open:N:project": that one.
+  // "open": the shown project's first question; "open:N:project": that one; "toggle":
+  // collapse or expand the pane.
   async command(command, cx) {
     const [name, number, ...rest] = command.split(":");
+    if (name === "toggle") return this.collapsed() ? this.expand(cx) : this.collapse(cx);
     if (name !== "open") return;
+    if (this.collapsed()) await this.expand(cx);
     if (number) return this.show(rest.join(":"), Number(number), cx);
     const first = this.mine?.questions[0];
     if (first) return this.show(first.project, first.number, cx);
@@ -88,6 +105,8 @@ export default class Tempo extends View {
         cwd !== this.mine?.cwd;
       this.all = all;
       this.mine = cwd ? { cwd, questions: mine, project: mine[0]?.project ?? null } : null;
+      const count = mine?.length ?? 0;
+      if (shared(BADGE) !== count) setShared(BADGE, count);
       this.error = null;
       if (this.open) await this.follow(cx);
       if (changed) cx.notify();
@@ -202,24 +221,117 @@ export default class Tempo extends View {
     cx.notify();
   }
 
+  collapsed() {
+    return this.width > 0 && this.width < NARROW;
+  }
+
+  // Shrink the pane to the strip by moving its border, as a drag would. Only a pane at
+  // either end of its row can: try the way that worked last, else both, and undo a move
+  // that widened it instead.
+  async collapse(cx) {
+    const pane = ownPane();
+    await this.measure(cx);
+    if (!pane || this.collapsed() || this.width <= 0) return;
+    const zoom = settings().zoom ?? 1;
+    this.wide = this.width;
+    const ways = this.side === "left" ? ["left", "right"] : ["right", "left"];
+    for (const way of ways) {
+      const before = this.width;
+      run("pane.resize", { pane: pane.pane, direction: way, px: (before - STRIP) / zoom });
+      await this.resized(cx, before);
+      if (this.width < before - 1) {
+        this.side = way;
+        return;
+      }
+      if (this.width > before + 1) {
+        const grown = this.width;
+        run("pane.resize", { pane: pane.pane, direction: opposite(way), px: (grown - before) / zoom });
+        await this.resized(cx, grown);
+      }
+    }
+    notify({
+      title: "Tempo",
+      body: "Only a pane at the left or right end of its row can collapse. Drag it to an edge first.",
+      level: "info",
+      timeout: 5000,
+    });
+  }
+
+  async expand(cx) {
+    const pane = ownPane();
+    await this.measure(cx);
+    if (!pane || !this.collapsed()) return;
+    const before = this.width;
+    run("pane.resize", {
+      pane: pane.pane,
+      direction: opposite(this.side ?? "right"),
+      px: (this.wide - before) / (settings().zoom ?? 1),
+    });
+    await this.resized(cx, before);
+  }
+
+  // A pane mod is drawn again only when it asks, so a border moved by the app leaves its
+  // measured width old: draw it once to measure it.
+  async measure(cx) {
+    cx.notify();
+    await cx.sleep(50);
+  }
+
+  // Wait, briefly, for the width to change from before, drawing again to measure it.
+  async resized(cx, before) {
+    for (let i = 0; i < 20 && Math.abs(this.width - before) <= 1; i++) await this.measure(cx);
+  }
+
   render(cx) {
     const t = theme();
     const cwd = shownFolder();
     if (this.tempo && cwd !== this.mine?.cwd && !this.busy) cx.spawn((cx) => this.refresh(cx));
-    const body = this.open ? this.detail(t) : this.list(t, cwd);
-    return v_flex()
-      .id("root")
+    const root = v_flex()
+      .id(this.rootId)
       .size_full()
       .bg(t.chrome)
       .text_size(13)
       .text_color(t.foreground)
-      .child(this.header(t))
-      .child(body);
+      .on_size_change((size, cx) => {
+        if (Math.abs(size.width - this.width) < 0.5) return;
+        this.width = size.width;
+        cx.notify();
+      });
+    if (this.collapsed()) return root.child(this.strip(t));
+    const body = this.open ? this.detail(t) : this.list(t, cwd);
+    return root.child(this.header(t)).child(body);
+  }
+
+  // The collapsed pane: a ? and the count; a click expands it.
+  strip(t) {
+    const count = this.mine?.questions.length ?? 0;
+    return v_flex()
+      .id("tempo-strip")
+      .size_full()
+      .pt(12)
+      .gap(8)
+      .items_center()
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .tooltip("Show the questions")
+      .on_click((_e, cx) => cx.spawn((cx) => this.expand(cx)))
+      .child(div().font_semibold().text_color(t.muted).child("?"))
+      .when(count > 0, (el) => el.child(badge(t, count)));
   }
 
   header(t) {
     const mine = this.mine?.questions ?? [];
     const row = h_flex().h(40).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border);
+    const hide = div()
+      .id("tempo-collapse")
+      .px(6)
+      .rounded(6)
+      .text_color(t.dim)
+      .cursor_pointer()
+      .tooltip("Collapse")
+      .hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .on_click((_e, cx) => cx.spawn((cx) => this.collapse(cx)))
+      .child("–");
     if (this.open) {
       return row
         .child(
@@ -237,23 +349,14 @@ export default class Tempo extends View {
             })
             .child("‹ Questions"),
         )
-        .child(div().flex_1())
-        .child(div().text_color(t.dim).truncate().child(this.open.project));
+        .child(div().flex_1().min_w(0).text_color(t.dim).truncate().child(this.open.project))
+        .child(hide);
     }
     return row
       .child(div().font_semibold().child("Questions"))
       .child(div().flex_1().truncate().text_color(t.muted).child(this.mine?.project ?? ""))
-      .when(mine.length > 0, (el) =>
-        el.child(
-          div()
-            .px(6)
-            .rounded(8)
-            .bg(t.blocked)
-            .text_size(11)
-            .text_color(t.solid_foreground)
-            .child(String(mine.length)),
-        ),
-      );
+      .when(mine.length > 0, (el) => el.child(badge(t, mine.length)))
+      .child(hide);
   }
 
   list(t, cwd) {
@@ -430,6 +533,23 @@ export default class Tempo extends View {
       )
       .child(div().child(what));
   }
+}
+
+function badge(t, count) {
+  return div().px(6).rounded(8).bg(t.blocked).text_size(11).text_color(t.solid_foreground).child(String(count));
+}
+
+// This mod's pane in the shown tab. Only copies on screen get clicks and commands, so it
+// is the one that got them.
+function ownPane() {
+  const tab = spaces()
+    .find((s) => s.active)
+    ?.tabs.find((tab) => tab.active);
+  return panes().find((p) => p.mod === "tempo" && p.tab === tab?.id) ?? null;
+}
+
+function opposite(way) {
+  return way === "right" ? "left" : "right";
 }
 
 // The folder of the shown tab's focused terminal pane, or of its first one; null for a
