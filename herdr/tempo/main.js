@@ -50,6 +50,7 @@ export default class Tempo extends View {
     this.mine = null; // the shown space's: { cwd, project, questions }
     this.error = null;
     this.busy = false;
+    this.seen = new Map(); // each folder's last list, shown at once when you switch back
     this.last = 0;
     this.open = null; // the question shown in full: { project, number, question, pick }
     this.sending = false;
@@ -93,8 +94,12 @@ export default class Tempo extends View {
     this.last = Date.now();
     const cwd = shownFolder();
     try {
-      const all = await tempo(this.tempo, ["list", "--json", "--all-projects"], home());
-      const mine = cwd ? await tempo(this.tempo, ["list", "--json"], cwd) : null;
+      // Both at once: each is a program start, about a quarter second.
+      const [all, mine] = await Promise.all([
+        tempo(this.tempo, ["list", "--json", "--all-projects"], home()),
+        cwd ? tempo(this.tempo, ["list", "--json"], cwd) : null,
+      ]);
+      if (cwd) this.seen.set(cwd, mine);
       this.announce(all);
       const changed =
         JSON.stringify(all) !== JSON.stringify(this.all) ||
@@ -113,6 +118,8 @@ export default class Tempo extends View {
     } finally {
       this.busy = false;
     }
+    // The space changed while this ran: read the new one now, not at the next tick.
+    if (shownFolder() !== cwd) cx.spawn((cx) => this.refresh(cx));
   }
 
   // Keep the open question current: reread it when it changed, close it once it isn't open.
@@ -227,7 +234,13 @@ export default class Tempo extends View {
   render(cx) {
     const t = theme();
     const cwd = shownFolder();
-    if (this.tempo && cwd !== this.mine?.cwd && !this.busy) cx.spawn((cx) => this.refresh(cx));
+    if (this.tempo && cwd !== this.mine?.cwd) {
+      // Another space: show its last list at once (if seen before), then read it fresh.
+      // A read already running picks the new space up when it ends.
+      const last = cwd ? this.seen.get(cwd) : undefined;
+      if (last) this.mine = { cwd, questions: last, project: last[0]?.project ?? null };
+      if (!this.busy) cx.spawn((cx) => this.refresh(cx));
+    }
     const body = this.open ? this.detail(t) : this.list(t, cwd);
     // Drawn as Files and Changes are, beside them.
     return v_flex()
