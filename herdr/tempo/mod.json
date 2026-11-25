@@ -13,7 +13,7 @@
       "words": "questions"
     },
     {
-      "title": "Tempo: answer the next open question",
+      "title": "Tempo: show the next open question",
       "command": "tempo.open",
       "words": "questions"
     }
