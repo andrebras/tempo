@@ -2277,3 +2277,19 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         self.assertEqual(code, 1)
         self.assertIn("is already there, a file", err)
         self.assertIn("Copied Tempo's panel", out)
+
+    def test_another_tempos_link_is_kept_quietly_when_copying_the_panel(self):
+        # The plugin's own copy of Tempo: its bin/tempo beside its tempo package.
+        plugin = os.path.join(self.home, "plugin")
+        other = os.path.join(plugin, "bin", "tempo")
+        for path in (other, os.path.join(plugin, "tempo", "__main__.py")):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            open(path, "w").close()
+        bin_dir = os.path.join(self.home, ".local", "bin")
+        os.makedirs(bin_dir)
+        os.symlink(other, os.path.join(bin_dir, "tempo"))
+        code, out, err = run("install", "--herdr")
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+        self.assertIn("Copied Tempo's panel", out)
+        self.assertEqual(os.readlink(os.path.join(bin_dir, "tempo")), other)

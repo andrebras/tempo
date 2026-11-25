@@ -586,6 +586,10 @@ def run_install(args: argparse.Namespace) -> int:
     link, target = os.path.join(folder, "tempo"), stable_tempo()
     if os.path.islink(link) and os.readlink(link) == target:
         print("Already installed: %s links to %s." % (link, target))
+    elif args.herdr and _tempo_link(link):
+        # Another Tempo's link (the plugin's, say) runs tempo just as well for the panel:
+        # nothing to say about it.
+        return _install_herdr()
     elif os.path.lexists(link):
         hint = " (`tempo uninstall` does)" if _tempo_link(link) else ""
         print(
