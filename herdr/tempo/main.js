@@ -11,7 +11,7 @@
 // when you send.
 
 import { View, div } from "gpui-kit";
-import { h_flex, Input, InputState, TextView, v_flex } from "gpui-base";
+import { h_flex, Textarea, TextareaState, TextView, v_flex } from "gpui-base";
 import {
   checking,
   exec,
@@ -45,9 +45,11 @@ export default class Tempo extends View {
     this.last = 0;
     this.open = null; // the question shown in full: { project, number, question, pick }
     this.sending = false;
-    this.note = InputState.new({ placeholder: "Add a note (optional)" });
-    this.more = InputState.new({ placeholder: "Ask Claude for more…" });
-    this.more.on("submit", (_e, cx) => cx.spawn((cx) => this.followUp(cx)));
+    // One note for both buttons, as on Tempo's page: it goes with the answer, or alone
+    // as a request for more context.
+    this.note = TextareaState.new({ placeholder: "A note, or what you need to know" });
+    this.note.set_auto_grow(3, 10);
+    this.note.on("change", (_e, cx) => cx.notify());
     if (checking()) return;
     cx.spawn(async (cx) => {
       this.tempo = await findTempo();
@@ -147,7 +149,6 @@ export default class Tempo extends View {
   async show(project, number, cx) {
     this.open = { project, number, question: null, pick: null };
     this.note.set_value("");
-    this.more.set_value("");
     cx.notify();
     await this.load(cx);
   }
@@ -182,8 +183,12 @@ export default class Tempo extends View {
     this.sending = false;
     if (r.code === 0) {
       notify({ title: `Answered Q${number}`, body: `(${pick}) sent to Claude.`, level: "success", timeout: 3000 });
+      // On to the project's next open question, as the page does; the list when none is left.
       this.open = null;
-      cx.spawn((cx) => this.refresh(cx));
+      this.busy = false;
+      await this.refresh(cx);
+      const next = this.mine?.questions.find((q) => q.project === project && q.number !== number);
+      if (next) await this.show(next.project, next.number, cx);
     } else {
       notify({ title: "Tempo", body: r.stderr.trim() || "The answer wasn't saved.", level: "error" });
     }
@@ -192,7 +197,7 @@ export default class Tempo extends View {
 
   // The person's own follow-up: Claude answers it in the question.
   async followUp(cx) {
-    const body = this.more.value().trim();
+    const body = this.note.value().trim();
     const { project, number } = this.open ?? {};
     if (!body || !project || this.sending) return;
     this.sending = true;
@@ -201,7 +206,7 @@ export default class Tempo extends View {
     const r = await exec(this.tempo, args, { cwd: home() }).catch((e) => ({ code: 1, stderr: String(e) }));
     this.sending = false;
     if (r.code === 0) {
-      this.more.set_value("");
+      this.note.set_value("");
       this.busy = false;
       await this.refresh(cx);
       await this.load(cx);
@@ -357,26 +362,34 @@ export default class Tempo extends View {
           .gap(4)
           .children(q.options.map((o) => this.option(t, o, o.letter === pick, o.letter === q.recommended))),
       )
-      .child(this.field(t, this.note))
+      .child(
+        Textarea.new(this.note)
+          .w_full()
+          .px(10)
+          .py(8)
+          .rounded(8)
+          .border_1()
+          .border_color(t.input)
+          .bg(t.background)
+          .text_size(12.5)
+          .text_color(t.foreground),
+      )
       .child(
         h_flex()
-          .id("tempo-send")
-          .h(32)
-          .justify_center()
-          .items_center()
-          .rounded(8)
-          .font_medium()
-          .text_size(12.5)
-          .bg(pick ? t.solid : t.raised)
-          .text_color(pick ? t.solid_foreground : t.dim)
-          .when(Boolean(pick) && !this.sending, (el) =>
-            el.cursor_pointer().hover((s) => s.opacity(0.88)),
-          )
-          .on_click((_e, cx) => cx.spawn((cx) => this.send(cx)))
-          .child(this.sending ? "Sending…" : pick ? `Answer (${pick})` : "Pick an option"),
+          .gap(8)
+          .child(this.button(t, "tempo-send", "Send answer", Boolean(pick), true, (cx) => this.send(cx)))
+          .child(
+            this.button(t, "tempo-more", "Ask for more context", Boolean(this.note.value().trim()), false, (cx) =>
+              this.followUp(cx),
+            ),
+          ),
       )
-      .child(heading(t, "Need more before deciding?"))
-      .child(this.field(t, this.more))
+      .child(
+        div()
+          .text_size(11.5)
+          .text_color(t.dim)
+          .child("Pick an option to answer. To send only a note, use Ask for more context: the question stays open."),
+      )
       .when(q.entries.length > 0, (el) =>
         el.child(heading(t, "Thread")).children(q.entries.map((e) => this.entry(t, e))),
       );
@@ -406,16 +419,32 @@ export default class Tempo extends View {
       );
   }
 
-  field(t, state) {
-    return Input.new(state)
+  // A button that does nothing while it can't act or while something is sending.
+  button(t, id, label, enabled, primary, act) {
+    const on = enabled && !this.sending;
+    return h_flex()
+      .id(id)
+      .flex_1()
       .h(32)
       .px(10)
+      .justify_center()
+      .items_center()
       .rounded(8)
-      .border_1()
-      .border_color(t.input)
-      .bg(t.background)
+      .font_medium()
       .text_size(12.5)
-      .text_color(t.foreground);
+      .when(primary, (el) => el.bg(on ? t.solid : t.raised).text_color(on ? t.solid_foreground : t.dim))
+      .when(!primary, (el) =>
+        el
+          .border_1()
+          .border_color(t.border)
+          .bg(t.surface)
+          .text_color(on ? t.foreground : t.dim),
+      )
+      .when(on, (el) => el.cursor_pointer().hover((s) => s.opacity(0.88)))
+      .on_click((_e, cx) => {
+        if (on) cx.spawn((cx) => act(cx));
+      })
+      .child(this.sending && primary ? "Sending…" : label);
   }
 
   entry(t, e) {
