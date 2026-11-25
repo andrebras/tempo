@@ -2268,3 +2268,12 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         self.assertEqual(code, 0)
         self.assertIn("SessionStart", out)
         self.assertIn("the Herdr panel was not updated: disk full", err)
+
+    def test_the_panel_is_copied_even_when_the_link_is_left_alone(self):
+        bin_dir = os.path.join(self.home, ".local", "bin")
+        os.makedirs(bin_dir)
+        open(os.path.join(bin_dir, "tempo"), "w").close()
+        code, out, err = run("install", "--herdr")
+        self.assertEqual(code, 1)
+        self.assertIn("is already there, a file", err)
+        self.assertIn("Copied Tempo's panel", out)

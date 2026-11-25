@@ -593,7 +593,9 @@ def run_install(args: argparse.Namespace) -> int:
             " `tempo install` again." % (link, _what_is(link), hint),
             file=sys.stdout if args.slash else sys.stderr,
         )
-        return 0 if args.slash else 1
+        # The panel finds tempo on PATH too, so it is set up all the same.
+        herdr = _install_herdr() if args.herdr else 0
+        return 0 if args.slash else max(1, herdr)
     else:
         if not os.path.isdir(folder):
             os.makedirs(folder)
