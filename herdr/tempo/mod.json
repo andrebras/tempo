@@ -7,12 +7,12 @@
   },
   "palette": [
     {
-      "title": "Tempo: show the questions",
-      "command": "layout.select",
+      "title": "Tempo: show or hide the questions",
+      "command": "layout.toggle",
       "args": {
+        "id": "panel",
         "stack": "panel-body",
-        "child": "panel-tempo",
-        "show": true
+        "child": "panel-tempo"
       },
       "words": "questions sidebar panel"
     },

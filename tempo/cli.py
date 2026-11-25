@@ -743,8 +743,8 @@ def _install_herdr() -> int:
     _copy_herdr_mod(mark)
     print(
         "%s Tempo's panel in %s. In Herdr, click Tempo in the tab bar, or pick \"Tempo: show"
-        ' the questions" in the command palette. Sessions keep the copy current after updates.'
-        % ("Updated" if state == "ours" else "Copied", folder)
+        ' or hide the questions" in the command palette. Sessions keep the copy current'
+        " after updates." % ("Updated" if state == "ours" else "Copied", folder)
     )
     return 0
 
