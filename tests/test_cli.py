@@ -2137,7 +2137,7 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         self.folder = os.path.join(self.mods, "tempo")
 
     def ship(self, text):
-        for name in cli.HERDR_MOD:
+        for name in ("main.js", "mod.json"):
             self.write(os.path.join(self.source, name), "%s %s" % (name, text))
 
     def version(self, number):
@@ -2163,7 +2163,9 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         self.assertIn("Copied Tempo's panel in %s." % self.folder, out)
         self.assertEqual(self.copied(), "main.js one")
         self.assertEqual(self.copied("mod.json"), "mod.json one")
-        self.assertEqual(sorted(os.listdir(self.folder)), sorted([*cli.HERDR_MOD, cli.HERDR_MARK]))
+        self.assertEqual(
+            sorted(os.listdir(self.folder)), sorted(["main.js", "mod.json", cli.HERDR_MARK])
+        )
         self.assertEqual(
             os.readlink(os.path.join(self.home, ".local", "bin", "tempo")),
             os.path.join(self.marketplace, "bin", "tempo"),
@@ -2209,6 +2211,22 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         run("install", "--herdr")
         self.write(os.path.join(self.folder, "extra.js"), "mine")
         self.assertEqual(cli._herdr_copy()[0], "edited")
+
+    def test_a_dot_file_beside_the_copy_is_not_an_edit(self):
+        run("install", "--herdr")
+        self.write(os.path.join(self.folder, ".DS_Store"), "finder")
+        self.assertEqual(cli._herdr_copy()[0], "ours")
+        self.assertIn("Removed Herdr's panel", run("uninstall")[1])
+        self.assertFalse(os.path.lexists(self.folder))
+
+    def test_an_update_copies_new_files_and_removes_dropped_ones(self):
+        run("install", "--herdr")
+        self.write(os.path.join(self.source, "icon.svg"), "<svg/>")
+        os.remove(os.path.join(self.source, "mod.json"))
+        run("install", "--herdr")
+        self.assertEqual(self.copied("icon.svg"), "<svg/>")
+        self.assertFalse(os.path.exists(os.path.join(self.folder, "mod.json")))
+        self.assertEqual(cli._herdr_copy()[0], "ours")
 
     def test_herdrs_own_helpers_beside_the_copy_are_not_an_edit(self):
         run("install", "--herdr")

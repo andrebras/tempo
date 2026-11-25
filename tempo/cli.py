@@ -630,9 +630,8 @@ def run_install(args: argparse.Namespace) -> int:
 
 
 # Tempo's panel for Herdr, a desktop app for terminals and coding agents: a Herdr mod in
-# the repo's herdr/tempo. `tempo install --herdr` copies these of its files into Herdr's
-# mods; the rest there are Herdr's own editor helpers.
-HERDR_MOD = ("main.js", "mod.json")
+# the repo's herdr/tempo. `tempo install --herdr` copies its files into Herdr's mods, all
+# but dot files and the editor helpers Herdr writes beside a mod it loads.
 HERDR_HELPERS = ("gpui-kit.d.ts", "jsconfig.json")
 # Written next to the copy: the version and fingerprints of what Tempo copied, so it can tell
 # its own copy, which it may replace, from one the user edited. Herdr skips dot files.
@@ -648,54 +647,67 @@ def herdr_mod_folder() -> str:
     return os.path.join(home, "mods", "tempo")
 
 
+def _herdr_source() -> str:
+    return os.path.join(CODE_ROOT, "herdr", "tempo")
+
+
 def _fingerprints(folder: str) -> dict[str, str]:
-    """The SHA-256 of each of the panel's files in folder; a missing file has none."""
+    """The SHA-256 of each of the mod's files in folder: every file but dot files, such as
+    Finder's .DS_Store, and Herdr's helpers, as Herdr itself counts a mod's files."""
     found = {}
-    for name in HERDR_MOD:
-        with contextlib.suppress(OSError), open(os.path.join(folder, name), "rb") as file:
-            found[name] = hashlib.sha256(file.read()).hexdigest()
+    with contextlib.suppress(OSError):
+        for name in sorted(os.listdir(folder)):
+            path = os.path.join(folder, name)
+            if name.startswith(".") or name in HERDR_HELPERS or not os.path.isfile(path):
+                continue
+            with contextlib.suppress(OSError), open(path, "rb") as file:
+                found[name] = hashlib.sha256(file.read()).hexdigest()
     return found
 
 
 def _herdr_copy() -> tuple[str, dict[str, Any]]:
     """What is in Herdr's mods under Tempo's name: "missing", "ours" (exactly as Tempo
-    copied it), "edited" (Tempo's copy, changed since) or "other" (not Tempo's copy),
-    with the mark Tempo wrote next to it."""
+    copied it), "edited" (Tempo's copy, changed or added to since) or "other" (not
+    Tempo's copy), with the mark Tempo wrote next to it."""
     folder = herdr_mod_folder()
     if not os.path.lexists(folder):
         return "missing", {}
     try:
         with open(os.path.join(folder, HERDR_MARK), encoding="utf-8") as file:
             mark = json.load(file)
-        files = os.listdir(folder)
     except (OSError, ValueError):
         return "other", {}
     if not isinstance(mark, dict):
         return "other", {}
-    extra = set(files) - {*HERDR_MOD, *HERDR_HELPERS, HERDR_MARK}
-    if extra or _fingerprints(folder) != mark.get("files"):
+    if _fingerprints(folder) != mark.get("files"):
         return "edited", mark
     return "ours", mark
 
 
-def _copy_herdr_mod() -> None:
-    """Copy the panel's files into Herdr's mods, each replaced in one step so Herdr, which
-    reloads a mod when its files change, never reads half a file; then the mark."""
+def _copy_herdr_mod(old: dict[str, Any]) -> None:
+    """Copy the mod's files into Herdr's mods, each replaced in one step so Herdr, which
+    reloads a mod when its files change, never reads half a file; remove the files of the
+    old copy that the new one no longer has; then write the mark."""
     from tempo import server
 
-    source, folder = os.path.join(CODE_ROOT, "herdr", "tempo"), herdr_mod_folder()
+    source, folder = _herdr_source(), herdr_mod_folder()
+    files = _fingerprints(source)
     os.makedirs(folder, exist_ok=True)
-    for name in (*HERDR_MOD, HERDR_MARK):
-        if name == HERDR_MARK:
-            mark = {"version": server.version(), "files": _fingerprints(source)}
+    mark = {"version": server.version(), "files": files}
+    writes = [(name, os.path.join(source, name)) for name in files] + [(HERDR_MARK, None)]
+    for name, path in writes:
+        if path is None:
             data = (json.dumps(mark, indent=2) + "\n").encode()
         else:
-            with open(os.path.join(source, name), "rb") as file:
+            with open(path, "rb") as file:
                 data = file.read()
-        part = os.path.join(folder, name + ".part")
+        part = os.path.join(folder, "." + name + ".part")
         with open(part, "wb") as file:
             file.write(data)
         os.replace(part, os.path.join(folder, name))
+    for name in set(old.get("files") or {}) - set(files):
+        with contextlib.suppress(OSError):
+            os.remove(os.path.join(folder, name))
 
 
 def _install_herdr() -> int:
@@ -719,11 +731,10 @@ def _install_herdr() -> int:
             file=sys.stderr,
         )
         return 1
-    source = os.path.join(CODE_ROOT, "herdr", "tempo")
-    if state == "ours" and mark.get("files") == _fingerprints(source):
+    if state == "ours" and mark.get("files") == _fingerprints(_herdr_source()):
         print("Herdr's panel is already installed in %s." % folder)
         return 0
-    _copy_herdr_mod()
+    _copy_herdr_mod(mark)
     print(
         "%s Tempo's panel in %s. In Herdr, open the command palette and pick \"Tempo: show"
         ' the questions beside this tab". Sessions keep the copy current after updates.'
@@ -744,9 +755,9 @@ def refresh_herdr_mod() -> bool:
     state, mark = _herdr_copy()
     if state != "ours" or _older(server.version(), mark.get("version")):
         return False
-    if mark.get("files") == _fingerprints(os.path.join(CODE_ROOT, "herdr", "tempo")):
+    if mark.get("files") == _fingerprints(_herdr_source()):
         return False
-    _copy_herdr_mod()
+    _copy_herdr_mod(mark)
     return True
 
 
@@ -754,17 +765,21 @@ def _uninstall_herdr() -> None:
     """Remove Tempo's copy of the Herdr panel, with Herdr's helpers beside it, unless it
     was edited or isn't Tempo's."""
     folder = herdr_mod_folder()
-    state, _ = _herdr_copy()
+    state, mark = _herdr_copy()
     if state == "missing":
         return
     if state != "ours":
         what = "edited since Tempo copied it" if state == "edited" else "not Tempo's copy"
         print("%s is %s, so it was left as it is." % (folder, what))
         return
-    for name in (*HERDR_MOD, *HERDR_HELPERS, HERDR_MARK):
+    for name in (*mark["files"], *HERDR_HELPERS, HERDR_MARK, ".DS_Store"):
         with contextlib.suppress(FileNotFoundError):
             os.remove(os.path.join(folder, name))
-    os.rmdir(folder)
+    try:
+        os.rmdir(folder)
+    except OSError:
+        print("Removed Herdr's panel from %s; the folder has other files, so it stays." % folder)
+        return
     print("Removed Herdr's panel from %s." % folder)
 
 
