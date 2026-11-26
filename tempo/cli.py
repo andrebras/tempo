@@ -728,6 +728,13 @@ def _install_herdr() -> int:
             file=sys.stderr,
         )
         return 1
+    if not _fingerprints(_herdr_source()):
+        print(
+            "tempo: this Tempo has no Herdr panel (%s is missing or empty), so there is"
+            " nothing to install." % _herdr_source(),
+            file=sys.stderr,
+        )
+        return 1
     state, mark = _herdr_copy()
     if state in ("edited", "other"):
         what = "Tempo's panel, edited since" if state == "edited" else "not Tempo's copy"
@@ -761,7 +768,10 @@ def refresh_herdr_mod() -> bool:
     state, mark = _herdr_copy()
     if state != "ours" or _older(server.version(), mark.get("version")):
         return False
-    if mark.get("files") == _fingerprints(_herdr_source()):
+    # No panel here, such as a folder left out of a copy: copying nothing would remove the
+    # installed one.
+    files = _fingerprints(_herdr_source())
+    if not files or mark.get("files") == files:
         return False
     _copy_herdr_mod(mark)
     return True

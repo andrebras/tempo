@@ -2258,6 +2258,21 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         self.session_start()
         self.assertEqual(self.copied(), "main.js one")
 
+    def test_a_missing_or_empty_panel_source_leaves_the_copy(self):
+        run("install", "--herdr")
+        self.version("0.15.0")
+        for name in ("main.js", "mod.json"):
+            os.remove(os.path.join(self.source, name))
+        self.session_start()
+        self.assertEqual(self.copied(), "main.js one")
+        code, _, err = run("install", "--herdr")
+        self.assertEqual(code, 1)
+        self.assertIn("has no Herdr panel", err)
+        os.rmdir(self.source)
+        self.session_start()
+        self.assertEqual(self.copied(), "main.js one")
+        self.assertEqual(cli._herdr_copy()[0], "ours")
+
     def test_a_session_never_makes_a_copy_nobody_asked_for(self):
         self.session_start()
         self.assertFalse(os.path.lexists(self.folder))
