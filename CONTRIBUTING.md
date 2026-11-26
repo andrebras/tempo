@@ -31,7 +31,7 @@ the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on fi
 | Shell scripts: every `bin/` script that starts with `#!/bin/sh` | [ShellCheck](https://www.shellcheck.net) |
 | Tests | `unittest`, from the standard library |
 | Test coverage of `tempo/`, report only: a per-file summary at the end, never a failure | [coverage.py](https://coverage.readthedocs.io) |
-| Lint the page's script (`tempo/page.js`) and its tests | [Biome](https://biomejs.dev), recommended rules |
+| Lint the page's script (`tempo/page.js`), its tests and the Herdr panel (`herdr/tempo/main.js`) | [Biome](https://biomejs.dev), recommended rules |
 | Tests for the page's text renderer | `node --test`, built into Node.js |
 | The page's main flows in a real browser | `unittest`, driving headless Google Chrome |
 

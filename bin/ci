@@ -5,8 +5,8 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-# Biome lints the page's script; npx fetches this exact version on first use. Keep it
-# in step with the $schema version in biome.json.
+# Biome lints the page's script and the Herdr panel's; npx fetches this exact version on
+# first use. Keep it in step with the $schema version in biome.json.
 biome_version=2.5.15
 
 # The scripts in .venv/bin start with the absolute path of the folder's Python, so
@@ -51,7 +51,7 @@ done
 # Every shell script in bin/, found by its first line, so a new one is never skipped.
 step "Shell scripts (shellcheck)" sh -c 'grep -l "^#!/bin/sh" bin/* 2>/dev/null | xargs shellcheck'
 step "Compile" python3 -m compileall -q tempo tests
-step "Lint page script (biome)" npx --yes "@biomejs/biome@$biome_version" lint --error-on-warnings
+step "Lint page and panel scripts (biome)" npx --yes "@biomejs/biome@$biome_version" lint --error-on-warnings
 step "Page and panel tests (node --test)" node --test tests/page.test.js tests/panel.test.js
 # The tests run under coverage.py, which only reports: no minimum, no failing on a number.
 # The .venv Python goes first on PATH so that the bin/tempo processes some tests start are

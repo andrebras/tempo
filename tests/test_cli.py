@@ -429,6 +429,14 @@ class CliTest(DatabaseTest):
         self.assertIn("demo Q1 (Left or right?) asks for more: What is on the left?", context)
         self.assertEqual(run("inbox")[1], "Nothing new from the user.\n")
 
+    def test_a_note_or_follow_up_starting_with_a_dash_is_text(self):
+        # As Herdr's panel sends them: the note as --note=..., the follow-up after --.
+        self.add()
+        self.assertEqual(run("reply", "1", "--project", "demo", "--", "-x")[0], 0)
+        self.assertEqual(run("answer", "1", "a", "--note=--force")[0], 0)
+        entries = self.store.get("demo", 1)["entries"]
+        self.assertEqual([e["body"] for e in entries], ["-x", "--force"])
+
     def test_reply_needs_some_text(self):
         self.add()
         code, _, err = run("reply", "1", "  ")
@@ -2250,6 +2258,21 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         self.session_start()
         self.assertEqual(self.copied(), "main.js one")
 
+    def test_a_missing_or_empty_panel_source_leaves_the_copy(self):
+        run("install", "--herdr")
+        self.version("0.15.0")
+        for name in ("main.js", "mod.json"):
+            os.remove(os.path.join(self.source, name))
+        self.session_start()
+        self.assertEqual(self.copied(), "main.js one")
+        code, _, err = run("install", "--herdr")
+        self.assertEqual(code, 1)
+        self.assertIn("has no Herdr panel", err)
+        os.rmdir(self.source)
+        self.session_start()
+        self.assertEqual(self.copied(), "main.js one")
+        self.assertEqual(cli._herdr_copy()[0], "ours")
+
     def test_a_session_never_makes_a_copy_nobody_asked_for(self):
         self.session_start()
         self.assertFalse(os.path.lexists(self.folder))
@@ -2278,8 +2301,9 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         self.assertIn("is already there, a file", err)
         self.assertIn("Copied Tempo's panel", out)
 
-    def test_another_tempos_link_is_kept_quietly_when_copying_the_panel(self):
-        # The plugin's own copy of Tempo: its bin/tempo beside its tempo package.
+    def other_tempos_link(self):
+        """Link ~/.local/bin/tempo to another Tempo: the plugin's own copy, say, its
+        bin/tempo beside its tempo package. Returns that bin/tempo."""
         plugin = os.path.join(self.home, "plugin")
         other = os.path.join(plugin, "bin", "tempo")
         for path in (other, os.path.join(plugin, "tempo", "__main__.py")):
@@ -2288,8 +2312,22 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         bin_dir = os.path.join(self.home, ".local", "bin")
         os.makedirs(bin_dir)
         os.symlink(other, os.path.join(bin_dir, "tempo"))
+        return other
+
+    def test_another_tempos_link_is_kept_quietly_when_copying_the_panel(self):
+        other = self.other_tempos_link()
         code, out, err = run("install", "--herdr")
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
         self.assertIn("Copied Tempo's panel", out)
-        self.assertEqual(os.readlink(os.path.join(bin_dir, "tempo")), other)
+        link = os.path.join(self.home, ".local", "bin", "tempo")
+        self.assertEqual(os.readlink(link), other)
+
+    def test_another_tempos_link_still_lets_tmux_be_set_up_too(self):
+        self.other_tempos_link()
+        with mock.patch.object(cli.shutil, "which", return_value="/usr/bin/tmux"):
+            code, out, err = run("install", "--herdr", "--tmux")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("Copied Tempo's panel", out)
+        self.assertIn("    " + cli.TMUX_LINE, out)
+        self.assertTrue(self.store.tmux_sidebar())

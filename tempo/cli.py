@@ -589,7 +589,7 @@ def run_install(args: argparse.Namespace) -> int:
     elif args.herdr and _tempo_link(link):
         # Another Tempo's link (the plugin's, say) runs tempo just as well for the panel:
         # nothing to say about it.
-        return _install_herdr()
+        return _install_herdr_and_tmux(args)
     elif os.path.lexists(link):
         hint = " (`tempo uninstall` does)" if _tempo_link(link) else ""
         print(
@@ -616,6 +616,12 @@ def run_install(args: argparse.Namespace) -> int:
     # Done, so sessions stop offering /tempo:install.
     with Store(connect()) as store:
         store.set_install_hint(False)
+    return _install_herdr_and_tmux(args)
+
+
+def _install_herdr_and_tmux(args: argparse.Namespace) -> int:
+    """The steps after the link: copy Herdr's panel with --herdr, then, when tmux is
+    there, turn the sidebar on with --tmux and print TMUX_LINE if the config lacks it."""
     herdr = _install_herdr() if args.herdr else 0
     conf = tmux_conf()
     if not (shutil.which("tmux") or os.path.lexists(conf)):
@@ -728,6 +734,13 @@ def _install_herdr() -> int:
             file=sys.stderr,
         )
         return 1
+    if not _fingerprints(_herdr_source()):
+        print(
+            "tempo: this Tempo has no Herdr panel (%s is missing or empty), so there is"
+            " nothing to install." % _herdr_source(),
+            file=sys.stderr,
+        )
+        return 1
     state, mark = _herdr_copy()
     if state in ("edited", "other"):
         what = "Tempo's panel, edited since" if state == "edited" else "not Tempo's copy"
@@ -761,7 +774,10 @@ def refresh_herdr_mod() -> bool:
     state, mark = _herdr_copy()
     if state != "ours" or _older(server.version(), mark.get("version")):
         return False
-    if mark.get("files") == _fingerprints(_herdr_source()):
+    # No panel here, such as a folder left out of a copy: copying nothing would remove the
+    # installed one.
+    files = _fingerprints(_herdr_source())
+    if not files or mark.get("files") == files:
         return False
     _copy_herdr_mod(mark)
     return True
