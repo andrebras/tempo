@@ -33,6 +33,9 @@ const SHOWN_MS = 4000;
 const HIDDEN_MS = 30000;
 // The newest question already announced, shared so copies and reloads never repeat a toast.
 const ANNOUNCED = "tempo.announced";
+// The shown project's open-question count: Herdr shows it on the Tempo button while the
+// panel is hidden.
+const BADGE = "tempo.badge";
 // Text sizes follow the terminal font size (Settings → Look → Terminal font), the one
 // size Herdr lets you change: a question's text is that size (size(1)), the list and the
 // thread one step smaller (size(0)), labels two, the title one larger.
@@ -107,6 +110,8 @@ export default class Tempo extends View {
         cwd !== this.mine?.cwd;
       this.all = all;
       this.mine = cwd ? { cwd, questions: mine, project: mine[0]?.project ?? null } : null;
+      const count = mine?.length ?? 0;
+      if (shared(BADGE) !== count) setShared(BADGE, count);
       if (this.open && this.open.project !== this.mine?.project) this.open = null;
       this.error = null;
       if (this.open) await this.follow(cx);
