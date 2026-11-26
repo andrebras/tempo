@@ -31,7 +31,7 @@ the page's script, `tempo/page.js`. `npx` fetches the pinned Biome version on fi
 | Shell scripts: every `bin/` script that starts with `#!/bin/sh` | [ShellCheck](https://www.shellcheck.net) |
 | Tests | `unittest`, from the standard library |
 | Test coverage of `tempo/`, report only: a per-file summary at the end, never a failure | [coverage.py](https://coverage.readthedocs.io) |
-| Lint the page's script (`tempo/page.js`) and its tests | [Biome](https://biomejs.dev), recommended rules |
+| Lint the page's script (`tempo/page.js`), its tests and the Herdr panel (`herdr/tempo/main.js`) | [Biome](https://biomejs.dev), recommended rules |
 | Tests for the page's text renderer | `node --test`, built into Node.js |
 | The page's main flows in a real browser | `unittest`, driving headless Google Chrome |
 
@@ -77,12 +77,15 @@ found on its own. GitHub's Ubuntu runners have Chrome, so they always run there.
 ## Screenshots and demo GIFs
 
 `bin/media` makes the README's pictures again from made-up questions in throwaway
-databases, so run it after a change to the sidebar, `tempo tui` or the page:
+databases, so run it after a change to the sidebar, `tempo tui`, the page or the Herdr panel:
 
 - `docs/sidebar.gif`, in dark colours: answering in the tmux sidebar's popup and asking
   for more;
 - `docs/tui.gif`, in dark colours: the same steps in `tempo tui`;
 - `docs/demo.gif`, in dark colours: the same steps on the page;
+- `docs/herdr.gif`, in dark colours: the Herdr panel listing a project's questions,
+  showing one in full, following an answer and a new question, and its count on the Tempo
+  button once hidden;
 - `docs/settings-light.png` and `docs/settings-dark.png`: the page's Settings.
 
 It needs Google Chrome, [ffmpeg](https://ffmpeg.org) (`brew install ffmpeg`), which makes
@@ -92,6 +95,16 @@ terminal as a web page so Chrome can record it in the terminal's real colours, a
 page's port: ttyd and `tempo tui` use ports from 22100 to 22999, and the sidebar runs on a
 tmux server of its own, with no config of yours. `bin/media --keep DIR` also keeps the
 databases, the frames and the logs in `DIR`.
+
+For `docs/herdr.gif` it also needs [Herdr](https://herdr.dev), with a side panel for mods
+and the count on its button, and herdr-core's `hc` on your `PATH`. Without them, it leaves
+`docs/herdr.gif` as it is. `HERDR_APP` names the app's program if it isn't in `Herdr.app`
+under `~/Applications` or `/Applications`. Herdr runs on a throwaway home and a core session
+of its own, so it never opens your own window, spaces or terminals (a second Herdr window shows while
+it records); it is driven by its
+commands (`herdr-app do`) and saves its own frames (`herdr-app shot`), never with keys or
+clicks on your screen, and only the app and core it started are stopped. The answer in the
+recording is sent with `tempo answer`, as a click would send it.
 
 ## Layout
 
@@ -112,8 +125,8 @@ tempo/
   tui/            tempo tui, the full-screen terminal view
 skills/           six skills: tempo, which teaches Claude the workflow, and one for each
                   slash command (list, show, answer, dive, install)
-tests/            Python tests (test_page.py drives the page in Chrome), and page.test.js
-                  for the page's script
+tests/            Python tests (test_page.py drives the page in Chrome), page.test.js
+                  for the page's script, and panel.test.js for the Herdr panel's text
 ```
 
 ## Releasing
