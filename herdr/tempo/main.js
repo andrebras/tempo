@@ -127,10 +127,12 @@ export default class Tempo extends View {
       ]);
       if (cwd) this.seen.set(cwd, mine);
       this.announce(all);
+      // With no space (cwd null) this.mine is null: ?? null keeps null and undefined from
+      // counting as a change, which would draw, and so read again, without end.
       const changed =
         JSON.stringify(all) !== JSON.stringify(this.all) ||
-        JSON.stringify(mine) !== JSON.stringify(this.mine?.questions) ||
-        cwd !== this.mine?.cwd;
+        JSON.stringify(mine) !== JSON.stringify(this.mine?.questions ?? null) ||
+        cwd !== (this.mine?.cwd ?? null);
       this.all = all;
       this.mine = cwd ? { cwd, questions: mine, project: mine[0]?.project ?? null } : null;
       const count = mine?.length ?? 0;
@@ -263,7 +265,7 @@ export default class Tempo extends View {
   render(cx) {
     const t = theme();
     const cwd = shownFolder();
-    if (this.tempo && cwd !== this.mine?.cwd) {
+    if (this.tempo && cwd !== (this.mine?.cwd ?? null)) {
       // Another space: show its last list at once (if seen before), then read it fresh.
       // A read already running picks the new space up when it ends.
       const last = cwd ? this.seen.get(cwd) : undefined;
