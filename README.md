@@ -56,8 +56,9 @@ run-shell -b "~/.local/bin/tempo sidebar --restore"
 
 ## See it in action
 
-All three recordings show the same steps: you answer a question with a note, then ask for
-more context on the next one, and Claude rewords it.
+The first three recordings show the same steps: you answer a question with a note, then ask
+for more context on the next one, and Claude rewords it. The last one shows Tempo's panel in
+Herdr.
 
 **In tmux, with the sidebar**
 
@@ -70,6 +71,10 @@ more context on the next one, and Claude rewords it.
 **On the page**
 
 ![Answering on the Tempo page in dark colours: option (b) is picked, a note is typed and the answer is sent, and the page moves on to the next question. There, a follow-up is typed and "Ask for more context" is pressed; Claude rewords the question and the thread shows both steps.](docs/demo.gif)
+
+**In Herdr, with the Tempo panel**
+
+![Herdr in dark colours, with a space for the project and a stand-in for Claude's pane that says it asked two questions in Tempo. The Tempo panel beside it lists the project's open questions by goal. Q1 opens in the panel with its context, its options (the recommended one marked) and a note box. Once Q1 is answered, the panel goes back to the list, one question fewer, and Claude's pane shows it got the answer and goes on. Claude asks a new question: a notice names it in the corner and the list shows it. With the panel hidden, the Tempo button in the tab bar shows the open-question count.](docs/herdr.gif)
 
 The recordings use made-up questions; `bin/media` makes them again (see
 [CONTRIBUTING.md](CONTRIBUTING.md#screenshots-and-demo-gifs)).
