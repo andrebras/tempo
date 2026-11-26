@@ -24,3 +24,6 @@ updates:
       # Bandit 1.9 and later need Python 3.10 too.
       - dependency-name: bandit
         versions: [">=1.9"]
+      # Coverage 7.11 and later need Python 3.10 too.
+      - dependency-name: coverage
+        versions: [">=7.11"]
