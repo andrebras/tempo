@@ -10,9 +10,10 @@ decisions and keeps playing.
 
 Tempo is a [Claude Code](https://code.claude.com) plugin. When Claude needs a decision from
 you, it saves the question with all the context you need, instead of letting it scroll away
-in chat. You answer in the terminal whenever it suits you, in a sidebar beside Claude in
-tmux or in a full-screen view, and Claude picks the answer up by itself. A local web page
-is there too if you want it; it is off unless you turn it on.
+in chat. You answer whenever it suits you: in the terminal, in a sidebar beside Claude in
+tmux or in a full-screen view, or in a panel in [Herdr](https://herdr.dev). Claude picks the
+answer up by itself. A local web page is there too if you want it; it is off unless you turn
+it on.
 
 - 🚀 [Quick start](#quick-start)
 - 🎬 [See it in action](#see-it-in-action)
@@ -21,6 +22,7 @@ is there too if you want it; it is off unless you turn it on.
 - 🎛️ [Usage](#usage)
   - 🗂️ [A sidebar in tmux](#a-sidebar-in-tmux): `tempo sidebar on`
   - 🖥️ [Without tmux: `tempo tui`](#without-tmux-tempo-tui), the full-screen view
+  - 🧩 [In Herdr](#in-herdr): `tempo install --herdr`
   - ⌨️ [Commands](#commands) and [slash commands](#in-the-claude-code-session)
   - 🌐 [The page (optional)](#the-page-optional)
 - ⚙️ [How it works](#how-it-works)
@@ -100,8 +102,8 @@ Then restart open sessions (for example with `claude --continue`): a session kee
 plugin version it started with, and says so once when it is out of date.
 
 To remove it, run `tempo uninstall` first if you ran `/tempo:install`: it removes the
-`~/.local/bin/tempo` link and the Herdr panel, unless you edited it, and prints any of Tempo's lines left in your tmux config for you
-to remove. Then:
+`~/.local/bin/tempo` link and the Herdr panel, unless you edited it, and prints any of
+Tempo's lines left in your tmux config for you to remove. Then:
 
 ```bash
 claude plugin uninstall tempo@tempo
@@ -115,8 +117,8 @@ Your questions stay in `~/.claude/tempo/` (older installs keep them in
 
 Once `/tempo:install` has run, there's nothing else to start. When Claude needs a decision,
 it adds a question and tells you how to answer it. You answer in the terminal: in the tmux
-sidebar, in `tempo tui`, with `tempo answer`, or with a slash command in the session. The
-page is optional, and off unless you turn it on.
+sidebar, in `tempo tui`, with `tempo answer`, or with a slash command in the session. You
+can also answer in Herdr's side panel. The page is optional, and off unless you turn it on.
 
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too. Merging two projects renumbers the questions that move.
@@ -186,9 +188,9 @@ tempo install --herdr
 It copies the panel into Herdr's mods (`~/.config/herdr-app/mods/tempo`, or the folder
 `HERDR_APP_HOME` names). It sits in Herdr's side panel, beside Files and Changes: the Tempo
 button in the tab bar shows and hides it, and so does "Show or hide the questions" in the
-command palette, listed under Tempo. This needs a Herdr that puts mods in its side panel (`panel` in a mod's
-`mod.json`). After a Tempo update, the next Claude session refreshes the copy, and Herdr
-reloads the panel. A copy you edited is never replaced.
+command palette, listed under Tempo. This needs a Herdr that puts mods in its side panel
+(`panel` in a mod's `mod.json`). After a Tempo update, the next Claude session refreshes the
+copy, and Herdr reloads the panel. A copy you edited is never replaced.
 
 ### Commands
 
