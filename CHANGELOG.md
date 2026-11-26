@@ -15,7 +15,9 @@ All notable changes to Tempo are listed here. The format follows
   While the panel is hidden, its button in Herdr's tab bar shows how many questions are
   open. For now the panel needs a fork of Herdr
   ([andrebras/herdr-app](https://github.com/andrebras/herdr-app)): released Herdr doesn't
-  show mods in its side panel yet.
+  show mods in its side panel yet. The panel formats a question's context and its thread
+  as the page does: lists, `code` and links show as such, and a single line break starts a
+  new line.
 
 ## [0.13.4] - 2026-11-14
 

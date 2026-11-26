@@ -43,6 +43,29 @@ function size(step) {
   return (settings()?.font_size ?? 14) - 1 + step;
 }
 
+// Question text as Tempo's page shows it (rich() in tempo/page.js): a little Markdown, and
+// a single line break starts a new line. Markdown would join those lines, so each one ends
+// with a hard break (two spaces) instead. Where text meets a list, either way, a blank line
+// goes between them, so the list starts and ends there, as on the page. HTML in the text
+// shows as typed, never as markup.
+function rich(id, text) {
+  return TextView.markdown(id, lineBreaks(text)).raw_html(false).selectable(true);
+}
+
+// "- ", "* ", "1. " or "1) " at the start of a line, as on the page.
+const LIST_LINE = /^\s*([-*]|\d+[.)])\s+/;
+
+function lineBreaks(text) {
+  return String(text ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/([^\n]*)\n(?=([^\n]+))/g, (match, line, next) => {
+      if (!line.trim()) return match;
+      const list = LIST_LINE.test(line);
+      if (list !== LIST_LINE.test(next)) return `${line}\n\n`;
+      return list ? match : `${line}  \n`;
+    });
+}
+
 // This mod's block in Herdr's side panel.
 const PANEL = "panel-tempo";
 export default class Tempo extends View {
@@ -381,8 +404,7 @@ export default class Tempo extends View {
         ),
       )
       .child(
-        TextView.markdown(`ctx-${q.project}-${q.number}-${q.version}`, q.context ?? "")
-          .selectable(true)
+        rich(`ctx-${q.project}-${q.number}-${q.version}`, q.context)
           .text_size(size(1))
           .text_color(t.foreground),
       )
@@ -499,7 +521,7 @@ export default class Tempo extends View {
           .child(who)
           .child(e.created_at.slice(0, 16).replace("T", " ")),
       )
-      .child(div().child(what));
+      .child(rich(`entry-${this.open.project}-${this.open.number}-${e.id}`, what));
   }
 }
 
