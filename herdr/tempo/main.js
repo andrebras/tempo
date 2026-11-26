@@ -126,7 +126,6 @@ export default class Tempo extends View {
         cwd ? tempo(this.tempo, ["list", "--json"], cwd) : null,
       ]);
       if (cwd) this.seen.set(cwd, mine);
-      this.announce(all);
       // With no space (cwd null) this.mine is null: ?? null keeps null and undefined from
       // counting as a change, which would draw, and so read again, without end.
       const changed =
@@ -135,6 +134,9 @@ export default class Tempo extends View {
         cwd !== (this.mine?.cwd ?? null);
       this.all = all;
       this.mine = cwd ? { cwd, questions: mine, project: mine[0]?.project ?? null } : null;
+      // After this.mine: a project's first question is what names the shown project, and
+      // the toast's click needs it.
+      this.announce(all);
       const count = mine?.length ?? 0;
       if (shared(BADGE) !== count) setShared(BADGE, count);
       if (this.open && this.open.project !== this.mine?.project) this.open = null;
