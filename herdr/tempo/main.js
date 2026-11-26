@@ -226,7 +226,8 @@ export default class Tempo extends View {
     cx.notify();
     const args = ["answer", String(number), pick, "--project", project];
     const note = this.note.value().trim();
-    if (note) args.push("--note", note);
+    // As one word, so a note that starts with a dash, such as --force, isn't read as an option.
+    if (note) args.push(`--note=${note}`);
     const r = await exec(this.tempo, args, { cwd: home() }).catch((e) => ({ code: 1, stderr: String(e) }));
     this.sending = false;
     if (r.code === 0) {
@@ -250,7 +251,8 @@ export default class Tempo extends View {
     if (!body || !project || this.sending) return;
     this.sending = true;
     cx.notify();
-    const args = ["reply", String(number), body, "--project", project];
+    // The text after --, so one that starts with a dash isn't read as an option.
+    const args = ["reply", String(number), "--project", project, "--", body];
     const r = await exec(this.tempo, args, { cwd: home() }).catch((e) => ({ code: 1, stderr: String(e) }));
     this.sending = false;
     if (r.code === 0) {

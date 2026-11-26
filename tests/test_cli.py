@@ -429,6 +429,14 @@ class CliTest(DatabaseTest):
         self.assertIn("demo Q1 (Left or right?) asks for more: What is on the left?", context)
         self.assertEqual(run("inbox")[1], "Nothing new from the user.\n")
 
+    def test_a_note_or_follow_up_starting_with_a_dash_is_text(self):
+        # As Herdr's panel sends them: the note as --note=..., the follow-up after --.
+        self.add()
+        self.assertEqual(run("reply", "1", "--project", "demo", "--", "-x")[0], 0)
+        self.assertEqual(run("answer", "1", "a", "--note=--force")[0], 0)
+        entries = self.store.get("demo", 1)["entries"]
+        self.assertEqual([e["body"] for e in entries], ["-x", "--force"])
+
     def test_reply_needs_some_text(self):
         self.add()
         code, _, err = run("reply", "1", "  ")
