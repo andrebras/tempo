@@ -7,19 +7,21 @@
   },
   "palette": [
     {
-      "title": "Tempo: show or hide the questions",
+      "title": "Show or hide the questions",
       "command": "layout.toggle",
       "args": {
         "id": "panel",
         "stack": "panel-body",
         "child": "panel-tempo"
       },
-      "words": "questions sidebar panel"
+      "words": "questions sidebar panel",
+      "group": "Tempo"
     },
     {
-      "title": "Tempo: show the next open question",
+      "title": "Show the next open question",
       "command": "tempo.open",
-      "words": "questions"
+      "words": "questions",
+      "group": "Tempo"
     }
   ]
 }
