@@ -25,12 +25,19 @@ import {
   shared,
   spaces,
   theme,
+  watchFolder,
   window,
 } from "herdr";
 
 // How often to read the questions while the window shows, and while it is hidden.
 const SHOWN_MS = 4000;
 const HIDDEN_MS = 30000;
+// How often to look for another shown space. Cheap (no program runs), and it keeps the count
+// on the Tempo button right while the panel is hidden, when it never draws.
+const SPACE_MS = 300;
+// The files a change to the questions touches: the database and its write-ahead log. Not
+// "-shm", which every read touches too, so a read would start the next one.
+const DATABASE = /\/questions\.db(-wal)?$/;
 // The newest question already announced, shared so copies and reloads never repeat a toast.
 const ANNOUNCED = "tempo.announced";
 // The shown project's open-question count: Herdr shows it on the Tempo button while the
@@ -77,6 +84,8 @@ export default class Tempo extends View {
     this.error = null;
     this.busy = false;
     this.reads = 0; // reads started, so one that ends after a newer one is dropped
+    this.again = false; // a read was asked for while one ran
+    this.switched = undefined; // the space switchSpace last read
     this.seen = new Map(); // each folder's last list, shown at once when you switch back
     this.last = 0;
     this.open = null; // the question shown in full: { project, number, question, pick }
@@ -91,6 +100,10 @@ export default class Tempo extends View {
       this.tempo = await findTempo();
       this.missing = !this.tempo;
       await this.refresh(cx);
+      if (this.tempo) await this.watch(cx);
+    });
+    cx.timer.every(SPACE_MS, (cx) => {
+      if (this.tempo && shownFolder() !== (this.mine?.cwd ?? null)) this.switchSpace(cx);
     });
     cx.timer.every(SHOWN_MS, (cx) => {
       const wait = window()?.visible === false ? HIDDEN_MS : SHOWN_MS;
@@ -115,10 +128,47 @@ export default class Tempo extends View {
     notify({ title: "Tempo", body: "No open questions.", level: "info", timeout: 3000 });
   }
 
+  // Read the questions again as soon as Tempo's database changes, so the count on the
+  // Tempo button follows an answer or a new question at once, not at the next tick. The
+  // timer stays as the fallback: another database (TEMPO_DB, a checkout's own), or a
+  // watch Herdr took back.
+  async watch(cx) {
+    const folder = await databaseFolder();
+    if (!folder) return;
+    for (;;) {
+      const paths = await watchFolder(folder).catch(() => []);
+      if (paths.length === 0) return;
+      if (paths.some((p) => p === folder || DATABASE.test(p))) cx.spawn((cx) => this.refresh(cx));
+    }
+  }
+
+  // Another space shows: its last list and count at once (if seen before), then a fresh
+  // read. render calls this, and so does a timer, since a hidden panel never draws.
+  // Once per switch: a read that fails leaves this.mine on the old space, and must not
+  // make every tick read again.
+  switchSpace(cx) {
+    const cwd = shownFolder();
+    if (cwd === this.switched) return;
+    this.switched = cwd;
+    const last = cwd ? this.seen.get(cwd) : undefined;
+    if (last) {
+      this.mine = { cwd, questions: last, project: last[0]?.project ?? null };
+      if (shared(BADGE) !== last.length) setShared(BADGE, last.length);
+    }
+    // The panel shows the shown space's project alone: a question of another one closes.
+    if (this.open && this.open.project !== (last?.[0]?.project ?? null)) this.open = null;
+    cx.spawn((cx) => this.refresh(cx));
+  }
+
+  // A read asked for while one runs is done right after it, so no change is missed.
   // now: read even while a read runs, as after sending; that older read is then dropped,
   // since its lists may be from before the send.
   async refresh(cx, now = false) {
-    if (!this.tempo || (this.busy && !now)) return;
+    if (!this.tempo) return;
+    if (this.busy && !now) {
+      this.again = true;
+      return;
+    }
     const read = ++this.reads;
     this.busy = true;
     this.last = Date.now();
@@ -157,8 +207,11 @@ export default class Tempo extends View {
     } finally {
       if (read === this.reads) this.busy = false;
     }
-    // The space changed while this ran: read the new one now, not at the next tick.
-    if (shownFolder() !== cwd) cx.spawn((cx) => this.refresh(cx));
+    // Asked again, or the space changed, while this ran: read now, not at the next tick.
+    if (this.again || shownFolder() !== cwd) {
+      this.again = false;
+      cx.spawn((cx) => this.refresh(cx));
+    }
   }
 
   // Keep the open question current: reread it when it changed, close it once it isn't open.
@@ -273,15 +326,7 @@ export default class Tempo extends View {
   render(cx) {
     const t = theme();
     const cwd = shownFolder();
-    if (this.tempo && cwd !== (this.mine?.cwd ?? null)) {
-      // Another space: show its last list at once (if seen before), then read it fresh.
-      // A read already running picks the new space up when it ends.
-      const last = cwd ? this.seen.get(cwd) : undefined;
-      if (last) this.mine = { cwd, questions: last, project: last[0]?.project ?? null };
-      // The panel shows the shown space's project alone: a question of another one closes.
-      if (this.open && this.open.project !== (last?.[0]?.project ?? null)) this.open = null;
-      if (!this.busy) cx.spawn((cx) => this.refresh(cx));
-    }
+    if (this.tempo && cwd !== (this.mine?.cwd ?? null)) this.switchSpace(cx);
     const body = this.open ? this.detail(t) : this.list(t, cwd);
     // Drawn as Files and Changes are, beside them.
     return v_flex()
@@ -560,6 +605,16 @@ function shownFolder() {
   const shown = panes().filter((p) => p.tab === tab?.id && p.cwd);
   const pane = shown.find((p) => p.focused) ?? shown[0];
   return pane?.cwd ?? (space.folder || home());
+}
+
+// The folder of Tempo's database, chosen as tempo/store/schema.py's default_db does: the
+// current place if its file exists, else the one from before the rename; null if neither.
+async function databaseFolder() {
+  for (const folder of [`${home()}/.claude/tempo`, `${home()}/.claude/open-questions`]) {
+    const test = await exec("/bin/test", ["-e", `${folder}/questions.db`]).catch(() => null);
+    if (test?.code === 0) return folder;
+  }
+  return null;
 }
 
 async function findTempo() {
