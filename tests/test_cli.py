@@ -2301,8 +2301,9 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         self.assertIn("is already there, a file", err)
         self.assertIn("Copied Tempo's panel", out)
 
-    def test_another_tempos_link_is_kept_quietly_when_copying_the_panel(self):
-        # The plugin's own copy of Tempo: its bin/tempo beside its tempo package.
+    def other_tempos_link(self):
+        """Link ~/.local/bin/tempo to another Tempo: the plugin's own copy, say, its
+        bin/tempo beside its tempo package. Returns that bin/tempo."""
         plugin = os.path.join(self.home, "plugin")
         other = os.path.join(plugin, "bin", "tempo")
         for path in (other, os.path.join(plugin, "tempo", "__main__.py")):
@@ -2311,8 +2312,22 @@ class HerdrInstallTest(HomeTest, DatabaseTest):
         bin_dir = os.path.join(self.home, ".local", "bin")
         os.makedirs(bin_dir)
         os.symlink(other, os.path.join(bin_dir, "tempo"))
+        return other
+
+    def test_another_tempos_link_is_kept_quietly_when_copying_the_panel(self):
+        other = self.other_tempos_link()
         code, out, err = run("install", "--herdr")
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
         self.assertIn("Copied Tempo's panel", out)
-        self.assertEqual(os.readlink(os.path.join(bin_dir, "tempo")), other)
+        link = os.path.join(self.home, ".local", "bin", "tempo")
+        self.assertEqual(os.readlink(link), other)
+
+    def test_another_tempos_link_still_lets_tmux_be_set_up_too(self):
+        self.other_tempos_link()
+        with mock.patch.object(cli.shutil, "which", return_value="/usr/bin/tmux"):
+            code, out, err = run("install", "--herdr", "--tmux")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("Copied Tempo's panel", out)
+        self.assertIn("    " + cli.TMUX_LINE, out)
+        self.assertTrue(self.store.tmux_sidebar())

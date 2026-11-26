@@ -589,7 +589,7 @@ def run_install(args: argparse.Namespace) -> int:
     elif args.herdr and _tempo_link(link):
         # Another Tempo's link (the plugin's, say) runs tempo just as well for the panel:
         # nothing to say about it.
-        return _install_herdr()
+        return _install_herdr_and_tmux(args)
     elif os.path.lexists(link):
         hint = " (`tempo uninstall` does)" if _tempo_link(link) else ""
         print(
@@ -616,6 +616,12 @@ def run_install(args: argparse.Namespace) -> int:
     # Done, so sessions stop offering /tempo:install.
     with Store(connect()) as store:
         store.set_install_hint(False)
+    return _install_herdr_and_tmux(args)
+
+
+def _install_herdr_and_tmux(args: argparse.Namespace) -> int:
+    """The steps after the link: copy Herdr's panel with --herdr, then, when tmux is
+    there, turn the sidebar on with --tmux and print TMUX_LINE if the config lacks it."""
     herdr = _install_herdr() if args.herdr else 0
     conf = tmux_conf()
     if not (shutil.which("tmux") or os.path.lexists(conf)):
