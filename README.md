@@ -188,9 +188,14 @@ tempo install --herdr
 It copies the panel into Herdr's mods (`~/.config/herdr-app/mods/tempo`, or the folder
 `HERDR_APP_HOME` names). It sits in Herdr's side panel, beside Files and Changes: the Tempo
 button in the tab bar shows and hides it, and so does "Show or hide the questions" in the
-command palette, listed under Tempo. This needs a Herdr that puts mods in its side panel
-(`panel` in a mod's `mod.json`). After a Tempo update, the next Claude session refreshes the
-copy, and Herdr reloads the panel. A copy you edited is never replaced.
+command palette, listed under Tempo. While the panel is hidden, the Tempo button shows how
+many questions are open. After a Tempo update, the next Claude session refreshes the copy,
+and Herdr reloads the panel. A copy you edited is never replaced.
+
+The panel needs a Herdr that puts mods in its side panel (the `panel` key in a mod's
+`mod.json`, the file that describes a mod). Today only a fork of Herdr does that:
+[andrebras/herdr-app](https://github.com/andrebras/herdr-app). The Herdr released on
+[herdr.dev](https://herdr.dev) has no `panel` key, so the panel doesn't appear there.
 
 ### Commands
 
