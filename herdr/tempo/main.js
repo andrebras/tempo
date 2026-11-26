@@ -76,6 +76,7 @@ export default class Tempo extends View {
     this.mine = null; // the shown space's: { cwd, project, questions }
     this.error = null;
     this.busy = false;
+    this.reads = 0; // reads started, so one that ends after a newer one is dropped
     this.seen = new Map(); // each folder's last list, shown at once when you switch back
     this.last = 0;
     this.open = null; // the question shown in full: { project, number, question, pick }
@@ -114,8 +115,11 @@ export default class Tempo extends View {
     notify({ title: "Tempo", body: "No open questions.", level: "info", timeout: 3000 });
   }
 
-  async refresh(cx) {
-    if (!this.tempo || this.busy) return;
+  // now: read even while a read runs, as after sending; that older read is then dropped,
+  // since its lists may be from before the send.
+  async refresh(cx, now = false) {
+    if (!this.tempo || (this.busy && !now)) return;
+    const read = ++this.reads;
     this.busy = true;
     this.last = Date.now();
     const cwd = shownFolder();
@@ -125,6 +129,7 @@ export default class Tempo extends View {
         tempo(this.tempo, ["list", "--json", "--all-projects"], home()),
         cwd ? tempo(this.tempo, ["list", "--json"], cwd) : null,
       ]);
+      if (read !== this.reads) return;
       if (cwd) this.seen.set(cwd, mine);
       // With no space (cwd null) this.mine is null: ?? null keeps null and undefined from
       // counting as a change, which would draw, and so read again, without end.
@@ -144,12 +149,13 @@ export default class Tempo extends View {
       if (this.open) await this.follow(cx);
       if (changed) cx.notify();
     } catch (error) {
+      if (read !== this.reads) return;
       if (this.error !== String(error)) {
         this.error = String(error);
         cx.notify();
       }
     } finally {
-      this.busy = false;
+      if (read === this.reads) this.busy = false;
     }
     // The space changed while this ran: read the new one now, not at the next tick.
     if (shownFolder() !== cwd) cx.spawn((cx) => this.refresh(cx));
@@ -234,8 +240,7 @@ export default class Tempo extends View {
       notify({ title: `Answered Q${number}`, body: `(${pick}) sent to Claude.`, level: "success", timeout: 3000 });
       // On to the project's next open question, as the page does; the list when none is left.
       this.open = null;
-      this.busy = false;
-      await this.refresh(cx);
+      await this.refresh(cx, true);
       const next = this.mine?.questions.find((q) => q.project === project && q.number !== number);
       if (next) await this.show(next.project, next.number, cx);
     } else {
@@ -257,8 +262,7 @@ export default class Tempo extends View {
     this.sending = false;
     if (r.code === 0) {
       this.note.set_value("");
-      this.busy = false;
-      await this.refresh(cx);
+      await this.refresh(cx, true);
       await this.load(cx);
     } else {
       notify({ title: "Tempo", body: r.stderr.trim() || "The follow-up wasn't saved.", level: "error" });
