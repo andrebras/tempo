@@ -377,7 +377,7 @@ export default class Tempo extends View {
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => cx.spawn((cx) => this.show(q.project, q.number, cx)))
-      .child(div().flex_none().w(34).text_color(q.waiting ? t.working : t.accent).child(q.label))
+      .child(div().flex_none().min_w(34).whitespace_nowrap().text_color(q.waiting ? t.working : t.accent).child(q.label))
       .child(div().flex_1().min_w(0).child(q.title));
   }
 
