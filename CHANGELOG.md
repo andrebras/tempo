@@ -13,7 +13,9 @@ All notable changes to Tempo are listed here. The format follows
   Claude for more in it. `tempo install --herdr` copies it into Herdr's mods, sessions keep
   the copy current after updates, and `tempo uninstall` removes it unless you edited it.
   While the panel is hidden, its button in Herdr's tab bar shows how many questions are
-  open.
+  open. For now the panel needs a fork of Herdr
+  ([andrebras/herdr-app](https://github.com/andrebras/herdr-app)): released Herdr doesn't
+  show mods in its side panel yet.
 
 ## [0.13.4] - 2026-11-14
 
