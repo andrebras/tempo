@@ -4,6 +4,7 @@
     "includes": [
       "tempo/page.js",
       "tests/page.test.js",
+      "tests/panel.test.js",
       "!!.claude",
       "!!.venv",
       "!!.tempo-dev"

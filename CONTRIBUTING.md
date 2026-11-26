@@ -125,8 +125,8 @@ tempo/
   tui/            tempo tui, the full-screen terminal view
 skills/           six skills: tempo, which teaches Claude the workflow, and one for each
                   slash command (list, show, answer, dive, install)
-tests/            Python tests (test_page.py drives the page in Chrome), and page.test.js
-                  for the page's script
+tests/            Python tests (test_page.py drives the page in Chrome), page.test.js
+                  for the page's script, and panel.test.js for the Herdr panel's text
 ```
 
 ## Releasing
