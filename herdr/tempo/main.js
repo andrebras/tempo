@@ -107,6 +107,7 @@ export default class Tempo extends View {
         cwd !== this.mine?.cwd;
       this.all = all;
       this.mine = cwd ? { cwd, questions: mine, project: mine[0]?.project ?? null } : null;
+      if (this.open && this.open.project !== this.mine?.project) this.open = null;
       this.error = null;
       if (this.open) await this.follow(cx);
       if (changed) cx.notify();
@@ -239,6 +240,8 @@ export default class Tempo extends View {
       // A read already running picks the new space up when it ends.
       const last = cwd ? this.seen.get(cwd) : undefined;
       if (last) this.mine = { cwd, questions: last, project: last[0]?.project ?? null };
+      // The panel shows the shown space's project alone: a question of another one closes.
+      if (this.open && this.open.project !== (last?.[0]?.project ?? null)) this.open = null;
       if (!this.busy) cx.spawn((cx) => this.refresh(cx));
     }
     const body = this.open ? this.detail(t) : this.list(t, cwd);
