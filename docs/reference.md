@@ -31,8 +31,8 @@ Commands for you:
 | `tempo sidebar [on\|off\|toggle]` | The tmux sidebar (see [A sidebar beside Claude](#a-sidebar-beside-claude)) |
 | `tempo status` | Print `? 3` when the folder's project has 3 open questions, nothing when none (see [A badge in the tmux status bar](#a-badge-in-the-tmux-status-bar)) |
 | `tempo config` | Show your settings. `tempo config page on\|off` (see [Starting the page with each session](#starting-the-page-with-each-session)); `tempo config install-hint on\|off` turns off the session's `/tempo:install` reminder |
-| `tempo install` | Put `tempo` in your own shell (see [`tempo` in your own shell](#tempo-in-your-own-shell)). `--tmux` also turns the sidebar on. `--herdr` also copies the Herdr panel into Herdr's mods, if Herdr is set up (see [In Herdr](../README.md#in-herdr)) |
-| `tempo uninstall` | Remove the `~/.local/bin/tempo` link and Tempo's copy of the Herdr panel, and print any Tempo lines left in your tmux config for you to remove. A panel copy you edited stays |
+| `tempo install` | Put `tempo` in your own shell (see [`tempo` in your own shell](#tempo-in-your-own-shell)). `--tmux` also turns the sidebar on |
+| `tempo uninstall` | Remove the `~/.local/bin/tempo` link, and print any Tempo lines left in your tmux config for you to remove |
 | `tempo serve` | Run the page. `--background` runs it in the background; `--port` picks another port |
 
 `add`, `show` and `list` take `--json` for scripts. Most commands take `--project NAME` to act
