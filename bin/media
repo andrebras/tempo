@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Make the README's pictures: docs/settings-light.png and docs/settings-dark.png (Settings),
-docs/sidebar.gif (the tmux sidebar), docs/tui.gif (`tempo tui`) and docs/demo.gif (the
+and docs/sidebar.gif (the tmux sidebar), docs/tui.gif (`tempo tui`) and docs/demo.gif (the
 page), which show the same story in dark colours: answer a question with a note, ask for
-more on the next, and Claude rewords it; and docs/herdr.gif, Tempo's panel in Herdr.
+more on the next, and Claude rewords it.
 
 It fills a throwaway database with made-up questions for three invented projects, runs the
 page from this checkout on a free port, and drives headless Google Chrome through the Chrome
@@ -10,18 +10,13 @@ DevTools Protocol (CDP, the commands Chrome takes over a pipe), so the pictures 
 same way every time. For tui.gif, ttyd runs `tempo tui` on a second throwaway database and
 shows it as a web page, which the same Chrome records with the terminal's real colours. For
 sidebar.gif, ttyd runs a throwaway tmux server of its own, with no config of yours. Your own
-questions and your own tmux are never touched, and nothing uses the real page's port. For
-herdr.gif, Herdr runs on a throwaway home and core session of its own and saves its own
-frames (`herdr-app shot`), driven by its commands, never by keys or clicks on your screen.
+questions and your own tmux are never touched, and nothing uses the real page's port.
 
 Needs Python 3.9 or newer, Google Chrome, ffmpeg (`brew install ffmpeg`), which turns the
 recorded frames into the GIFs, ttyd (`brew install ttyd`) and tmux (`brew install tmux`).
-Set CHROME to the browser's path if it isn't installed in /Applications. herdr.gif also
-needs Herdr, with a side panel for mods, and its core's `hc` on PATH; set HERDR_APP to the
-app's program if it isn't in Herdr.app under ~/Applications or /Applications. Without
-them, herdr.gif is left as it is.
+Set CHROME to the browser's path if it isn't installed in /Applications.
 
-    bin/media              # all six files
+    bin/media              # all five files
     bin/media --keep DIR   # also keep the databases, the frames and the logs in DIR
 """
 
@@ -211,15 +206,6 @@ CLAUDE_GARDEN = (
     "\033[38;5;174m●\033[0m One choice is yours, asked in Tempo:\n"
     "  \033[2m⎿\033[0m Q1 Should the seed calendar start the week on Monday or Sunday?\n\n"
 )
-# Herdr's GIF: a new question Claude asks while the panel shows, which brings a notice.
-NEW_EXPORT: dict[str, Any] = {
-    "title": "Should the export include cancelled orders?",
-    "context": "Accountants often need them to match refunds, but most owners never look.",
-    "options": ["Yes, marked as cancelled", "No", "A switch on the export, off by default"],
-}
-CLAUDE_NEW_EXPORT = "\033[38;5;174m●\033[0m Asked Q6 in Tempo: cancelled orders in the export?"
-# Herdr's app inside its bundle, under /Applications or ~/Applications.
-HERDR_APP = "Applications/Herdr.app/Contents/MacOS/Herdr"
 # The page has drawn its list and a question.
 LOADED = "document.querySelector('#detail h2') && document.querySelector('#list a')"
 # A mouse pointer drawn into the page: headless Chrome draws none.
@@ -250,20 +236,16 @@ def main() -> int:
         return fail("tmux is missing: install it with 'brew install tmux'")
     if not chrome:
         return fail("Google Chrome is missing: install it, or set CHROME to its path")
-    herdr = find_herdr()
-    if not herdr:
-        print("bin/media: no Herdr app or hc found, so docs/herdr.gif is left as it is")
     if args.keep:
         work = Path(args.keep).resolve()
         if work.exists() and any(work.iterdir()):
             return fail("%s is not empty; pick a new folder" % work)
         work.mkdir(parents=True, exist_ok=True)
-        make(work, chrome, herdr)
+        make(work, chrome)
     else:
         with tempfile.TemporaryDirectory(prefix="tempo-media-") as folder:
-            make(Path(folder), chrome, herdr)
+            make(Path(folder), chrome)
     names = ["sidebar.gif", "tui.gif", "demo.gif", "settings-light.png", "settings-dark.png"]
-    names += ["herdr.gif"] if herdr else []
     for name in names:
         print("Wrote docs/%s (%d KB)" % (name, (DOCS / name).stat().st_size // 1000))
     return 0
@@ -301,7 +283,7 @@ def free_tempo_port() -> int:
     raise SystemExit("bin/media: no free port between 22100 and 22999")
 
 
-def make(work: Path, chrome: str, herdr: tuple[str, str] | None) -> None:
+def make(work: Path, chrome: str) -> None:
     port = free_port()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("TEMPO_", "OQ_"))}
     env.update(TEMPO_DB=str(work / "questions.db"), TEMPO_PORT=str(port))
@@ -329,8 +311,6 @@ def make(work: Path, chrome: str, herdr: tuple[str, str] | None) -> None:
         finally:
             server.terminate()
             server.wait()
-    if herdr:
-        Herdr(work / "herdr", *herdr).record()
 
 
 class Demo:
@@ -886,209 +866,6 @@ class Sidebar(Tui):
         self.until("acme-shop · 4 open")
         self.frame(1500)
         encode(self.frames, self.work / "frames.txt", DOCS / "sidebar.gif", TUI_WIDTH, TUI_LIMIT)
-
-
-class Herdr(Demo):
-    """Tempo's panel in Herdr, the desktop app for terminals and agents, recorded from the
-    app's own frames (`herdr-app shot`): a space for the project with a stand-in for
-    Claude's pane, the panel listing its questions by goal, a question shown in full, the
-    list following an answer and a new question, and the count on the Tempo button once
-    the panel is hidden.
-
-    The app runs on a throwaway home (HERDR_APP_HOME), with a core session (HC_SESSION)
-    and state folder of its own, so it never opens your window, your spaces or your
-    terminals. It is driven only with `herdr-app do`, never with keys or clicks on your
-    screen, and only the app and the core it started are stopped."""
-
-    def __init__(self, work: Path, app: str, hc: str) -> None:
-        work.mkdir()
-        # Sockets live under the home and the state folder, and a socket path must stay
-        # short, so those aren't under work.
-        self.short = Path(tempfile.mkdtemp(prefix="tempo-herdr-", dir="/tmp"))
-        self.app, self.hc = app, hc
-        self.home = self.short / "home"
-        self.folder = self.short / "acme-shop"
-        self.session = "tempo-media-%d" % os.getpid()
-        tools = self.short / "bin"
-        tools.mkdir()
-        # The panel finds `tempo` on PATH: this checkout's, on the throwaway database.
-        (tools / "tempo").symlink_to(ROOT / "bin" / "tempo")
-        inherited = ("TEMPO_", "OQ_", "HERDR_", "HC_", "TMUX", "XDG_STATE_HOME")
-        env = {k: v for k, v in os.environ.items() if not k.startswith(inherited)}
-        env.update(
-            TEMPO_DB=str(work / "questions.db"),
-            TEMPO_PORT=str(free_tempo_port()),
-            HERDR_APP_HOME=str(self.home),
-            HERDR_APP_NO_SOUND="1",
-            HERDR_TELEMETRY="0",
-            HC_SESSION=self.session,
-            XDG_STATE_HOME=str(self.short / "state"),
-            TMUX_TMPDIR=str(self.short / "tmux"),
-            PATH="%s:%s" % (tools, os.environ.get("PATH", "")),
-        )
-        super().__init__(work, env, 0)
-        self.claude = work / "claude-acme-shop.log"
-        self.process: subprocess.Popen[bytes] | None = None
-
-    def herdr(self, *args: str) -> str:
-        done = subprocess.run(  # noqa: S603
-            [self.app, *args], env=self.env, capture_output=True, text=True, timeout=40
-        )
-        if done.returncode != 0:
-            raise SystemExit("bin/media: herdr-app %s failed: %s" % (args[0], done.stderr))
-        return done.stdout
-
-    def do(self, command: str, args: dict[str, Any] | None = None) -> None:
-        self.herdr("do", command, *([json.dumps(args)] if args is not None else []))
-
-    def shared(self, key: str) -> object:
-        """A value the app's mods share (shared.json); the panel publishes its count there."""
-        try:
-            return json.loads((self.home / "shared.json").read_text()).get(key)
-        except (OSError, ValueError):
-            return None
-
-    def until_shared(self, key: str, test: Any, timeout: float = 40) -> None:
-        end = time.monotonic() + timeout
-        while not test(self.shared(key)):
-            if time.monotonic() > end:
-                raise SystemExit("bin/media: Herdr's %s never changed as expected" % key)
-            time.sleep(0.2)
-        # Let the panel draw what it read.
-        time.sleep(0.6)
-
-    def seed(self) -> None:
-        """A home where the app opens straight away: dark, quiet, welcomed, the panel
-        installed, at the size the other recordings use."""
-        (self.home / "mods").mkdir(parents=True)
-        shutil.copytree(ROOT / "herdr" / "tempo", self.home / "mods" / "tempo")
-        version = self.herdr("--version").split()[-1]
-        files: dict[str, object] = {
-            "settings.json": {"appearance": "dark", "sounds": {"enabled": False}},
-            "shared.json": {"frame.welcomed": "media"},
-            "update-notes.json": {"last_run": version, "presented": []},
-            "window.json": {"state": "windowed", "bounds": [120, 120, WIDTH, HEIGHT]},
-        }
-        for name, content in files.items():
-            (self.home / name).write_text(json.dumps(content))
-        self.folder.mkdir()
-        self.claude.write_text(CLAUDE_START)
-
-    def record(self) -> None:
-        try:
-            self.fill()
-            self.backdate()
-            self.seed()
-            with open(self.work / "herdr.log", "w") as log:
-                self.process = subprocess.Popen(  # noqa: S603
-                    [self.app],
-                    env=self.env,
-                    cwd=self.short,
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                )
-            self.wait_for_window()
-            self.story()
-        finally:
-            self.stop()
-
-    def wait_for_window(self) -> None:
-        for _ in range(150):
-            done = subprocess.run(  # noqa: S603
-                [self.app, "status"], env=self.env, capture_output=True, timeout=10
-            )
-            if done.returncode == 0:
-                return
-            if self.process and self.process.poll() is not None:
-                break
-            time.sleep(0.2)
-        raise SystemExit("bin/media: Herdr did not start; run with --keep DIR to see its log")
-
-    def stop(self) -> None:
-        """Quit the app this started, then its own core; nothing else."""
-        if self.process and self.process.poll() is None:
-            with contextlib.suppress(SystemExit, subprocess.TimeoutExpired):
-                self.do("app.quit")
-            try:
-                self.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait()
-        # This session's core keeps its sockets under the throwaway state folder.
-        if (self.short / "state" / "herdr-core" / self.session).is_dir():
-            subprocess.run(  # noqa: S603
-                [self.hc, "server", "stop"], env=self.env, capture_output=True, timeout=30
-            )
-        shutil.rmtree(self.short, ignore_errors=True)
-
-    def frame(self, hold: int) -> None:
-        path = self.frames_folder / ("%03d.png" % len(self.frames))
-        path.parent.mkdir(exist_ok=True)
-        self.herdr("shot", str(path))
-        self.frames.append((path, hold))
-
-    def says(self, *lines: str) -> None:
-        """Claude's pane adds lines, as a session would while it works."""
-        with open(self.claude, "a") as log:
-            log.write("".join(line + "\n" for line in lines))
-        time.sleep(0.6)
-
-    def story(self) -> None:
-        # The machine's own agents would show under Detected: hidden, in this home only.
-        self.do("layout.hide", {"id": "agents"})
-        follow = 'stty -echo; exec tail -n +1 -f "$0" </dev/null'
-        self.do(
-            "space.new",
-            {
-                "folder": str(self.folder),
-                "name": "acme-shop",
-                "tab": "claude",
-                "argv": ["sh", "-c", follow, str(self.claude)],
-            },
-        )
-        # The panel lists the project's open questions by goal.
-        panel = {"id": "panel", "stack": "panel-body", "child": "panel-tempo"}
-        self.do("layout.toggle", panel)
-        self.until_shared("tempo.badge", lambda n: n == 5)
-        self.frame(2200)
-        # One shown in full: its context, its options and a note.
-        self.do("tempo.open:1:acme-shop")
-        time.sleep(1.2)
-        self.frame(2800)
-        # Answered: the panel goes back to the list, one fewer, and Claude gets on with it.
-        self.tempo("answer", "1", "b", "--project", "acme-shop", "--note", ANSWER_NOTE)
-        self.until_shared("tempo.badge", lambda n: n == 4)
-        self.says(*CLAUDE_ANSWERED)
-        self.frame(2400)
-        # Claude asks a new question: a notice says so, and the list shows it.
-        before = self.shared("tempo.announced")
-        args = ["add", "--project", "acme-shop", "--goal", ORDERS]
-        args += ["--title", NEW_EXPORT["title"], "--context", NEW_EXPORT["context"]]
-        for option in NEW_EXPORT["options"]:
-            args += ["--option", option]
-        self.tempo(*args)
-        self.says(CLAUDE_NEW_EXPORT)
-        self.until_shared("tempo.announced", lambda mark: mark != before)
-        self.frame(3000)
-        # Hidden, the panel leaves its count on the Tempo button.
-        self.do("layout.toggle", panel)
-        time.sleep(0.8)
-        self.frame(2600)
-        encode(self.frames, self.work / "frames.txt", DOCS / "herdr.gif", GIF_WIDTH, GIF_LIMIT)
-
-
-def find_herdr() -> tuple[str, str] | None:
-    """Herdr's app (HERDR_APP, or where its installer puts it) and its core's `hc`."""
-    hc = shutil.which("hc")
-    places = [
-        os.environ.get("HERDR_APP", ""),
-        str(Path.home() / HERDR_APP),
-        "/" + HERDR_APP,
-        shutil.which("herdr-app") or "",
-    ]
-    app = next((p for p in places if p and os.access(p, os.X_OK)), None)
-    return (app, hc) if app and hc else None
 
 
 def strip(line: str) -> str:
