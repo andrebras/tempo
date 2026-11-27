@@ -10,10 +10,9 @@ decisions and keeps playing.
 
 Tempo is a [Claude Code](https://code.claude.com) plugin. When Claude needs a decision from
 you, it saves the question with all the context you need, instead of letting it scroll away
-in chat. You answer whenever it suits you: in the terminal, in a sidebar beside Claude in
-tmux or in a full-screen view, or in a panel in [Herdr](https://herdr.dev). Claude picks the
-answer up by itself. A local web page is there too if you want it; it is off unless you turn
-it on.
+in chat. You answer in the terminal whenever it suits you, in a sidebar beside Claude in
+tmux or in a full-screen view, and Claude picks the answer up by itself. A local web page
+is there too if you want it; it is off unless you turn it on.
 
 - 🚀 [Quick start](#quick-start)
 - 🎬 [See it in action](#see-it-in-action)
@@ -22,7 +21,6 @@ it on.
 - 🎛️ [Usage](#usage)
   - 🗂️ [A sidebar in tmux](#a-sidebar-in-tmux): `tempo sidebar on`
   - 🖥️ [Without tmux: `tempo tui`](#without-tmux-tempo-tui), the full-screen view
-  - 🧩 [In Herdr](#in-herdr): `tempo install --herdr`
   - ⌨️ [Commands](#commands) and [slash commands](#in-the-claude-code-session)
   - 🌐 [The page (optional)](#the-page-optional)
 - ⚙️ [How it works](#how-it-works)
@@ -56,9 +54,8 @@ run-shell -b "~/.local/bin/tempo sidebar --restore"
 
 ## See it in action
 
-The first three recordings show the same steps: you answer a question with a note, then ask
-for more context on the next one, and Claude rewords it. The last one shows Tempo's panel in
-Herdr.
+All three recordings show the same steps: you answer a question with a note, then ask for
+more context on the next one, and Claude rewords it.
 
 **In tmux, with the sidebar**
 
@@ -71,10 +68,6 @@ Herdr.
 **On the page**
 
 ![Answering on the Tempo page in dark colours: option (b) is picked, a note is typed and the answer is sent, and the page moves on to the next question. There, a follow-up is typed and "Ask for more context" is pressed; Claude rewords the question and the thread shows both steps.](docs/demo.gif)
-
-**In Herdr, with the Tempo panel**
-
-![Herdr in dark colours, with a space for the project and a stand-in for Claude's pane that says it asked two questions in Tempo. The Tempo panel beside it lists the project's open questions by goal. Q1 opens in the panel with its context, its options (the recommended one marked) and a note box. Once Q1 is answered, the panel goes back to the list, one question fewer, and Claude's pane shows it got the answer and goes on. Claude asks a new question: a notice names it in the corner and the list shows it. With the panel hidden, the Tempo button in the tab bar shows the open-question count.](docs/herdr.gif)
 
 The recordings use made-up questions; `bin/media` makes them again (see
 [CONTRIBUTING.md](CONTRIBUTING.md#screenshots-and-demo-gifs)).
@@ -102,8 +95,8 @@ Then restart open sessions (for example with `claude --continue`): a session kee
 plugin version it started with, and says so once when it is out of date.
 
 To remove it, run `tempo uninstall` first if you ran `/tempo:install`: it removes the
-`~/.local/bin/tempo` link and the Herdr panel, unless you edited it, and prints any of
-Tempo's lines left in your tmux config for you to remove. Then:
+`~/.local/bin/tempo` link, and prints any of Tempo's lines left in your tmux config for you
+to remove. Then:
 
 ```bash
 claude plugin uninstall tempo@tempo
@@ -117,8 +110,10 @@ Your questions stay in `~/.claude/tempo/` (older installs keep them in
 
 Once `/tempo:install` has run, there's nothing else to start. When Claude needs a decision,
 it adds a question and tells you how to answer it. You answer in the terminal: in the tmux
-sidebar, in `tempo tui`, with `tempo answer`, or with a slash command in the session. You
-can also answer in Herdr's side panel. The page is optional, and off unless you turn it on.
+sidebar, in `tempo tui`, with `tempo answer`, or with a slash command in the session. The
+page is optional, and off unless you turn it on. If you use [Herdr](https://herdr.dev), a
+desktop app for terminals and coding agents, there is also a Tempo panel for it, in its own
+repo: [andrebras/herdr-tempo](https://github.com/andrebras/herdr-tempo).
 
 Every question has a number per project that is never reused, so answering "12b" in chat
 works too. Merging two projects renumbers the questions that move.
@@ -173,29 +168,6 @@ Answers are saved exactly as the page and `tempo answer` save them, and the scre
 changes by itself. For answered and archived questions and search, use
 [the page](#the-page-optional). Paste handling, merging projects with `s`, and a tmux popup
 for `tempo tui` are in [the reference](docs/reference.md#tempo-tui).
-
-### In Herdr
-
-[Herdr](https://herdr.dev) is a desktop app for terminals and coding agents. Tempo comes
-with a panel for it, a Herdr mod, that lists the open questions of the project in front of
-you. Click one to read it, pick an option and answer, or ask Claude for more. A new
-question shows a notice in Herdr. To install it, run:
-
-```bash
-tempo install --herdr
-```
-
-It copies the panel into Herdr's mods (`~/.config/herdr-app/mods/tempo`, or the folder
-`HERDR_APP_HOME` names). It sits in Herdr's side panel, beside Files and Changes: the Tempo
-button in the tab bar shows and hides it, and so does "Show or hide the questions" in the
-command palette, listed under Tempo. While the panel is hidden, the Tempo button shows how
-many questions are open. After a Tempo update, the next Claude session refreshes the copy,
-and Herdr reloads the panel. A copy you edited is never replaced.
-
-The panel needs a Herdr that puts mods in its side panel (the `panel` key in a mod's
-`mod.json`, the file that describes a mod). Today only a fork of Herdr does that:
-[andrebras/herdr-app](https://github.com/andrebras/herdr-app). The Herdr released on
-[herdr.dev](https://herdr.dev) has no `panel` key, so the panel doesn't appear there.
 
 ### Commands
 

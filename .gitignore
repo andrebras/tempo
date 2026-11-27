@@ -9,6 +9,3 @@ __pycache__/
 .claude/worktrees/
 .claude/settings.local.json
 .DS_Store
-# Editor helpers Herdr writes beside a mod it loads.
-herdr/*/gpui-kit.d.ts
-herdr/*/jsconfig.json
