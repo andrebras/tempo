@@ -6,6 +6,12 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- On the page, Cmd+Enter in the note (Ctrl+Enter on Linux and Windows) sends, as in the
+  Herdr panel: the answer when an option is picked, else the note as a request for more
+  context, else nothing. Plain Enter still starts a new line.
+
 ## [0.13.4] - 2026-11-14
 
 ### Added
