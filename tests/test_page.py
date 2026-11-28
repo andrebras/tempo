@@ -152,6 +152,16 @@ class PageTest(DatabaseTest):
                 **({"text": "\r"} if kind == "keyDown" else {}),
             )
 
+    def send_key_prevented(self, send_key):
+        """Whether the page stops the browser's own handling of Enter in the note: with the
+        send key (Cmd on a Mac, else Ctrl) held when send_key is true, else plain Enter."""
+        return self.run_js(
+            "(() => { const mod = /Mac/.test(navigator.platform) ? 'metaKey' : 'ctrlKey';"
+            " const e = new KeyboardEvent('keydown', {key: 'Enter', cancelable: true,"
+            " bubbles: true, [mod]: %s}); $('#note').dispatchEvent(e);"
+            " return e.defaultPrevented; })()" % json.dumps(send_key)
+        )
+
     def press_send_key(self):
         """Cmd+Enter on a Mac, Ctrl+Enter elsewhere, as the page tells them apart."""
         self.press_enter(4 if self.run_js("/Mac/.test(navigator.platform)") else 2)
@@ -213,6 +223,8 @@ class PageTest(DatabaseTest):
         self.press_send_key()
         # An empty note sends nothing, and the key types no line break.
         self.assertEqual(self.run_js("$('#note').value"), "")
+        self.assertTrue(self.send_key_prevented(True))
+        self.assertFalse(self.send_key_prevented(False), "plain Enter still types a line break")
         self.type("What does each way cost?")
         self.press_send_key()
         self.wait("$('#detail .eyebrow .wait')")
