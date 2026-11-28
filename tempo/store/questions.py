@@ -216,9 +216,10 @@ class QuestionStore(StoreBase):
     ) -> Question:
         """delivered=True: as for follow_up.
 
-        version is the wording the user saw, from the page or the terminal screen. When
-        Claude has reworded the question since, the answer is refused: the same letter may
-        now name another option. None answers the current wording, as `tempo answer` does.
+        version is the wording the user saw, from the page, the terminal screen or `tempo
+        answer --version`. When Claude has reworded the question since, the answer is
+        refused: the same letter may now name another option. None answers the current
+        wording, as `tempo answer` does without --version.
         """
         body = (body or "").strip()
         choice = (choice or "").strip().lower()

@@ -201,6 +201,11 @@ def _user_commands(commands: argparse._SubParsersAction[argparse.ArgumentParser]
     answer.add_argument("number", type=_number)
     answer.add_argument("letter", help="The option's letter, such as b, or its text, such as yes")
     answer.add_argument("--note", default="", help="A note to go with the answer")
+    answer.add_argument(
+        "--version",
+        type=int,
+        help="The version of the question you read; refused if Claude reworded it since",
+    )
     answer.add_argument("--project")
     answer.set_defaults(run=run_answer)
 
@@ -511,7 +516,7 @@ def _stop_waiting(signum: int, frame: object) -> None:
 def run_answer(args: argparse.Namespace) -> None:
     store, project = _store(), _project(args.project)
     letter = slash.option_letter(store.get(project, args.number), args.letter)
-    question = store.answer(project, args.number, letter, args.note)
+    question = store.answer(project, args.number, letter, args.note, version=args.version)
     print(
         "Answered %s: %s"
         % (answered_label(question), _describe_answer(question, question["answer"]))

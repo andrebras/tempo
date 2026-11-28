@@ -25,7 +25,7 @@ Commands for you:
 
 | Command | What it does |
 | --- | --- |
-| `tempo answer <n> <letter>` | Answer a question (`--note "…"`). The option may also be named by its text, such as `tempo answer 61 yes`; a valid letter wins |
+| `tempo answer <n> <letter>` | Answer a question (`--note "…"`). The option may also be named by its text, such as `tempo answer 61 yes`; a valid letter wins. `--version 2` answers only if the question is still at that version (below) |
 | `tempo reply <n> "…"` | Ask for more context (a follow-up) |
 | `tempo tui` | The full-screen terminal view (see [`tempo tui`](#tempo-tui)) |
 | `tempo sidebar [on\|off\|toggle]` | The tmux sidebar (see [A sidebar beside Claude](#a-sidebar-beside-claude)) |
@@ -127,7 +127,9 @@ Claude" instead. Opening the question clears the dot. This is kept in your brows
 An answer is tied to the wording you saw. If Claude rewords the question meanwhile, the page
 and `tempo tui` refuse the answer ("Q1 changed since you looked at it"), show the new wording
 and keep your note, so a letter never lands on an option you didn't see. `tempo answer` and
-`/tempo:answer` answer the current wording.
+`/tempo:answer` answer the current wording. `tempo answer --version N` refuses the same way
+when the question is no longer at version N, for tools that show the question first, such
+as the Herdr panel; it exits with code 2.
 
 ## Settings
 

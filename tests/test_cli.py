@@ -388,6 +388,22 @@ class CliTest(DatabaseTest):
         code, out, _ = run("answer", "1", "b")
         self.assertEqual((code, out), (0, "Answered Q1 (version 2): (b) Left\n"))
 
+    def test_answer_with_the_version_read_answers_it(self):
+        self.add()
+        self.store.reword("demo", 1, "Swapped", options=["Right", "Left"])
+        code, out, _ = run("answer", "1", "b", "--version", "2")
+        self.assertEqual((code, out), (0, "Answered Q1 (version 2): (b) Left\n"))
+
+    def test_answer_refuses_a_version_claude_has_reworded_since(self):
+        self.add(options=["Left", "Right", "Up"])
+        self.store.reword("demo", 1, "Fewer", options=["Up", "Down"])
+        stale = "tempo: Q1 changed since you looked at it (now version 2); check it again\n"
+        # (c) is gone from the new wording: the refusal still says why, not "no such option".
+        for letter in ("a", "c"):
+            code, out, err = run("answer", "1", letter, "--version", "1")
+            self.assertEqual((code, out, err), (2, "", stale))
+        self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
     def test_answer_rejects_an_unknown_option_or_question(self):
         self.add()
         code, _, err = run("answer", "1", "z")
