@@ -6,6 +6,14 @@ All notable changes to Tempo are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `tempo answer --version N` answers only if the question is still at version N, as the
+  page does. If Claude reworded it since, the answer is refused ("Q1 changed since you
+  looked at it") and the command exits with code 2, so a letter never lands on an option
+  you didn't see. Tools that show a question and then answer it, such as the Herdr panel,
+  use it.
+
 ## [0.13.4] - 2026-11-14
 
 ### Added
