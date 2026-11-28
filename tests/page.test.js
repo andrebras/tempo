@@ -50,6 +50,7 @@ globalThis.document = { createElement: (tag) => new Element(tag) };
 const {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
   pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
+  isSendKey, submitAction,
 } = require("../tempo/page.js");
 
 // A compact picture of a node tree: text as strings, elements as [TAG, ...children].
@@ -342,4 +343,25 @@ test("while an answer is being sent, a redraw keeps the buttons disabled", () =>
   } finally {
     state.sending = null;
   }
+});
+
+test("Cmd+Enter on a Mac, Ctrl+Enter elsewhere, is the send key in the note", () => {
+  const key = (extra) => ({ key: "Enter", ...extra });
+  assert.equal(isSendKey(key({ metaKey: true }), true), true);
+  assert.equal(isSendKey(key({ ctrlKey: true }), false), true);
+  assert.equal(isSendKey(key({ ctrlKey: true }), true), false);
+  assert.equal(isSendKey(key({ metaKey: true }), false), false);
+  // Plain Enter and Shift+Enter start a new line, and so does a key typed mid-composition.
+  assert.equal(isSendKey(key({}), true), false);
+  assert.equal(isSendKey(key({ metaKey: true, shiftKey: true }), true), false);
+  assert.equal(isSendKey(key({ metaKey: true, isComposing: true }), true), false);
+  assert.equal(isSendKey({ key: "a", metaKey: true }, true), false);
+});
+
+test("the send key answers with an option picked, else asks for more with a note", () => {
+  assert.equal(submitAction({ pick: "b", note: "", sending: false }), "answer");
+  assert.equal(submitAction({ pick: "b", note: "Nicer view", sending: false }), "answer");
+  assert.equal(submitAction({ pick: undefined, note: "Why not both?", sending: false }), "more");
+  assert.equal(submitAction({ pick: undefined, note: "  \n ", sending: false }), null);
+  assert.equal(submitAction({ pick: "a", note: "x", sending: true }), null);
 });

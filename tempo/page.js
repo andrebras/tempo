@@ -819,6 +819,23 @@ async function loadDetail(force) {
   }
 }
 
+// Cmd+Enter in the note box (Ctrl+Enter off a Mac) sends, as in the Herdr panel. Plain
+// Enter and Shift+Enter still start a new line.
+function isSendKey(event, mac) {
+  return event.key === "Enter" && !event.isComposing && !event.shiftKey && !event.altKey
+    && Boolean(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
+}
+
+// What that key sends: the answer when an option is picked, as Send answer does; else the
+// note, when it has text, as Ask for more context does; else nothing. Nothing either while
+// a send runs.
+function submitAction({ pick, note, sending }) {
+  if (sending) return null;
+  if (pick) return "answer";
+  if (note.trim()) return "more";
+  return null;
+}
+
 // What to tell the user when Claude rewords the question they are answering, or null when
 // they hadn't started. Their pick is dropped (keptDraft), so the notice says so.
 function rewordNotice(typed, question) {
@@ -895,18 +912,28 @@ function renderQuestion(question, draft, notice = null) {
     const note = el("textarea", { id: "note", "aria-label": "Your note",
       placeholder: "A note with your answer, or what you need to know more about" });
     note.value = draft.text;
-    parts.push(note, el("div", { class: "actions" },
-      el("button", { class: "primary", id: "send", disabled: busy || !draft.choice, onclick: () => {
-        const picked = document.querySelector("input[name=choice]:checked");
-        // The version drawn, so the server refuses the answer if Claude has reworded the
-        // question since: the same letter may name another option now. A refused answer
-        // shows at once what changed, keeping the note.
-        post("answer", { choice: picked ? picked.value : null, body: note.value, version: question.version })
-          .then(() => goToNextOpen(question), () => refresh());
-      } }, reopened ? "Send new answer" : "Send answer"),
-      el("button", { disabled: busy, onclick: () => post("followup", { body: note.value }).then(redraw, () => {}) },
-        "Ask for more context")),
-      el("p", { class: "hint" }, "Pick an option to answer. To send only a note, use Ask for more context: the question stays open."),
+    const send = el("button", { class: "primary", id: "send", disabled: busy || !draft.choice, onclick: () => {
+      const picked = document.querySelector("input[name=choice]:checked");
+      // The version drawn, so the server refuses the answer if Claude has reworded the
+      // question since: the same letter may name another option now. A refused answer
+      // shows at once what changed, keeping the note.
+      post("answer", { choice: picked ? picked.value : null, body: note.value, version: question.version })
+        .then(() => goToNextOpen(question), () => refresh());
+    } }, reopened ? "Send new answer" : "Send answer");
+    const more = el("button", { disabled: busy, onclick: () => post("followup", { body: note.value }).then(redraw, () => {}) },
+      "Ask for more context");
+    const mac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform);
+    // The key presses the button itself, so it sends exactly what a click sends.
+    note.addEventListener("keydown", (event) => {
+      if (!isSendKey(event, mac)) return;
+      event.preventDefault();
+      const pick = document.querySelector("input[name=choice]:checked");
+      const action = submitAction({ pick: pick?.value, note: note.value, sending: Boolean(state.sending) });
+      if (action) (action === "answer" ? send : more).click();
+    });
+    parts.push(note, el("div", { class: "actions" }, send, more),
+      el("p", { class: "hint" }, "Pick an option to answer. To send only a note, use Ask for more context: the question stays open. "
+        + `${mac ? "⌘Enter" : "Ctrl+Enter"} in the note does either.`),
       error);
   }
   parts.push(renderThread(question));
@@ -1036,5 +1063,6 @@ function start() {
 if (typeof module === "object") module.exports = {
   rich, inline, openFor, joinNotice, mergeNotice, mergeQuestion, mergeForm, serverChanged, renderFolders, chipProjects,
   pathParts, projectRow, noteOpened, questionFresh, keptDraft, renderQuestion, renderSessions, rewordNotice, state,
+  isSendKey, submitAction,
 };
 else start();

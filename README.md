@@ -218,7 +218,8 @@ tempo serve --background  # or start it just this once
 send it; ask for more context; reopen an answered question; search, and switch between open,
 answered and archived questions; switch projects with the chips in the header; and change
 the theme, font and project names in Settings, where you can also merge two projects. More in
-[the reference](docs/reference.md#settings).
+[the reference](docs/reference.md#settings). In the note, Cmd+Enter (Ctrl+Enter on Linux and
+Windows) sends the answer when an option is picked, else asks for more context.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/settings-dark.png">

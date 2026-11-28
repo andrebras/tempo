@@ -138,6 +138,34 @@ class PageTest(DatabaseTest):
                 windowsVirtualKeyCode=27,
             )
 
+    def press_enter(self, modifiers=0):
+        """Enter, with Cmd (4) or Ctrl (2) held when given, typing a line break unless the
+        page stops it."""
+        for kind in ("keyDown", "keyUp"):
+            self.browser.send(
+                "Input.dispatchKeyEvent",
+                type=kind,
+                key="Enter",
+                code="Enter",
+                windowsVirtualKeyCode=13,
+                modifiers=modifiers,
+                **({"text": "\r"} if kind == "keyDown" else {}),
+            )
+
+    def send_key_prevented(self, send_key):
+        """Whether the page stops the browser's own handling of Enter in the note: with the
+        send key (Cmd on a Mac, else Ctrl) held when send_key is true, else plain Enter."""
+        return self.run_js(
+            "(() => { const mod = /Mac/.test(navigator.platform) ? 'metaKey' : 'ctrlKey';"
+            " const e = new KeyboardEvent('keydown', {key: 'Enter', cancelable: true,"
+            " bubbles: true, [mod]: %s}); $('#note').dispatchEvent(e);"
+            " return e.defaultPrevented; })()" % json.dumps(send_key)
+        )
+
+    def press_send_key(self):
+        """Cmd+Enter on a Mac, Ctrl+Enter elsewhere, as the page tells them apart."""
+        self.press_enter(4 if self.run_js("/Mac/.test(navigator.platform)") else 2)
+
     def focused(self):
         """The focused control's accessible name: its label, else its text."""
         return self.run_js(
@@ -175,6 +203,33 @@ class PageTest(DatabaseTest):
         entry = self.store.get("demo", 1)["entries"][-1]
         self.assertEqual((entry["kind"], entry["body"]), ("followup", "What does each way cost?"))
         self.assertEqual(self.store.get("demo", 1)["status"], "open")
+
+    def test_the_send_key_in_the_note_sends_the_answer(self):
+        self.open("#/demo/1")
+        self.click("#detail input[value=b] + .letter")
+        self.click("#note")
+        self.type("Left is closer.")
+        self.press_enter()
+        self.type("Shorter too.")
+        self.assertEqual(self.run_js("$('#note').value"), "Left is closer.\nShorter too.")
+        self.press_send_key()
+        self.wait("location.hash === '#/demo/2'")
+        entry = self.store.get("demo", 1)["entries"][-1]
+        self.assertEqual((entry["choice"], entry["body"]), ("b", "Left is closer.\nShorter too."))
+
+    def test_the_send_key_without_a_pick_asks_for_more_context(self):
+        self.open("#/demo/1")
+        self.click("#note")
+        self.press_send_key()
+        # An empty note sends nothing, and the key types no line break.
+        self.assertEqual(self.run_js("$('#note').value"), "")
+        self.assertTrue(self.send_key_prevented(True))
+        self.assertFalse(self.send_key_prevented(False), "plain Enter still types a line break")
+        self.type("What does each way cost?")
+        self.press_send_key()
+        self.wait("$('#detail .eyebrow .wait')")
+        entry = self.store.get("demo", 1)["entries"][-1]
+        self.assertEqual((entry["kind"], entry["body"]), ("followup", "What does each way cost?"))
 
     def test_shows_new_projects_and_changed_questions(self):
         self.open("#/demo/1")
